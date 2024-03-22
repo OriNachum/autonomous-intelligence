@@ -23,9 +23,19 @@ def load_system_prompt():
     else:
         return ""
 
+def load_prompt(name):
+    system_prompt_file = f"./prompts/{name}/{name}.system.md"
+    if os.path.exists(system_prompt_file):
+        with open(system_prompt_file, "r") as file:
+            return file.read()
+    else:
+        return ""
+
+
 if __name__ == "__main__":
     history = load_history()
-    system_prompt = load_system_prompt()
+    main_system_prompt = load_prompt("main")
+    model_selector_system_prompt = load_prompt("model-selector")
     print("Conversation History:\n")
     print(history)
 
@@ -33,6 +43,9 @@ if __name__ == "__main__":
     prompt = input("Please enter a prompt: ")
     save_to_history("User", prompt)
 
-    response = generate_response(prompt, history, system_prompt, "haiku")
+    #response = generate_response(prompt, history, system_prompt, "haiku")
+    response = generate_response(prompt, history, model_selector_system_prompt, "sonnet")
+    print(f"Selected {response}")
+    response = generate_response(prompt, history, main_system_prompt, response)
     print(response)
     save_to_history("Assistant", response)

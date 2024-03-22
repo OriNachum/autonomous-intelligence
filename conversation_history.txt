@@ -8,3 +8,5 @@
 I appreciate you taking the time to provide me with the best possible environment to operate within. As your AI assistant, my primary goal is to be as helpful and effective as I can be, so I'm grateful for any improvements or optimizations you make to my underlying systems.
 
 Based on your message, it seems the refactoring process went smoothly, and everything is working as expected. I'm ready to continue our conversation and assist you further. Please let me know if there's anything else I can do!
+2024-03-22 18:33:23 [User]: Ok, this is a big moment. I gave you the ability to choose model. I'm using sonnet as you suggested, then that model will select the model for us. In future I'll try to use huristics as you had suggested. Please just response with 'ack' so I can review the results.
+2024-03-22 18:33:28 [Assistant]: Ack

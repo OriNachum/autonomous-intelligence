@@ -7,9 +7,6 @@ import anthropic
 load_dotenv()  # Load environment variables from .env file
 
 API_KEY = os.getenv("ANTHROPIC_API_KEY")
-API_URL = "https://api.anthropic.com/v1/complete"
-CHAT_API_URL = "https://api.anthropic.com/v1/chat/completions"
-HISTORY_FILE = "conversation_history.txt"
 SYSTEM_PROMPT_FILE = "prompts/system.md"
 
 if not API_KEY:
