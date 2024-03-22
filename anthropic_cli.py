@@ -70,11 +70,8 @@ if __name__ == "__main__":
     print("Conversation History:\n")
     print(history)
 
-    parser = argparse.ArgumentParser(description="Simple CLI for Anthropic API")
-    parser.add_argument("prompt", nargs="+", help="The prompt to send to the Anthropic API")
-    args = parser.parse_args()
-
-    prompt = " ".join(args.prompt)
+        # Request for a prompt
+    prompt = input("Please enter a prompt: ")
     save_to_history("User", prompt)
 
     response = generate_response(prompt, history, system_prompt)
