@@ -4,31 +4,17 @@ import os
 import datetime
 from dotenv import load_dotenv
 from modelproviders.anthropic_client import generate_response
+from persistency.local_file import save_to_history, load_history
 
 load_dotenv()  # Load environment variables from .env file
 
 API_KEY = os.getenv("ANTHROPIC_API_KEY")
-API_URL = "https://api.anthropic.com/v1/complete"
-CHAT_API_URL = "https://api.anthropic.com/v1/chat/completions"
 HISTORY_FILE = "conversation_history.txt"
 SYSTEM_PROMPT_FILE = "prompts/system.md"
 
 if not API_KEY:
     raise ValueError("ANTHROPIC_API_KEY environment variable is not set.")
 
-
-def save_to_history(role, message):
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    history_entry = f"{timestamp} [{role}]: {message}"
-    with open(HISTORY_FILE, "a") as file:
-        file.write(history_entry + "\n")
-
-def load_history():
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r") as file:
-            return file.read()
-    else:
-        return ""
 
 def load_system_prompt():
     if os.path.exists(SYSTEM_PROMPT_FILE):
