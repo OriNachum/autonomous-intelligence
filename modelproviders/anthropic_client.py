@@ -25,7 +25,7 @@ def get_model_id_by_name(model):
   if model == "sonnet":
     return "claude-3-sonnet-20240229"
 
-def generate_response(prompt, history, system_prompt, client, model):
+def generate_response(prompt, history, system_prompt, model):
     model_id = get_model_id_by_name(model)
     messages = []
     if history:
@@ -62,5 +62,5 @@ if __name__ == "__main__":
     prompt = input("Make a request")
 
     model = "haiku"
-    response = generate_response(prompt, history, system_prompt, client, model)
+    response = generate_response(prompt, history, system_prompt, model)
     print(response)
