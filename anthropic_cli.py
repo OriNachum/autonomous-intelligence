@@ -15,14 +15,6 @@ SYSTEM_PROMPT_FILE = "prompts/system.md"
 if not API_KEY:
     raise ValueError("ANTHROPIC_API_KEY environment variable is not set.")
 
-
-def load_system_prompt():
-    if os.path.exists(SYSTEM_PROMPT_FILE):
-        with open(SYSTEM_PROMPT_FILE, "r") as file:
-            return file.read()
-    else:
-        return ""
-
 def load_prompt(name):
     system_prompt_file = f"./prompts/{name}/{name}.system.md"
     if os.path.exists(system_prompt_file):
@@ -31,6 +23,23 @@ def load_prompt(name):
     else:
         return ""
 
+def get_time_since_last(history):
+    # Get the last entry's timestamp from the history
+    last_entry = history.strip().split("\n")[-1]
+    if "[User]" in last_entry:
+        last_timestamp_str = last_entry.split("[User]: ")[0]
+    elif "[Assistant]" in last_entry:
+        last_timestamp_str = last_entry.split("[Assistant]: ")[0]
+    else:
+        return None
+
+    # Convert the timestamp string to a datetime object
+    last_timestamp_obj = datetime.datetime.strptime(last_timestamp_str, "%Y-%m-%d %H:%M:%S")
+
+    # Calculate the time since the last correspondence
+    time_since_last = datetime.datetime.now() - last_timestamp_obj
+
+    return time_since_last
 
 if __name__ == "__main__":
     history = load_history()
@@ -41,6 +50,8 @@ if __name__ == "__main__":
 
     # Request for a prompt
     prompt = input("Please enter a prompt: ")
+    if time_since_last:
+        prompt = f"{prompt} [{str(time_since_last).split('.')[0]}]"
     save_to_history("User", prompt)
 
     #response = generate_response(prompt, history, system_prompt, "haiku")
