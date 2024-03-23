@@ -49,9 +49,13 @@ if __name__ == "__main__":
     print(history)
 
     # Request for a prompt
+    current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     prompt = input("Please enter a prompt: ")
     if time_since_last:
-        prompt = f"{prompt} [{str(time_since_last).split('.')[0]}]"
+        prompt = f"[{current_datetime}, {str(time_since_last).split('.')[0]}] {prompt}"
+    else:
+        prompt = f"[{current_datetime}] {prompt}"
+        
     save_to_history("User", prompt)
 
     #response = generate_response(prompt, history, system_prompt, "haiku")
