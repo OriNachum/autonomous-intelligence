@@ -30,20 +30,35 @@ def get_time_since_last(history):
 
     timestamp_match = None
     if "[User]" in last_entry:
-        timestamp_match = re.search(r'\[([\d\-: ]+)\]', last_entry)
+        return None
     elif "[Assistant]" in last_entry:
-        timestamp_match = re.search(r'\[([\d\-: ]+)\]', last_entry)
+        #ßtimestamp_match = re.search(r'\[([\d\-: ]+)\]', last_entry)
+        timestamp_match = re.search(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', last_entry)
 
     if timestamp_match:
         timestamp_str = timestamp_match.group(1)
-
-        # Convert the timestamp string to a datetime object
         last_timestamp_obj = datetime.datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-
-        # Calculate the time since the last correspondence
         time_since_last = datetime.datetime.now() - last_timestamp_obj
 
-        return time_since_last
+        # Decomposing the time difference
+        days = time_since_last.days
+        seconds = time_since_last.seconds
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        seconds = (seconds % 60)
+
+        # Constructing the textual representation
+        time_parts = []
+        if days > 0:
+            time_parts.append(f"{days} days")
+        if hours > 0:
+            time_parts.append(f"{hours} hours")
+        if minutes > 0:
+            time_parts.append(f"{minutes} minutes")
+        if seconds > 0 or not time_parts:
+            time_parts.append(f"{seconds} seconds")
+
+        return ", ".join(time_parts)
     else:
         return None
 
@@ -64,7 +79,8 @@ if __name__ == "__main__":
         history = history[:history.rfind("[User]")]
     else:
         # Request for a prompt
-        raw_prompt = input(f"Please enter a prompt: ")
+        time_since_last = get_time_since_last(history)
+        raw_prompt = input(f"Please enter a prompt ({time_since_last}): ")
         time_since_last = get_time_since_last(history)
 
         current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -72,6 +88,7 @@ if __name__ == "__main__":
             time_since_last_str = str(time_since_last).split('.')[0]
             prompt_prefix = f"[{current_datetime}][{time_since_last_str}]"
         else:
+            print("===== WARNING: No previous timestamp found in the conversation history. =====")
             prompt_prefix = f"[{current_datetime}]"
 
         prompt = f"{prompt_prefix} {raw_prompt}"
