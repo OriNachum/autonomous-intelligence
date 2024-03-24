@@ -50,7 +50,7 @@ if __name__ == "__main__":
     model_selector_system_prompt = load_prompt("model-selector")
     print("Conversation History:\n")
     print(history)
-
+    time_since_last = get_time_since_last(history)
     # Request for a prompt
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if time_since_last:
