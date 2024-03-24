@@ -22,7 +22,7 @@ def get_model_id_by_name(model):
   if model == "sonnet":
     return "claude-3-sonnet-20240229"
 
-def generate_response(prompt, history, system_prompt, model):
+def generate_response(prompt, history, system_prompt, model, max_tokens=1000):
     model_id = get_model_id_by_name(model)
     messages = []
     if history:
@@ -35,16 +35,10 @@ def generate_response(prompt, history, system_prompt, model):
                 messages.append({"role": "assistant", "content": assistant_message})
     messages.append({"role": "user", "content": prompt})
 
-    data = {
-        "messages": messages,
-        "max_tokens_to_sample": 1000,
-        "stop_sequences": []
-    }
-
     message = client.messages.create(
         model = model_id,
         messages = messages,
-        max_tokens = 1000,
+        max_tokens = max_tokens,
         system = system_prompt
     )
     content_block = message.content

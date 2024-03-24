@@ -6,6 +6,8 @@ HISTORY_FILE = "conversation_history.txt"
 
 def save_to_history(role, message):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # normalized message, no newlines
+    message = message.replace("\n", "\\n")
     history_entry = f"{timestamp} [{role}]: {message}"
     with open(HISTORY_FILE, "a") as file:
         file.write(history_entry + "\n")

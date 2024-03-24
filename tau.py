@@ -78,8 +78,12 @@ if __name__ == "__main__":
         save_to_history("User", prompt)
 
     #response = generate_response(prompt, history, system_prompt, "haiku")
-    response = generate_response(prompt, history, model_selector_system_prompt, "sonnet")
+    wrapped_prompt = f"Please assess the correct model for the following request, wrapped with double '---' lines: \n---\n---\n{prompt} \n---\n---\n Remember to answer only with one of the following models (haiku, sonnet, opus)"
+    response = generate_response(wrapped_prompt, history, model_selector_system_prompt, "sonnet", max_tokens=10)
     print(f"Selected {response}")
+    # If provided with more than 1 word, take the first word as the model name
+    if " " in response:
+        response = response.split(" ")[0]
     response = generate_response(prompt, history, main_system_prompt, response)
     print(response)
     save_to_history("Assistant", response)
