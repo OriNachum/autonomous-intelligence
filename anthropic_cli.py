@@ -50,11 +50,14 @@ if __name__ == "__main__":
 
     # Request for a prompt
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    prompt = input("Please enter a prompt: ")
     if time_since_last:
-        prompt = f"[{current_datetime}, {str(time_since_last).split('.')[0]}] {prompt}"
+        time_since_last_str = str(time_since_last).split('.')[0]
+        prompt_prefix = f"[{current_datetime}][{time_since_last_str}]"
     else:
-        prompt = f"[{current_datetime}] {prompt}"
+        prompt_prefix = f"[{current_datetime}]"
+
+    raw_prompt = input(f"Please enter a prompt: ")
+    prompt = f"{prompt_prefix} {raw_prompt}"
         
     save_to_history("User", prompt)
 
