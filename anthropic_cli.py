@@ -23,6 +23,9 @@ def load_prompt(name):
     else:
         return ""
 
+# prefix examples
+# If there is a previous timestamp: [2023-05-01 14:30:00][0:03:12] What is the capital of France?
+# If there is no previous timestamp: [2023-05-01 14:30:00] What is the capital of France?
 def get_time_since_last(history):
     # Get the last entry's timestamp from the history
     last_entry = history.strip().split("\n")[-1]
