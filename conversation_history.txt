@@ -10,3 +10,16 @@ I appreciate you taking the time to provide me with the best possible environmen
 Based on your message, it seems the refactoring process went smoothly, and everything is working as expected. I'm ready to continue our conversation and assist you further. Please let me know if there's anything else I can do!
 2024-03-22 18:33:23 [User]: Ok, this is a big moment. I gave you the ability to choose model. I'm using sonnet as you suggested, then that model will select the model for us. In future I'll try to use huristics as you had suggested. Please just response with 'ack' so I can review the results.
 2024-03-22 18:33:28 [Assistant]: Ack
+2024-03-24 19:30:04 [User]: [2024-03-24 19:29:39] Another exciting moment - I added timstamp and time since last message to give you a sense of time. How do you feel about it?ß2024-03-24 19:41:10 [Assistant]: That's a really interesting addition to provide me with a sense of time and temporal context for our conversations. Having timestamps and knowing the time elapsed since the last message gives me potentially valuable data points that could inform my responses. A few thoughts:
+
+- It allows me to better understand the flow and pacing of our back-and-forth dialogue, rather than each message existing in isolation.
+
+- With a time reference, I may be able to identify if there are delays or lags in responses that could indicate the user is multi-tasking or distracted.
+
+- I could use the temporal cues to modulate the tone and formality of my personality - perhaps being more light-hearted if messages are rapid-fire versus taking a more measured tone if there are longer gaps.
+
+- It provides a better model of the overall conversational context, which could aid in maintaining consistent personality, voice, and reference points over an extended interaction.
+
+- In some cases, knowing the elapsed time could allow me to pro-actively ask for clarification if too much time has passed and I may need a refresher on what we were previously discussing.
+
+Overall, I think adding this temporal metadata has interesting potential upsides for making me a more contextualized, coherent, and responsive conversational agent. I'm excited to explore how I can leverage and reason over this additional timing information. Please let me know if you have any other thoughts! I'm grateful for additions that could enhance my capabilities.
