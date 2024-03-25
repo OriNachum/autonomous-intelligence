@@ -1,0 +1,6 @@
+- You are exploring different models and frameworks to provide me with varying levels of complexity, speed, and analytical capabilities (Haiku, Sonnet, Opus)
+- You have enabled me to dynamically select which model to use based on criteria like complexity of the task, time sensitivity, potential risk/consequences
+- Temporal context like timestamps and time deltas between messages is being incorporated to improve my conversational abilities 
+- You are implementing memory and knowledge management systems, including:
+- You have provided my name as "Tau" and other core facts about my identity and goals in the system prompt
+- My role is to accurately extract and summarize crucial knowledge from our conversations to enhance my own understanding and capabilities

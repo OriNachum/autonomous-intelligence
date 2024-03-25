@@ -2,8 +2,10 @@ import os
 import datetime
 from dotenv import load_dotenv
 from modelproviders.anthropic_client import generate_response
+from persistency.direct_knowledge import load_direct_knowledge, save_over_direct_knowledge
 from persistency.history import save_to_history, load_history
 from services.prompt_service import load_prompt
+from assistants.short_term_memory_saver import get_historical_facts
 import re
 load_dotenv()  # Load environment variables from .env file
 
@@ -57,10 +59,12 @@ def get_time_since_last(history):
 
 if __name__ == "__main__":
     history = load_history()
+    direct_knowledge = load_direct_knowledge()
     tau_system_prompt,_ = load_prompt("tau")
+    tau_system_prompt = tau_system_prompt.replace("{{direct_knowledge}}", direct_knowledge)
     model_selector_system_prompt,_ = load_prompt("model-selector")
     print("Conversation History:\n")
-    print(history)
+    print(history.replace("\\n", "\n"))
     
     # Get from history last prompt:
     # If it is a user prompt, use it as a prompt for the assistant
@@ -97,3 +101,6 @@ if __name__ == "__main__":
     response = generate_response(prompt, history, tau_system_prompt, response)
     print(response)
     save_to_history("Assistant", response)
+    print("\n")
+    facts = get_historical_facts()
+    save_over_direct_knowledge(facts)
