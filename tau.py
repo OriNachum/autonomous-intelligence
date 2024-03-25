@@ -2,7 +2,7 @@ import os
 import datetime
 from dotenv import load_dotenv
 from modelproviders.anthropic_client import generate_response
-from persistency.local_file import save_to_history, load_history
+from persistency.history import save_to_history, load_history
 from services.prompt_service import load_prompt
 import re
 load_dotenv()  # Load environment variables from .env file
