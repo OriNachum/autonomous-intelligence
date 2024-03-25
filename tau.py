@@ -57,8 +57,8 @@ def get_time_since_last(history):
 
 if __name__ == "__main__":
     history = load_history()
-    main_system_prompt = load_prompt("main")
-    model_selector_system_prompt = load_prompt("model-selector")
+    tau_system_prompt,_ = load_prompt("tau")
+    model_selector_system_prompt,_ = load_prompt("model-selector")
     print("Conversation History:\n")
     print(history)
     
@@ -94,6 +94,6 @@ if __name__ == "__main__":
     # If provided with more than 1 word, take the first word as the model name
     if " " in response:
         response = response.split(" ")[0]
-    response = generate_response(prompt, history, main_system_prompt, response)
+    response = generate_response(prompt, history, tau_system_prompt, response)
     print(response)
     save_to_history("Assistant", response)
