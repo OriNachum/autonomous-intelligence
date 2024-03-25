@@ -7,6 +7,8 @@ from persistency.history import save_to_history, load_history
 from services.prompt_service import load_prompt
 from assistants.short_term_memory_saver import get_historical_facts
 import re
+
+from services.speechify import play_mp3, speechify
 load_dotenv()  # Load environment variables from .env file
 
 API_KEY = os.getenv("ANTHROPIC_API_KEY")
@@ -104,3 +106,5 @@ if __name__ == "__main__":
     print("\n")
     facts = get_historical_facts()
     save_over_direct_knowledge(facts)
+    path = speechify(response)
+    play_mp3(path)

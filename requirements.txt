@@ -1,3 +1,5 @@
 python-dotenv
 requests
 anthropic
+openai
+pygame
