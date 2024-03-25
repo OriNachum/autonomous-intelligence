@@ -3,6 +3,7 @@ import datetime
 from dotenv import load_dotenv
 from modelproviders.anthropic_client import generate_response
 from persistency.local_file import save_to_history, load_history
+from services.prompt_service import load_prompt
 import re
 load_dotenv()  # Load environment variables from .env file
 
@@ -12,14 +13,6 @@ SYSTEM_PROMPT_FILE = "prompts/system.md"
 
 if not API_KEY:
     raise ValueError("ANTHROPIC_API_KEY environment variable is not set.")
-
-def load_prompt(name):
-    system_prompt_file = f"./prompts/{name}/{name}.system.md"
-    if os.path.exists(system_prompt_file):
-        with open(system_prompt_file, "r") as file:
-            return file.read()
-    else:
-        return ""
 
 # prefix examples
 # If there is a previous timestamp: [2023-05-01 14:30:00][0:03:12] What is the capital of France?
