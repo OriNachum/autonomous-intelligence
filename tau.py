@@ -59,7 +59,7 @@ def get_time_since_last(history):
     else:
         return None
 
-if __name__ == "__main__":
+def main_tau_loop(user_input):
     history = load_history()
     direct_knowledge = load_direct_knowledge()
     tau_system_prompt,_ = load_prompt("tau")
@@ -79,7 +79,10 @@ if __name__ == "__main__":
     else:
         # Request for a prompt
         time_since_last = get_time_since_last(history)
-        raw_prompt = input(f"Please enter a prompt ({time_since_last}): ")
+        if (user_input is None or user_input == ""):
+            raw_prompt = input(f"Please enter a prompt ({time_since_last}): ")
+        else:
+            raw_prompt = user_input
         time_since_last = get_time_since_last(history)
 
         current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -96,6 +99,7 @@ if __name__ == "__main__":
     #response = generate_response(prompt, history, system_prompt, "haiku")
     wrapped_prompt = f"Please assess the correct model for the following request, wrapped with double '---' lines: \n---\n---\n{prompt} \n---\n---\n Remember to answer only with one of the following models (haiku, sonnet, opus)"
     response = generate_response(wrapped_prompt, history, model_selector_system_prompt, "sonnet", max_tokens=10)
+    response = response.replace('---', "").replace("\n", "")
     print(f"Selected {response}")
     # If provided with more than 1 word, take the first word as the model name
     if " " in response:
@@ -108,3 +112,11 @@ if __name__ == "__main__":
     save_over_direct_knowledge(facts)
     path = speechify(response)
     play_mp3(path)
+    next_prompt = input("Wait for the audio to finish. Enter to exit, Reply if you like to respond\n")
+    return next_prompt
+
+if __name__ == "__main__":
+    user_input = None
+    while (user_input != ""):
+        user_input = main_tau_loop(user_input)
+        
