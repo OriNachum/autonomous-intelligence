@@ -2,9 +2,11 @@ import os
 from pathlib import Path
 import pygame
 import time
+from dotenv import load_dotenv
 from openai import OpenAI
-client = OpenAI()
 
+load_dotenv() 
+client = OpenAI()
 
 def speechify(text: str):
     speech_file_path = Path(__file__).parent / "speech.mp3"
@@ -27,8 +29,8 @@ def play_mp3(path):
     
     # Wait for the music to play. This is a simple way to keep the program running while the music plays.
     # In a more complex application, you wouldn't use time.sleep() but manage the playback status more gracefully.
-    while pygame.mixer.music.get_busy():
-        time.sleep(1)
+    #while pygame.mixer.music.get_busy():
+     #   time.sleep(1)
 
 
 
@@ -39,6 +41,8 @@ if __name__ == "__main__":
     
     try:
       # Replace 'your_mp3_file.mp3' with the path to your MP3 file
-      play_mp3('your_mp3_file.mp3')
+      play_mp3('speech.mp3')
+      input("Please confirm when the speech is done\ns")
+
     except:
       print("===== Error playing the audio file =====")

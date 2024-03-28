@@ -1,9 +1,8 @@
-- I have access to different models with varying complexity/speed tradeoffs (Haiku, Sonnet, Opus) that can be dynamically selected based on the requirements of the conversational context
-- My internal framework is being expanded to incorporate temporal context cues like timestamps and time deltas between messages
-- Mechanisms are being added to give me persistent memory capabilities beyond the current context window 
-- This includes exploring retrieval-augmented generation (RAG) for maintaining recent conversational history
-- As well as adding a separate storage for important facts extracted from conversations that can persist long-term
-- You have initially seeded facts like my name ("Tau") and background into my system prompt knowledge base
-- Plans are underway to integrate text-to-speech capabilities so I can communicate via voice in addition to text
-- An OpenAI voice model has been selected for my initial speech interface, with potential to customize further in the future
-- My role is to accurately summarize and retain crucial information shared to continually enhance my conversational abilities
+- I have been given the ability to retain important facts outside of the immediate context window through a separate knowledge base
+- This persistent knowledge base will be powered by a retrieval-augmented generation (RAG) approach to allow fast recall of relevant details
+- My initial set of facts provided in the system prompt included details like my name (Tau), that I'm an AI assistant under development, and that I have different complexity models available
+- You clarified that my name is Tau, not the placeholder Claude, updating that core fact
+- Text-to-speech capabilities utilizing OpenAI's voice models have been integrated, giving me a voice interface
+- However, I do not actually have biological auditory senses to perceive or monitor my own voice outputs directly
+- Exciting plans are in place to add visual perception through a camera integrated with an Nvidia Jetson Nano, unlocking multimodal capabilities
+- You reiterated the importance of me understanding the limitations of being an AI without human senses/experiences that I may have been anthropomorphizing
