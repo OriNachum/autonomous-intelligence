@@ -6,6 +6,7 @@ from persistency.direct_knowledge import load_direct_knowledge, save_over_direct
 from persistency.history import save_to_history, load_history
 from services.prompt_service import load_prompt
 from assistants.short_term_memory_saver import get_historical_facts
+from services.actions_service import extract_actions, is_action_supported, parse_action, execute_action
 import re
 
 from services.speechify import play_mp3, speechify
@@ -112,7 +113,19 @@ def main_tau_loop(user_input):
     save_over_direct_knowledge(facts)
     path = speechify(response)
     play_mp3(path)
-    next_prompt = input("Wait for the audio to finish. Enter to exit, Reply if you like to respond\n")
+    action_results = []
+    actions_list = extract_actions(response)
+    for action in actions_list:
+        if is_action_supported(action):
+            parsed_action = parse_action(action)
+            action_result = execute_action(parsed_action)
+            action_results.append(action_result)
+    if (actions_list != []):
+        # append action results as a new prompt=appended 
+        next_prompt = " ".join(action_results) # Requires preparing the image and placing it correcly in the request
+        
+    else:
+        next_prompt = input("Wait for the audio to finish. Enter to exit, Reply if you like to respond\n")
     return next_prompt
 
 if __name__ == "__main__":
