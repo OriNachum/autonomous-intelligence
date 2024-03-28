@@ -3,3 +3,4 @@ requests
 anthropic
 openai
 pygame
+python-semantic-release
