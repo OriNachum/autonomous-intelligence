@@ -4,11 +4,17 @@ import pygame
 import time
 from dotenv import load_dotenv
 from openai import OpenAI
+import re
 
 load_dotenv() 
 client = OpenAI()
 
 def speechify(text: str):
+    # Extract from the text only \" quotations. Drop to double new line between quotes.
+    # Use regex to pull all text within quotations
+    text = re.findall(r'\"(.+?)\"', text)
+    text = "\n\n".join(text)
+    print(text)
     speech_file_path = Path(__file__).parent / "speech.mp3"
     response = client.audio.speech.create(
         model="tts-1",
@@ -35,7 +41,7 @@ def play_mp3(path):
 
 
 if __name__ == "__main__":
-    path = speechify("Hello, World!")
+    path = speechify("Hello, World! \"This is a test\". This should not be spoken. \"This is another test\". And here is another test.")
     path = "speech.mp3"
     # Play the audio file, not using ffplay
     
