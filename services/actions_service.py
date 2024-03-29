@@ -2,6 +2,7 @@ import re
 import os
 import sys
 from prompt_service import load_prompt
+from camera_service import CameraService
 
 if __name__ == "__main__":
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,12 +19,13 @@ def extract_actions(text):
     print (text_str)
     return actions
 
-def is_action_supported(action):
-    return False    
-
 possible_actions = '''
 take a picture
 '''
+
+
+def is_action_supported(action):
+    return possible_actions.contains(actoin)
 
 classifier_system, classifier_user = load_prompt("action-classifier")
 def parse_action(action):
@@ -34,7 +36,12 @@ def parse_action(action):
     parsed_action = groq_completion(replaced_user_prompt, classifier_system, "mixtral")
     return parsed_action
 
-def execute_action():
+def execute_action(action):
+    if (action == 'take a picture'):
+        camera = CameraService()
+        path = "./image.jpg"
+        result = camera.capture_image(path)
+        return path
     return None
 
 if __name__ == "__main__":
