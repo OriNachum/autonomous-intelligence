@@ -11,10 +11,16 @@ def save_to_history(role, message):
     with open(HISTORY_FILE, "a") as file:
         file.write(history_entry + "\n")
 
+backward_history_length=20
 def load_history():
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r") as file:
-            return file.read()
+            file_content = file.read()
+            file_split = file_content.splitlines() # Split the content into lines
+            # Take extra line if ended with user
+            total_lines = len(file_split)
+            lines_to_take = backward_history_length if total_lines % 2 == 0 else backward_history_length + 1
+            return '\n'.join(file_split[-1*lines_to_take:]) # Join and return the last x lines
     else:
         return ""
 

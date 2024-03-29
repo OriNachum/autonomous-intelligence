@@ -1,6 +1,16 @@
 import os
 
 from groq import Groq
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file
+
+API_KEY = os.getenv("GROQ_API_KEY")
+
+if not API_KEY:
+    raise ValueError("GROQ_API_KEY environment variable is not set.")
+
+
 
 client = Groq(
     api_key=os.environ.get("GROQ_API_KEY"),
@@ -16,7 +26,7 @@ def _get_model_id_by_name(model):
 
 
 
-def groq_completion(text, system_prompt, model):
+def groq_completion(text, history, system_prompt, model):
     model_id = _get_model_id_by_name(model)
     messages = []
     if (system_prompt):
@@ -24,6 +34,15 @@ def groq_completion(text, system_prompt, model):
             "role": "system",
             "content": system_prompt
         })
+    if history:
+        for entry in history.split("\n"):
+            if "[User]" in entry:
+                user_message = entry.split("[User]: ")[1]
+                messages.append({"role": "user", "content": user_message})
+            elif "[Assistant]" in entry:
+                assistant_message = entry.split("[Assistant]: ")[1]
+                messages.append({"role": "assistant", "content": assistant_message})
+
     messages.append({
         "role": "user",
         "content": text

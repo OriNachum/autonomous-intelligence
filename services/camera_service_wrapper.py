@@ -10,7 +10,7 @@ def capture_image(image_path):
         # Capture an image using libcamera-still
         subprocess.run(['libcamera-still', '-o', image_path], check=True)
         print(f"Image captured: {image_path}")
-s        
+        
         # Rotate the captured image using Pillow
         rotate_image(image_path)
         

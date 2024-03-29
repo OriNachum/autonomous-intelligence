@@ -81,7 +81,7 @@ def main_tau_loop(user_input):
         # Request for a prompt
         time_since_last = get_time_since_last(history)
         if (user_input is None or user_input == ""):
-            raw_prompt = input(f"Please enter a prompt ({time_since_last}): ")
+            raw_prompt = input(f"Please enter a prompt ({time_since_last}):\n")
         else:
             raw_prompt = user_input
         time_since_last = get_time_since_last(history)
@@ -94,11 +94,19 @@ def main_tau_loop(user_input):
             print("===== WARNING: No previous timestamp found in the conversation history. =====")
             prompt_prefix = f"[{current_datetime}]"
 
-        prompt = f"{prompt_prefix} {raw_prompt}"
-        save_to_history("User", prompt)
+        if isinstance(raw_prompt, str):
+            prompt = f"{prompt_prefix} {raw_prompt}"
+            save_to_history("User", prompt)
+        else:
+            prompt = raw_prompt
+            save_to_history("User", f"{prompt_prefix} Here is the photo you have taken *Photo redacted due technical reasons*")
+        
 
     #response = generate_response(prompt, history, system_prompt, "haiku")
-    wrapped_prompt = f"Please assess the correct model for the following request, wrapped with double '---' lines: \n---\n---\n{prompt} \n---\n---\n Remember to answer only with one of the following models (haiku, sonnet, opus)"
+    if isinstance(prompt, str):
+        wrapped_prompt = f"Please assess the correct model for the following request, wrapped with double '---' lines: \n---\n---\n{prompt} \n---\n---\n Remember to answer only with one of the following models (haiku, sonnet, opus)"
+    else:
+        wrapped_prompt = "opus"
     response = generate_response(wrapped_prompt, history, model_selector_system_prompt, "sonnet", max_tokens=10)
     response = response.replace('---', "").replace("\n", "")
     print(f"Selected {response}")
@@ -112,17 +120,22 @@ def main_tau_loop(user_input):
     facts = get_historical_facts()
     save_over_direct_knowledge(facts)
     path = speechify(response)
-    play_mp3(path)
-    action_results = []
+    if (path is not None):
+        play_mp3(path)
+    automated_prompt = None
     actions_list = extract_actions(response)
     for action in actions_list:
-        if is_action_supported(action):
-            parsed_action = parse_action(action)
-            action_result = execute_action(parsed_action)
-            action_results.append(action_result)
-    if (actions_list != []):
+        print(f"Attemptiong action {action}")
+        parsed_action = parse_action(action, [])
+        print(f"action {action} actually is {parsed_action}. Trying to execute")
+        if is_action_supported(parsed_action):
+            automated_prompt = execute_action(parsed_action)
+            break
+        else:
+            print(f"action {action} is not supported")
+    if (automated_prompt is not None):
         # append action results as a new prompt=appended 
-        next_prompt = " ".join(action_results) # Requires preparing the image and placing it correcly in the request
+        next_prompt = automated_prompt # Requires preparing the image and placing it correcly in the request
         
     else:
         next_prompt = input("Wait for the audio to finish. Enter to exit, Reply if you like to respond\n")
