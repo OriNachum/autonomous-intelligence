@@ -6,7 +6,7 @@ client = Groq(
     api_key=os.environ.get("GROQ_API_KEY"),
 )
 
-def get_model_id_by_name(model):
+def _get_model_id_by_name(model):
   if model == "mixtral":
     return "mixtral-8x7b-32768"
   if model == "haiku":
@@ -17,7 +17,7 @@ def get_model_id_by_name(model):
 
 
 def groq_completion(text, system_prompt, model):
-    model_id = get_model_id_by_name(model)
+    model_id = _get_model_id_by_name(model)
     messages = []
     if (system_prompt):
         messages.append({
