@@ -6,3 +6,4 @@ pygame
 python-semantic-release
 Pillow
 voyageai
+groq
