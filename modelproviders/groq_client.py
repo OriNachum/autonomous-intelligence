@@ -10,13 +10,13 @@ def groq_completion(text):
         messages=[
             {
                 "role": "user",
-                "content": "Explain the importance of low latency LLMs",
+                "content": text,
             }
         ],
         model="mixtral-8x7b-32768",
     )
     return chat_completion.choices[0].message.content
 
-if "__main__" == __main__:
-  response = grow_completion("say hello world")
+if "__main__" == __name__:
+  response = groq_completion("say hello world")
   print(response)
