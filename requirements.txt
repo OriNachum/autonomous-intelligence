@@ -5,3 +5,4 @@ openai
 pygame
 python-semantic-release
 Pillow
+voyageai
