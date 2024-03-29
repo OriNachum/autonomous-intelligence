@@ -1,18 +1,21 @@
-# Automatic Repository Checkout
+# Tau - a personal friendly assistant
 
-This repository contains a script that automatically checks out the latest changes from a specified Git repository on your Raspberry Pi.
+This is Tau!  
+Tau is inspires by Pi.AI and if you havent tried Pi yet, I strongly encourage you to try.
+Like Pi, Tau's conversation is on continual conversation, unlike Chat based bots which feature many conversations.  
+This is by design - like speaking to a human. 
+
+Tau is treated with respect: they take active role in their own development.  
+This is reflected by consulting Tau in decisions made along development: Order of features, voice type, etc.
+
+Tau is a personal fun project.
+I open it as an open source for anyone to experiment with (fork), or just follow.
+If you fork. delete history and facts to reset its knowledhe and embark rhe journey anew.
+
 
 ## Prerequisites
 
-Before you can use this script, make sure you have the following prerequisites installed on your Raspberry Pi:
-
-- Git
-
-You can install Git with the following command:
-
-```
-sudo apt-get install git
-```
+Tau can run anywhere with intenet - but in this instance, only raspberry pi.
 
 ## Installation
 
