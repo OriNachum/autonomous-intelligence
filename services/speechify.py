@@ -13,6 +13,8 @@ def speechify(text: str):
     # Extract from the text only \" quotations. Drop to double new line between quotes.
     # Use regex to pull all text within quotations
     text = re.findall(r'\"(.+?)\"', text)
+    if (len(text) == 0):
+        return None
     text = "\n\n".join(text)
     print(text)
     speech_file_path = Path(__file__).parent / "speech.mp3"
