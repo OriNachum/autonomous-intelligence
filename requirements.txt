@@ -1,9 +1,9 @@
 python-dotenv
 requests
-anthropic
+#anthropic
 openai
 pygame
 python-semantic-release
 Pillow
-voyageai
-groq
+#voyageai
+#groq

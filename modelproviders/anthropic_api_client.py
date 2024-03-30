@@ -12,7 +12,8 @@ if not API_KEY:
     raise ValueError("ANTHROPIC_API_KEY environment variable is not set.")
 
 HEADERS = {
-    "Authorization": f"Bearer {API_KEY}",
+    "x-api-key": API_KEY,
+    "anthropic-version": "2023-06-01",
     "Content-Type": "application/json"
 }
 
@@ -47,9 +48,8 @@ def generate_response(prompt, history, system_prompt, model, max_tokens=1000):
     response = requests.post(f"{API_URL}/messages", json=payload, headers=HEADERS)
     if response.status_code != 200:
         raise Exception(f"API request failed with status code {response.status_code}: {response.text}")
-    
     content_block = response.json()
-    content = content_block['choices'][0]['text']  # Adjust this line based on the actual structure of the API response
+    content = content_block['content'][0]['text']  # Adjust this line based on the actual structure of the API response
     return content
 
 

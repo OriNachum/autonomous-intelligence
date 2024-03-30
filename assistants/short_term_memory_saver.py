@@ -7,7 +7,7 @@ if __name__ == "__main__":
         sys.path.append(parent_dir)
         
 from persistency.history import load_history
-from modelproviders.anthropic_client import generate_response
+from modelproviders.anthropic_api_client import generate_response
 from services.prompt_service import load_prompt
 
 def _prepare_prompts():

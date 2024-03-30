@@ -12,7 +12,7 @@ from services.prompt_service import load_prompt
 from services.camera_service_wrapper import capture_image
 
 
-from modelproviders.groq_client import groq_completion
+from modelproviders.groq_api_client import groq_completion
 
 def extract_actions(text):
     # Extract from the text only * asteriks. Drop to double new line between quotes.
@@ -57,7 +57,7 @@ def execute_action(action):
                 },
                 {
                     "type": "text",
-                    "text": "Here is the photo you have taken. What you see in the image is what's in front of you. This is what you see from your raspberry pi body and camera module."
+                    "text": "Here is the photo you have taken. What you see in the image is what's in front of you. This is what you see from your Nvidia Jetson Nano Developer Kit body and camera module."
                 }
             ]
             return request

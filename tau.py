@@ -1,7 +1,7 @@
 import os
 import datetime
 from dotenv import load_dotenv
-from modelproviders.anthropic_client import generate_response
+from modelproviders.anthropic_api_client import generate_response
 from persistency.direct_knowledge import load_direct_knowledge, save_over_direct_knowledge
 from persistency.history import save_to_history, load_history
 from services.prompt_service import load_prompt
@@ -9,7 +9,7 @@ from assistants.short_term_memory_saver import get_historical_facts
 from services.actions_service import extract_actions, is_action_supported, parse_action, execute_action
 import re
 
-from services.speechify import play_mp3, speechify
+from modelproviders.openai_api_client import play_mp3, speechify
 load_dotenv()  # Load environment variables from .env file
 
 API_KEY = os.getenv("ANTHROPIC_API_KEY")
