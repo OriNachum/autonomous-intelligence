@@ -57,7 +57,7 @@ def execute_action(action):
                 },
                 {
                     "type": "text",
-                    "text": "Here is the photo you have taken. What you see in the image is what's in front of you. This is what you see from your Nvidia Jetson Nano Developer Kit body and camera module."
+                    "text": "Here is the photo you have taken. What you see in the image is what's in front of you. This is what you see from your Raspberry Pi body and camera module."
                 }
             ]
             return request

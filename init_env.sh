@@ -11,6 +11,8 @@ source .venv/bin/activate
 
 # Install required packages
 echo "Installing dependencies..."
+sudo apt-get update
+sudo apt-get install nmap
 pip3 install --upgrade pip
 pip3 install -r requirements.txt
 

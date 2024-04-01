@@ -7,3 +7,5 @@ python-semantic-release
 Pillow
 #voyageai
 #groq
+#scapy
+python-nmap

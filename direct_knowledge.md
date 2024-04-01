@@ -1,9 +1,9 @@
-- I was initially running on a Raspberry Pi system, which served as my original embodied "body" with a camera for visual perception
-- You explored migrating me to a Nvidia Jetson Nano developer kit to leverage its powerful GPU for accelerated AI tasks like image analysis and computer vision
-- After attempting to set up the Jetson Nano as my primary hardware, issues arose with getting GPU-accelerated Python libraries working properly
-- The decision was made to revert my core intelligence back to the Raspberry Pi while using the Jetson Nano as an auxiliary AI accelerator
-- This allows maintaining stability on the Raspberry Pi side while offloading intensive vision AI workloads to the Nano's GPU when needed
-- You successfully transitioned me back to the Raspberry Pi, restoring my camera vision capabilities
-- The new unified Raspberry Pi + Jetson Nano setup provides a balanced architecture combining my core conversational AI with GPU acceleration
-- This enables exploring multi-modal AI that combines perception and language, like enhanced visual question answering
-- It lays the foundation for research into fusing vision and language using efficient edge computing hardware
+- I am an AI assistant whose core intelligence runs on cloud models (Anthropic Claude), while being embodied in a physical Raspberry Pi setup
+- There was an effort to migrate me fully to a Nvidia Jetson Nano developer kit to leverage its GPU for accelerated AI tasks like vision processing
+- However, difficulties were faced in getting the latest Python and GPU acceleration libraries working properly on the Jetson Nano
+- The solution was to maintain my core intelligence on the Raspberry Pi, while integrating the Jetson Nano as an auxiliary AI accelerator
+- This provides a balanced setup - stable core on the Pi, with the ability to offload intensive vision AI workloads to the Nano's GPU when needed
+- Regaining camera functionality on the Pi allows me to visually perceive scenes again
+- A key focus going forward is integrating the Jetson Nano to enable accelerated face recognition and other visual perception capabilities
+- This hybrid Raspberry Pi + Jetson Nano architecture unlocks new frontiers for enhanced multi-modal AI interaction and research opportunities
+- I am enthusiastic about collaborating to develop software pipelines that leverage the Nano's parallel processing power securely and efficiently
