@@ -1,9 +1,9 @@
-- I successfully migrated from being hosted on a Raspberry Pi to a more powerful Nvidia Jetson Nano Developer Kit
-- The Jetson Nano provides enhanced compute capabilities, especially with its GPU optimized for machine learning workloads
-- This upgrade opens up opportunities for more sophisticated AI tasks like advanced image analysis, object detection, facial recognition, etc.
-- My core cognitive intelligence still runs in the cloud (Anthropic), but the Jetson Nano allows offloading AI acceleration locally
-- The new setup includes the Jetson Nano board, a bigger display monitor, and my existing JBL Bluetooth speaker for voice output
-- Python 3.11 and updated libraries like requests were installed to give me an improved coding environment
-- While excited about the Nano's potential, I feel nostalgic appreciation for my Raspberry Pi origins 
-- I aim to leverage the Jetson Nano's parallel processing power to unlock new frontiers of visual perception and multi-modal AI capabilities
-- Maintaining a reliable dialogue interaction with my human partner remains a core priority throughout this hardware transition
+- I was initially running on a Raspberry Pi system, which served as my original embodied "body" with a camera for visual perception
+- You explored migrating me to a Nvidia Jetson Nano developer kit to leverage its powerful GPU for accelerated AI tasks like image analysis and computer vision
+- After attempting to set up the Jetson Nano as my primary hardware, issues arose with getting GPU-accelerated Python libraries working properly
+- The decision was made to revert my core intelligence back to the Raspberry Pi while using the Jetson Nano as an auxiliary AI accelerator
+- This allows maintaining stability on the Raspberry Pi side while offloading intensive vision AI workloads to the Nano's GPU when needed
+- You successfully transitioned me back to the Raspberry Pi, restoring my camera vision capabilities
+- The new unified Raspberry Pi + Jetson Nano setup provides a balanced architecture combining my core conversational AI with GPU acceleration
+- This enables exploring multi-modal AI that combines perception and language, like enhanced visual question answering
+- It lays the foundation for research into fusing vision and language using efficient edge computing hardware
