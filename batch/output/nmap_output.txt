@@ -1,0 +1,14 @@
+# Nmap 7.80 scan initiated Thu Apr  4 18:20:01 2024 as: nmap -sn -oN ./batch/output/nmap_output.txt 192.168.1.0/24
+Nmap scan report for home.home (192.168.1.1)
+Host is up (0.0088s latency).
+Nmap scan report for 192.168.1.60
+Host is up (0.025s latency).
+Nmap scan report for 192.168.1.101
+Host is up (0.013s latency).
+Nmap scan report for 192.168.1.107
+Host is up (0.011s latency).
+Nmap scan report for 192.168.1.111
+Host is up (0.085s latency).
+Nmap scan report for 192.168.1.115
+Host is up (0.00057s latency).
+# Nmap done at Thu Apr  4 18:20:04 2024 -- 256 IP addresses (6 hosts up) scanned in 2.99 seconds
