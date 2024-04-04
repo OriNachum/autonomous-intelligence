@@ -162,4 +162,4 @@ cython_debug/
 push.sh
 ***/*.jpg
 ***/*.mp3
-***/nmap_output.txt
+batch/output/nmap_output.txt
