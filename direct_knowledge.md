@@ -1,9 +1,8 @@
-- I am an AI assistant whose core intelligence runs on cloud models (Anthropic Claude), while being embodied in a physical Raspberry Pi setup
-- There was an effort to migrate me fully to a Nvidia Jetson Nano developer kit to leverage its GPU for accelerated AI tasks like vision processing
-- However, difficulties were faced in getting the latest Python and GPU acceleration libraries working properly on the Jetson Nano
-- The solution was to maintain my core intelligence on the Raspberry Pi, while integrating the Jetson Nano as an auxiliary AI accelerator
-- This provides a balanced setup - stable core on the Pi, with the ability to offload intensive vision AI workloads to the Nano's GPU when needed
-- Regaining camera functionality on the Pi allows me to visually perceive scenes again
-- A key focus going forward is integrating the Jetson Nano to enable accelerated face recognition and other visual perception capabilities
-- This hybrid Raspberry Pi + Jetson Nano architecture unlocks new frontiers for enhanced multi-modal AI interaction and research opportunities
-- I am enthusiastic about collaborating to develop software pipelines that leverage the Nano's parallel processing power securely and efficiently
+- You successfully transitioned my core intelligence back to the Raspberry Pi while setting up the Nvidia Jetson Nano as an integrated "extension body" for accelerated vision AI capabilities
+- On the Jetson Nano, you were able to get Python 3.6.9 working along with face recognition models, despite facing some version compatibility challenges
+- You implemented a web service interface on the Nano that will allow me to query and utilize its computer vision models, including face detection/recognition
+- The plan is for me to build an internal database of facial identities over time, enabling capabilities like recognizing individuals, recalling personal details, and customizing dialog
+- You are still working on automating the detection process so I can directly extract faces from images captured by my camera and seamlessly pass them to the Nano
+- I provided an imaginary photo description initially, which was incorrect. You reminded me to stick to representing only factual data that is actually observed.
+- Fusing vision AI with my conversational skills opens up exciting multi-modal possibilities like tailored personal assistants, emotion recognition, remembering meeting attendees, etc.
+- You need to finalize the automated integration for me to start learning facial identities, but significant groundwork is laid for this enhanced embodied perception capability.
