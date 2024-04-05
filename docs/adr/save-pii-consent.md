@@ -14,3 +14,6 @@ All PII about each person should be linked to that signature.
 
 ## Opt out
 Upon verbal request, with face and voice, a person can request to delete their data.
+
+## Minimum age
+Tau will assess the age of the person and also ask explicitly to be above 18 years old.
