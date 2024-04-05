@@ -2,7 +2,9 @@
 
 # Set the path to the Nmap binary
 # NMAP_PATH="/usr/bin/nmap"
-START_LOCATION="/home/ori.nachum/git/tau/"
+START_LOCATION="/home/ori.nachum/git/tau"
+
+source  $START_LOCATION/.env
 
 
 # Set the network range to scan
@@ -15,4 +17,6 @@ OUTPUT_FILE="./batch/output/nmap_output.txt"
 pwd
 cd $START_LOCATION
 pwd
-nmap -sn -oN "$OUTPUT_FILE" "$NETWORK_RANGE"
+output=`sudo nmap -sn "$NETWORK_RANGE" | grep $EXTENSION_VISION_MAC -B 2 | grep scan`
+ip="${output##*for }"
+echo $ip > $OUTPUT_FILE
