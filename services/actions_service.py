@@ -1,13 +1,13 @@
 import re
 import os
 import sys
-import base64
-
 if __name__ == "__main__":
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if parent_dir not in sys.path:
         sys.path.append(parent_dir)
 
+from services.take_a_picture import take_a_picture
+from services.vision_service import detect_faces
 from services.prompt_service import load_prompt
 from services.camera_service_wrapper import capture_image
 
@@ -24,6 +24,7 @@ def extract_actions(text):
 
 possible_actions = '''
 take a picture
+detect faces
 '''
 
 
@@ -41,26 +42,10 @@ def parse_action(action, history):
 
 def execute_action(action):
     if (action == 'take a picture'):
-        path = "./image.jpg"
-        capture_image(path)
-        with open(path, "rb") as file:
-            image_bytes = file.read()
-            image_encoded = base64.b64encode(image_bytes).decode("utf-8")
-            request = [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/jpeg",
-                        "data": image_encoded
-                    }
-                },
-                {
-                    "type": "text",
-                    "text": "Here is the photo you have taken. What you see in the image is what's in front of you. This is what you see from your Raspberry Pi body and camera module."
-                }
-            ]
-            return request
+        return take_a_picture("image.jpg")
+    if (action == 'detect faces'):
+        faces=detect_faces('image.jpg')
+        return f"{faces}"
     return None
 
 if __name__ == "__main__":
