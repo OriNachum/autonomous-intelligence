@@ -11,7 +11,7 @@ class FaceDetector:
             # Read the first line
             first_line = file.readline()
             first_line = first_line if first_line != "" else '192.168.1.101'
-            first_line = first_line.replace('%0a', '').replace('\\n', "")
+            first_line = first_line.replace('%0a', '').replace('\n', "")
         return first_line
 
     def detect_faces(self, image_path):
@@ -31,10 +31,10 @@ class FaceDetector:
                 'file': (image_path, file, 'multipart/form-data')
             }
 
-        # Make the POST request
-        with requests.Session() as s:
-            response = s.post(url, headers=headers, files=files)
-            print(response.status_code)
+            # Make the POST request
+            with requests.Session() as s:
+                response = s.post(url, headers=headers, files=files)
+                print(response.status_code)
 
         # Check if the request was successful
         if response.status_code == 200:
