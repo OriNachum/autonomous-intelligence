@@ -1,11 +1,13 @@
 python-dotenv
 requests
-#anthropic
+#anthropic # removed for python 3.6.9 support on Nvidia Jetson Nano
 openai
 pygame
 python-semantic-release
 Pillow
-#voyageai
-#groq
+#voyageai # removed because not in use
+#groq # removed for python 3.6.9 support on Nvidia Jetson Nano
 #scapy
 python-nmap
+asyncio
+websockets
