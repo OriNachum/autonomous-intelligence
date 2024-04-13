@@ -6,6 +6,7 @@ import os
 
 vision_server_ip_location="./batch/output/nmap_output.txt"
 
+# movie to client, add remember and forget faces
 def _detect_faces(base_ip, image_path):
 
     # Construct the URL for the FastAPI server
@@ -38,6 +39,7 @@ def _detect_faces(base_ip, image_path):
         print(f"Error: {response.status_code} - {response.text}")
         return None
 
+# add remember by name. and forget faces by name. always detect first!
 def detect_faces(image_path):
     #vision_server_ip_location = "./batch/output/nmap_output.txt"
     # Open the file in read mode
