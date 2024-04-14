@@ -1,12 +1,16 @@
 import asyncio
 import websockets
+import json
 
 # TODO add SSL
+
 class WebSocketClient:
     def __init__(self, vision_server_ip_location="./batch/output/nmap_output.txt"):
         self.vision_server_ip_location = vision_server_ip_location
         self.base_ip = self.locate_server()
-        self.SECRET_KEY="your_secret_key"
+        self.SECRET_KEY = "your_secret_key"
+        self.websocket = None
+        self.task = None
 
     def locate_server(self):
         # Open the file in read mode
@@ -17,27 +21,27 @@ class WebSocketClient:
             first_line = first_line.replace('%0a', '').replace('\n', "")
         return first_line
 
-    async def setup_websocket_client(self):
-        # Construct the URL for the FastAPI server
-        uri = f"ws://{self.base_ip}:8765"
-        print(uri)
-        async with websockets.connect(uri) as websocket:
-            messages = [f"{self.SECRET_KEY}Client pi:  Hello, server! #1", f"{self.SECRET_KEY}Client pi:  Hello, server! #2", f"{self.SECRET_KEY}Client pi:  Hello, server! #3"]
-            for message in messages:
-                await websocket.send(message)
-                await asyncio.sleep(2)
-            
-            async for message in websocket:
-                print(f"Received: {message}")
-    
+    async def consume_events(self):
+        async with websockets.connect(f"ws://{self.base_ip}:8765") as websocket:
+            self.websocket = websocket
+            while True:
+                message = await websocket.recv()
+                event = json.loads(message)
+                if event["event_type"] == "what_i_see":
+                    print("Received 'what_i_see' event:")
+                    print(event)
+                elif event["event_type"] == "recognized_object":
+                    print("Received 'recognized_object' event:")
+                    print(event)
+                else:
+                    print(f"Received message: {message}")
+
     def start_client(self):
         print("starting")
-        asyncio.get_event_loop().run_until_complete(self.setup_websocket_client())
+        self.task = asyncio.get_event_loop().create_task(self.consume_events())
         asyncio.get_event_loop().run_forever()
-        print("running")
-            
+
 if __name__ == "__main__":
-    # Test the FaceDetector class
+    # Test the WebSocketClient class
     wsc = WebSocketClient()
     wsc.start_client()
-    
