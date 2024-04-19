@@ -1,12 +1,14 @@
 import os
 import datetime
 from dotenv import load_dotenv
-from modelproviders.anthropic_api_client import generate_response
+from modelproviders.anthropic_api_client import generate_response, generate_stream_response
 from persistency.direct_knowledge import load_direct_knowledge, save_over_direct_knowledge
 from persistency.history import save_to_history, load_history
 from services.prompt_service import load_prompt
 from assistants.short_term_memory_saver import get_historical_facts
 from services.actions_service import extract_actions, is_action_supported, parse_action, execute_action
+from services.response_processor import emit_classified_sentences
+from services.speech_queue import SpeechQueue
 import re
 
 from modelproviders.openai_api_client import play_mp3, speechify
@@ -61,6 +63,8 @@ def get_time_since_last(history):
         return None
 
 def main_tau_loop(user_input):
+    speech_queue = SpeechQueue()
+
     history = load_history()
     direct_knowledge = load_direct_knowledge()
     tau_system_prompt,_ = load_prompt("tau")
@@ -108,37 +112,49 @@ def main_tau_loop(user_input):
     else:
         wrapped_prompt = "opus"
     response = generate_response(wrapped_prompt, history, model_selector_system_prompt, "sonnet", max_tokens=10)
-    response = response.replace('---', "").replace("\n", "")
-    print(f"Selected {response}")
+    model = response.replace('---', "").replace("\n", "")
+    print(f"Selected {model}")
     # If provided with more than 1 word, take the first word as the model name
-    if " " in response:
+    if " " in model:
         response = response.split(" ")[0]
-    response = generate_response(prompt, history, tau_system_prompt, response)
-    print(response)
+    #response = generate_response(prompt, history, tau_system_prompt, model)
+    speech_index=0
+    response = ""
+    for text_type,text in emit_classified_sentences(generate_stream_response(prompt,  history, tau_system_prompt, model)):
+        if (text is not None) and (text_type is not None):
+            print(f"{text_type}: {text}", flush=True)
+            response += text
+        if text_type == "speech":
+            path = f"speech_{speech_index}.mp3"
+            speech_index+=1
+            path = speechify(text, path)
+            if (path is not None):
+                speech_queue.enqueue(path)
+    
     save_to_history("Assistant", response)
-    print("\n")
+    print("\n**Finished transmittion**\n")
     facts = get_historical_facts()
     save_over_direct_knowledge(facts)
-    path = speechify(response)
-    if (path is not None):
-        play_mp3(path)
+    
     automated_prompt = None
     actions_list = extract_actions(response)
     for action in actions_list:
-        print(f"Attemptiong action {action}")
+        #print(f"Attemptiong action {action}")
         parsed_action = parse_action(action, [])
-        print(f"action {action} actually is {parsed_action}. Trying to execute")
+        #print(f"action {action} actually is {parsed_action}. Trying to execute")
         if is_action_supported(parsed_action):
             automated_prompt = execute_action(parsed_action)
             break
-        else:
-            print(f"action {action} is not supported")
+        #else:
+            #print(f"action {action} is not supported")
     if (automated_prompt is not None):
         # append action results as a new prompt=appended 
         next_prompt = automated_prompt # Requires preparing the image and placing it correcly in the request
         
     else:
         next_prompt = input("Wait for the audio to finish. Enter to exit, Reply if you like to respond\n")
+        # Clear the queue if needed
+        speech_queue.clear()
     return next_prompt
 
 if __name__ == "__main__":

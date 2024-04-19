@@ -100,8 +100,10 @@ def parse_event(event):
     if (event_content):
         event_content_object = json.loads(event_content)
     #event_json = json.loads(event_string)
-
-    return event_string, event_type, event_content_object
+    text = None
+    if event_content_object and event_content_object["type"] == "content_block_delta":
+        text = event_content_object["delta"]["text"]
+    return text, event_content_object, event_type
 
 
 if __name__ == "__main__":
@@ -112,8 +114,7 @@ if __name__ == "__main__":
 
     response = ""
     model = "opus"
-    for event, _, event_content in generate_stream_response(prompt, history, system_prompt, model):
+    for text,event_content, _ in generate_stream_response(prompt, history, system_prompt, model):
         if event_content and event_content["type"] == "content_block_delta":
-            text = event_content["delta"]["text"]
             print(text, end="", flush=True)
     

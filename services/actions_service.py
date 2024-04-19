@@ -29,10 +29,12 @@ detect faces
 
 
 def is_action_supported(action):
+    return False
     return action in possible_actions
 
 classifier_system, classifier_user = load_prompt("action-classifier")
 def parse_action(action, history):
+    return ""
     # Use the Groq model to classify the action
     replaced_user_prompt = classifier_user.replace("<user-request>", action)
     replaced_user_prompt = replaced_user_prompt.replace("<robot-actions>", possible_actions)

@@ -19,13 +19,13 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-def speechify(text: str):
+def speechify(text: str, path: str):
     # Extract from the text only " quotations. Drop to double new line between quotes.
     text_in_quotes = re.findall(r'\"(.+?)\"', text)
     if len(text_in_quotes) == 0:
         return None
     text = "\n\n".join(text_in_quotes)
-    print(text)
+    #print(text)
 
     payload = {
         "model": "tts-1",
@@ -35,9 +35,11 @@ def speechify(text: str):
 
     response = requests.post(OPENAI_API_URL, json=payload, headers=HEADERS)
     if response.status_code != 200:
-        raise Exception(f"API request failed with status code {response.status_code}: {response.text}")
+        message=f"API request failed with status code {response.status_code}: {response.text}"
+        print(message)
+        raise Exception(message)
 
-    speech_file_path = Path(__file__).parent / "speech.mp3"
+    speech_file_path = Path(__file__).parent / path
     with open(speech_file_path, 'wb') as f:
         f.write(response.content)
 
@@ -52,7 +54,8 @@ def play_mp3(path):
     # You'd typically check the playback status in a more interactive or event-driven way.
 
 if __name__ == "__main__":
-    path = speechify("Hello, World! \"This is a test\". This should not be spoken. \"This is another test\". And here is another test.")
+    path_input="test.mp3"
+    path = speechify("Hello, World! \"This is a test\". This should not be spoken. \"This is another test\". And here is another test.", path_input)
     if path:
         try:
             play_mp3(path)
