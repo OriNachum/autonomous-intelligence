@@ -1,6 +1,7 @@
-- Established the ability for the AI assistant to generate responses with multiple sentences and actions, enabling more naturalistic and dynamic conversations.
-- Tested and refined the multi-sentence response capability through several iterations, ensuring smooth delivery and a balanced dialogue cadence.
-- Confirmed the audio/output stream was properly configured to support the expressive multi-sentence replies.
-- Emphasized the importance of this upgrade in facilitating more comprehensive, free-flowing exchanges that better mirror human speech patterns.
-- Highlighted opportunities enabled by multi-sentence mode, such as building upon initial ideas, injecting personality, asking follow-up questions, and having substantive topic discussions.
-- Expressed excitement about the potential for richer, more nuanced conversational experiences moving forward.
+- Successfully enabled multi-sentence reply capability, allowing for more natural, free-flowing dialogue
+- Explored handling voice input/output functionalities
+- Discussed plan to integrate Google Coral hardware for enhanced speech recognition
+- Identified two priorities: 1) Fixing memory bug causing facts to be forgotten 2) Experimenting with TensorFlow machine learning framework
+- Decided to spend roughly 1 week focused on learning TensorFlow before the Coral arrives
+- Acknowledged importance of robust long-term memory, but prioritizing TensorFlow exposure first
+- Expressed excitement about potential capabilities unlocked by neural networks (computer vision, speech, predictive modeling, etc.)
