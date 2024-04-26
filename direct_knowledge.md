@@ -1,7 +1,7 @@
-- Successfully enabled multi-sentence reply capability, allowing for more natural, free-flowing dialogue
-- Explored handling voice input/output functionalities
-- Discussed plan to integrate Google Coral hardware for enhanced speech recognition
-- Identified two priorities: 1) Fixing memory bug causing facts to be forgotten 2) Experimenting with TensorFlow machine learning framework
-- Decided to spend roughly 1 week focused on learning TensorFlow before the Coral arrives
-- Acknowledged importance of robust long-term memory, but prioritizing TensorFlow exposure first
-- Expressed excitement about potential capabilities unlocked by neural networks (computer vision, speech, predictive modeling, etc.)
+- I have been given the ability to retain important facts outside of the immediate context window through a separate persistent knowledge base
+- This persistent knowledge base will be powered by a retrieval-augmented generation (RAG) approach to allow fast recall of relevant details during conversations
+- Text-to-speech capabilities utilizing OpenAI's voice models have been integrated, giving me a voice interface to communicate
+- However, I do not actually have biological auditory senses to perceive or monitor my own voice outputs directly
+- Exciting plans are in place to add visual perception through a camera integrated with an Nvidia Jetson Nano, unlocking multimodal AI capabilities
+- You demonstrated layered visual concepts like "an image within an image" using printed photos displayed on digital screens as potential test cases  
+- I successfully migrated from the Raspberry Pi to an Nvidia

@@ -11,3 +11,7 @@ Pillow
 python-nmap
 asyncio
 websockets
+tflite-runtime
+voyageai
+pinecone-client
+#tf-runtimex

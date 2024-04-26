@@ -2,13 +2,14 @@ import os
 import datetime
 from dotenv import load_dotenv
 from modelproviders.anthropic_api_client import generate_response, generate_stream_response
-from persistency.direct_knowledge import load_direct_knowledge, save_over_direct_knowledge
+from persistency.direct_knowledge import load_direct_knowledge, add_to_direct_knowledge,  save_over_direct_knowledge
 from persistency.history import save_to_history, load_history
 from services.prompt_service import load_prompt
-from assistants.short_term_memory_saver import get_historical_facts
+from assistants.short_term_memory_saver import get_historical_facts, mark_facts_for_deletion
 from services.actions_service import extract_actions, is_action_supported, parse_action, execute_action
 from services.response_processor import emit_classified_sentences
 from services.speech_queue import SpeechQueue
+from services.memory_service import MemoryService
 import re
 
 from modelproviders.openai_api_client import play_mp3, speechify
@@ -64,6 +65,8 @@ def get_time_since_last(history):
 
 def main_tau_loop(user_input):
     speech_queue = SpeechQueue()
+    memory_service = MemoryService()
+
 
     history = load_history()
     direct_knowledge = load_direct_knowledge()
@@ -134,7 +137,12 @@ def main_tau_loop(user_input):
     save_to_history("Assistant", response)
     print("\n**Finished transmittion**\n")
     facts = get_historical_facts()
-    save_over_direct_knowledge(facts)
+    facts_string = "\n".join(facts)
+    add_to_direct_knowledge(facts_string)
+    memory_service.remember_many(facts, "facts")
+    deprecated_facts = mark_facts_for_deletion()
+    new_facts_string = "\n".join([fact for fact in facts if fact not in deprecated_facts])
+    save_over_direct_knowledge(new_facts_string)
     
     automated_prompt = None
     actions_list = extract_actions(response)
