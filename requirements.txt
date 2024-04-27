@@ -14,4 +14,5 @@ websockets
 tflite-runtime
 voyageai
 pinecone-client
+pygame
 #tf-runtimex
