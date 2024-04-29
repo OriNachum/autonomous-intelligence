@@ -23,10 +23,15 @@ eye_radius = 15
 eye_offset_x, eye_offset_y = 30, 40
 
 # Mouth settings
-mouth_default = { 'top': 10, 'bottom': 20, 'start_angle': -20, 'stop_angle': 20}
-xmouth_happy = { 'top': 15, 'bottom': 30, 'start_angle': -20, 'stop_angle': 20}
-mouth_sad = { 'top': 15, 'bottom': -10, 'start_angle': 20, 'stop_angle': -20}
-current_mouth = mouth_default
+#mouth_happy = { 'width': 100, 'height': 40, 'start_angle': 160, 'stop_angle': 20}
+mouth_sad = { 'width': 100, 'height': 40, 'start_angle': 20, 'stop_angle': 160}
+mouth_happy = { 'width': 100, 'height': 20, 'start_angle': 200, 'stop_angle': 340}
+current_mouth = mouth_happy
+
+mouths = {
+    'happy': mouth_happy,
+    'sad': mouth_sad,
+}
 
 def draw_face(expression):
     # Clear screen
@@ -42,17 +47,18 @@ def draw_face(expression):
     pygame.draw.circle(screen, BLACK, right_eye_center, eye_radius)
 
     # Draw mouth
-    if expression == 'happy':
-        mouth = mouth_happy
-    elif expression == 'sad':
-        mouth = mouth_sad
+    if expression in mouths.keys():
+        mouth = mouths[expression]
+        mouth_rect = [face_center[0] - mouth['width']//2, face_center[1] + eye_offset_y, mouth['width'], mouth['height']]
+        start_angle = math.radians(mouth['start_angle'])
+        stop_angle = math.radians(mouth['stop_angle'])
+        pygame.draw.arc(screen, BLACK, mouth_rect, start_angle, stop_angle, 2)
     else:
-        mouth = mouth_default
+        mouth = None
+        start_pos = (face_center[0] - 50, face_center[1] + 50)
+        end_pos = (face_center[0] + 50, face_center[1] + 50)
+        pygame.draw.line(screen, BLACK, start_pos, end_pos)
 
-    start_pos = (face_center[0] - mouth['top'], face_center[1] + eye_offset_y)
-    end_pos = (face_center[0] + mouth['top'], face_center[1] + eye_offset_y)
-    pygame.draw.arc(screen, BLACK, [face_center[0] - 50, face_center[1], 100, 60],
-                    math.radians(mouth['start_angle']), math.radians(mouth['stop_angle']), 2)
 
     # Update display
     pygame.display.flip()
