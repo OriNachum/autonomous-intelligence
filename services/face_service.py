@@ -2,12 +2,12 @@ import pygame
 import sys
 import math
 import random
+import asyncio
 
 # Init websocket client
 class FaceService:
-    def __init__(self, vision_server_ip_location="./batch/output/nmap_output.txt"):
-        self.vision_server_ip_location = vision_server_ip_location
-        self.base_ip = self.locate_server()
+    def __init__(self, ):
+        self.base_ip = "127.0.0.10"
         self.SECRET_KEY = "your_secret_key"
         self.websocket = None
         self.task = None
@@ -48,36 +48,25 @@ class FaceService:
             'angry': { 'width': 100, 'height': 20, 'start_angle': 200, 'stop_angle': 340},
         }
 
-
-
-    def locate_server(self):
-        # Open the file in read mode
-        with open(self.vision_server_ip_location, 'r') as file:
-            # Read the first line
-            first_line = file.readline()
-            first_line = first_line if first_line != "" else '192.168.1.101'
-            first_line = first_line.replace('%0a', '').replace('\n', "")
-        return first_line
-
     async def consume_events(self):
         async with websockets.connect(f"ws://{self.base_ip}:8765") as websocket:
             self.websocket = websocket
             while True:
                 message = await websocket.recv()
                 event = json.loads(message)
-                if event["event_type"] == "what_i_see":
-                    print("Received 'what_i_see' event:")
-                    print(event)
-                elif event["event_type"] == "recognized_object":
-                    print("Received 'recognized_object' event:")
-                    print(event)
+                keys = event.keys()
+                if 'expression' in keys:
+                    talking = keys['talking'] if 'talking' in keys else False
+                    draw_face(event['expression'], talking)
                 else:
                     print(f"Received message: {message}")
 
     def start_client(self):
-        print("starting")
+        print("starting face")
+        self.draw_face('happy')
         self.task = asyncio.get_event_loop().create_task(self.consume_events())
         asyncio.get_event_loop().run_forever()
+        
 
 
    
@@ -160,30 +149,34 @@ class FaceService:
 
 # Main loop
 if "__main__" == __name__:
-    face_service = FaceService()
+    face_service = FaceService()    
+    demo = sys.argv[1]
     running = True
     expression = "normal"
     talking = False
-    while running:
-        talking = not talking
-        pygame.time.wait(random.randrange(1, 6)*50)
+    if demo == "demo":
+        while running:
+            talking = not talking
+            pygame.time.wait(random.randrange(1, 6)*50)
 
-        for event in pygame.event.get():
+            for event in pygame.event.get():
 
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_h:
-                    expression = 'happy'
-                elif event.key == pygame.K_a:
-                    expression = 'angry'
-                elif event.key == pygame.K_n:
-                    expression = 'normal'
-                if event.key == pygame.K_q:
+                if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_h:
+                        expression = 'happy'
+                    elif event.key == pygame.K_a:
+                        expression = 'angry'
+                    elif event.key == pygame.K_n:
+                        expression = 'normal'
+                    if event.key == pygame.K_q:
+                        running = False
 
 
-        face_service.draw_face(expression, talking)
+            face_service.draw_face(expression, talking)
+    else:
+        face_service.start_client()
 
     pygame.quit()
     sys.exit()
