@@ -5,13 +5,15 @@ import random
 import asyncio
 import socket
 import os
+import json
+import time
 
 # Init websocket client
 class FaceService:
     def __init__(self, ):
         self.base_ip = "127.0.0.10"
         self.SECRET_KEY = "your_secret_key"
-        self.socket_file = '/tmp/eventsocket'
+        self.socket_file = './uds_socket'
 
         # Init pygame
         pygame.init()
@@ -49,19 +51,6 @@ class FaceService:
             'happy': { 'width': 100, 'height': 20, 'start_angle': 200, 'stop_angle': 340},
         }
 
-    async def consume_events(self):
-        async with websockets.connect(f"ws://{self.base_ip}:8765") as websocket:
-            self.websocket = websocket
-            while True:
-                message = await websocket.recv()
-                event = json.loads(message)
-                keys = event.keys()
-                if 'expression' in keys:
-                    talking = keys['talking'] if 'talking' in keys else False
-                    draw_face(event['expression'], talking)
-                else:
-                    print(f"Received message: {message}")
-
     def start_client(self):
         print("starting face")
         self.draw_face('happy')
@@ -72,22 +61,41 @@ class FaceService:
 
         # Connect to the Unix domain socket
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+        #try:
+        #    os.unlink(self.socket_file)
+        #except OSError:
+        #    if os.path.exists(self.socket_file):
+        #        raise RunTimeError('Unable to remove the existing socket file.')
+
+
         sock.bind(self.socket_file)
         sock.listen(1)
-
-        while True:
-            # Consume events
-            data = sock.recv(1024).decode('utf-8')
-            if not data:
-                break
-            print(data)
-            event = json.loads(message)
-            keys = event.keys()
-            if 'expression' in keys:
-                talking = keys['talking'] if 'talking' in keys else False
-                self.draw_face(event['expression'], talking)
-
-        sock.close()
+        connection, client_address = sock.accept()
+        #sock.connect(self.socket_file)
+        try:
+            while True:
+            #connection, client_address = sock.accept()       
+            #try:
+                # Consume events
+                print('recving')
+                data = connection.recv(1024)
+                print('recved')
+                if not data:
+                    print('not data')
+                    break
+                data = data.decode('utf-8')
+                print(f'Data is: {data}')
+                event = json.loads(data)
+                keys = event['data'].keys()
+                if 'expression' in keys:
+                    print(event['data']['expression'])
+                    talking = event['data']['talking'] if 'talking' in keys else False
+                    self.draw_face(event['data']['expression'], talking)
+                print('sending ack')
+                connection.sendall('ack'.encode('utf-8'))
+        finally:
+            connection.close()
         
 
 
@@ -172,7 +180,7 @@ class FaceService:
 # Main loop
 if "__main__" == __name__:
     face_service = FaceService()    
-    demo = sys.argv[1]
+    demo = sys.argv[1] if len(sys.argv) > 1 else ""
     running = True
     expression = "normal"
     talking = False
