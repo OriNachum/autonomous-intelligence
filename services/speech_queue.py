@@ -2,16 +2,19 @@ import threading
 import queue
 import time
 import pygame
+import random
+
+from clients.face_expression_emitter import FaceExpressionEmitter
 
 class SpeechQueue:
     def __init__(self):
+        self.emitter = FaceExpressionEmitter()
+        self.emitter.connect()
+        self.talking = False
+        self.last_emitted_talking = None
+        
         self._queue = queue.Queue()
-        self._thread = threading.Thread(target=self._play_audio)
-        self._playing = False
-        # Initialize pygame mixer
-        pygame.mixer.init()
-        self._thread.start()
-
+        self._thread = None
 
     def enqueue(self, item):
         self._queue.put(item)
@@ -20,19 +23,38 @@ class SpeechQueue:
         if pygame.mixer.music.get_busy():
             pygame.mixer.music.stop()
         self._queue.queue.clear()
+        self.talking = False
+        self.emitter.emit_expression("normal", self.talking)
+        if self._thread is not None:
+            self._thread.join()
+            self._thread = None
+
 
     def _play_audio(self):
-        while True:
+        while self._thread is not None:
             if not pygame.mixer.music.get_busy():
+                self.talking = False
                 self._playing = True
-                item = self._queue.get()       
+                if self.talking is not self.last_emitted_talking:
+                    self.emitter.emit_expression("happy", self.talking)
+                    self.last_emitted_talking = self.talking
+                
+                item = self._queue.get()
                 play_mp3(item)
+            else:
+                time.sleep(0.05)
+                if self.talking is not self.last_emitted_talking:
+                    self.emitter.emit_expression("happy", self.talking)
+                    self.last_emitted_talking = self.talking
+                self.talking = not self.talking    
             time.sleep(0.05)  # 50 milliseconds delay
 
-
-    def join(self):
-        self._thread.join()
-
+    def reset(self):
+        self._thread = threading.Thread(target=self._play_audio)
+        self._playing = False
+        # Initialize pygame mixer
+        pygame.mixer.init()
+        self._thread.start()
 
 def play_mp3(path):
     # Load the MP3 file
@@ -57,4 +79,4 @@ if "__main__" == __name__:
     speech_queue.clear()
 
     # Wait for the audio playback thread to finish
-    speech_queue.join()
+    #speech_queue.join()

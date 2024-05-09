@@ -123,6 +123,7 @@ def main_tau_loop(user_input):
     #response = generate_response(prompt, history, tau_system_prompt, model)
     speech_index=0
     response = ""
+    speech_queue.reset()
     for text_type,text in emit_classified_sentences(generate_stream_response(prompt,  history, tau_system_prompt, model)):
         if (text is not None) and (text_type is not None):
             print(f"{text_type}: {text}", flush=True)

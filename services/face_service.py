@@ -53,7 +53,7 @@ class FaceService:
 
     def start_client(self):
         print("starting face")
-        self.draw_face('happy')
+        self.draw_face('normal')
 
         # Delete the socket file if it already exists
         if os.path.exists(self.socket_file):
