@@ -25,10 +25,15 @@ class SpeechQueue:
         pygame.mixer.music.load(path)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
+            self.emitter.emit_expression("happy", self.talking)
+            self.talking = not self.talking
             pygame.time.Clock().tick(10)  # Adjust playback speed
 
     def reset(self):
         pygame.mixer.init()
+        self.talking = False
+        self.emitter.emit_expression("happy", self.talking)
+        
 
 if __name__ == "__main__":
     pygame.mixer.init()
