@@ -1,7 +1,8 @@
 import os
 import datetime
 from dotenv import load_dotenv
-from modelproviders.anthropic_api_client import generate_response, generate_stream_response
+#from modelproviders.anthropic_api_client import generate_response, generate_stream_response
+from modelproviders.openai_api.client import OpenAIService
 from persistency.direct_knowledge import load_direct_knowledge, add_to_direct_knowledge,  save_over_direct_knowledge
 from persistency.history import save_to_history, load_history
 from services.prompt_service import load_prompt
@@ -66,7 +67,7 @@ def get_time_since_last(history):
 def main_tau_loop(user_input):
     speech_queue = SpeechQueue()
     memory_service = MemoryService()
-
+    openai = OpenAIService()
 
     history = load_history()
     direct_knowledge = load_direct_knowledge()
@@ -114,17 +115,18 @@ def main_tau_loop(user_input):
         wrapped_prompt = f"Please assess the correct model for the following request, wrapped with double '---' lines: \n---\n---\n{prompt} \n---\n---\n Remember to answer only with one of the following models (haiku, sonnet, opus)"
     else:
         wrapped_prompt = "opus"
-    response = generate_response(wrapped_prompt, history, model_selector_system_prompt, "sonnet", max_tokens=10)
-    model = response.replace('---', "").replace("\n", "")
-    print(f"Selected {model}")
+    #response = generate_response(wrapped_prompt, history, model_selector_system_prompt, "sonnet", max_tokens=10)
+    #model = response.replace('---', "").replace("\n", "")
+    #print(f"Selected {model}")
     # If provided with more than 1 word, take the first word as the model name
-    if " " in model:
-        response = response.split(" ")[0]
+    #if " " in model:
+    #    response = response.split(" ")[0]
     #response = generate_response(prompt, history, tau_system_prompt, model)
+    model = "gpt-4o"
     speech_index=0
     response = ""
     speech_queue.reset()
-    for text_type,text in emit_classified_sentences(generate_stream_response(prompt,  history, tau_system_prompt, model)):
+    for text_type,text in emit_classified_sentences(openai.generate_stream_response(prompt,  history, tau_system_prompt, model)):
         if (text is not None) and (text_type is not None):
             print(f"{text_type}: {text}", flush=True)
             response += text

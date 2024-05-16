@@ -52,7 +52,8 @@ class OpenAIService:
     def get_model_id_by_name(self, model_name):
         model_map = {
             "gpt-3.5-turbo": "gpt-3.5-turbo",
-            "gpt-4": "gpt-4o"
+            "gpt-4": "gpt-4o",
+            "gpt-4o": "gpt-4o"
         }
         return model_map.get(model_name, "gpt-3.5-turbo")
 
@@ -63,7 +64,11 @@ class OpenAIService:
         elif event_str.startswith("data: "):
             event_str = event_str[6:]
             try:
-                return json.loads(event_str)
+                object_response = json.loads(event_str)
+                first_choice = object_response["choices"][0]
+                if first_choice["finish_reason"] is None:
+                    delta = first_choice["delta"]["content"]
+                    return delta
             except:
                 print(f"ERROR {event_str}")
                 return None
@@ -99,12 +104,49 @@ class OpenAIService:
                 if event:
                     event_object = self.parse_event(event)
                     yield event_object
+    
+    def generate_response(self, prompt, history, system_prompt, model, max_tokens=200):
+        model_id = self.get_model_id_by_name(model)
+        messages = [{"role": "system", "content": system_prompt}] if system_prompt else []
+        
+        if history:
+            for entry in history.split("\n"):
+                if "[User]" in entry:
+                    user_message = entry.split("[User]: ")[1]
+                    messages.append({"role": "user", "content": user_message})
+                elif "[Assistant]" in entry:
+                    assistant_message = entry.split("[Assistant]: ")[1]
+                    messages.append({"role": "assistant", "content": assistant_message})
+        
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": model_id,
+            "messages": messages,
+            "max_tokens": max_tokens
+        }
+
+        response = requests.post(f"{self.api_url}/chat/completions", json=payload, headers=self.headers)
+        if response.status_code != 200:
+            raise Exception(f"API request failed with status code {response.status_code}: {response.text}")
+        
+        object_response = response.json()
+        content = object_response['choices'][0]['message']['content']
+        return content
 
 if __name__ == "__main__":
     service = OpenAIService()
-    mode = input("Enter mode ('text' or 'speech'): ").strip().lower()
+    mode = input("Enter mode ('text', 'stream' or 'speech'): ").strip().lower()
 
     if mode == "text":
+        prompt = "Can you explain the theory of relativity?"
+        history = "[User]: Hello\n[Assistant]: Hi! How can I help you today?"
+        system_prompt = "You are a helpful assistant."
+        model = "gpt-3.5-turbo"
+        max_tokens = 150
+        response = service.generate_response(prompt, history, system_prompt, model, max_tokens)
+        print(response)
+    elif mode == "stream":
         prompt = "Can you explain the theory of relativity?"
         history = "[User]: Hello\n[Assistant]: Hi! How can I help you today?"
         system_prompt = "You are a helpful assistant."
@@ -113,10 +155,7 @@ if __name__ == "__main__":
 
         for response in service.generate_stream_response(prompt, history, system_prompt, model, max_tokens):
             if response is not None:
-                first_choice = response["choices"][0]
-                if first_choice["finish_reason"] is None:
-                    delta = response["choices"][0]["delta"]
-                    print(delta["content"], end='', flush=True)
+                    print(response, end='', flush=True)
 
     elif mode == "speech":
         path_input = "test.mp3"

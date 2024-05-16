@@ -8,7 +8,8 @@ if __name__ == "__main__":
         
 from persistency.history import load_history
 from persistency.direct_knowledge import load_direct_knowledge
-from modelproviders.anthropic_api_client import generate_response
+#from modelproviders.anthropic_api_client import generate_response
+from modelproviders.openai_api_client import OpenAIService
 from services.prompt_service import load_prompt
 
 def _prepare_prompts(assistant_name):
@@ -20,15 +21,17 @@ def _prepare_prompts(assistant_name):
 
 
 def get_historical_facts():
+    openai = OpenAIService()
     system_prompt, user_prompt, history = _prepare_prompts("short-term-memory-saver")
-    response = generate_response(user_prompt , history, system_prompt, "sonnet")
+    response = openai.generate_response(user_prompt , history, system_prompt, "gpt-4o")
     # take all lines that start with -
     response = [line for line in response.split("\n") if line.startswith("-")]
     return response
     
 def mark_facts_for_deletion():    
+    openai = OpenAIService()
     system_prompt, user_prompt, history = _prepare_prompts("short-term-memory-clearer")
-    response = generate_response(user_prompt , history, system_prompt, "sonnet")
+    response = openai.generate_response(user_prompt , history, system_prompt, "gpt-4o")
     # take all lines that start with -
     response = [line for line in response.split("\n") if line.startswith("-")]
     return response
