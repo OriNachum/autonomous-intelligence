@@ -57,23 +57,27 @@ class OpenAIService:
         }
         return model_map.get(model_name, "gpt-3.5-turbo")
 
-    def parse_event(self, event):
+    def parse_event(self, event):        
         event_str = event.decode('utf-8')
+        #print(event_str)
         if event_str.endswith("[DONE]"):
-            return None
+            return "", None, None
         elif event_str.startswith("data: "):
             event_str = event_str[6:]
             try:
                 object_response = json.loads(event_str)
                 first_choice = object_response["choices"][0]
                 if first_choice["finish_reason"] is None:
-                    delta = first_choice["delta"]["content"]
-                    return delta
+                    delta = first_choice["delta"]
+                    content = delta["content"] if "content" in delta.keys() else ""
+                    return content, first_choice, object_response 
+                else:
+                    return "", None, None
             except:
                 print(f"ERROR {event_str}")
-                return None
+                return "", None, None
         else:
-            return None
+            return "", None, None
 
     def generate_stream_response(self, prompt, history, system_prompt, model, max_tokens=200):
         model_id = self.get_model_id_by_name(model)
@@ -96,14 +100,14 @@ class OpenAIService:
             "max_tokens": max_tokens,
             "stream": True
         }
-
         with requests.Session() as session:
             response = session.post(f"{self.api_url}/chat/completions", json=payload, headers=self.headers, stream=True)
             
             for event in response.iter_lines():
                 if event:
-                    event_object = self.parse_event(event)
-                    yield event_object
+                    text, event_type, event_obj = self.parse_event(event)
+                    #print(len(event_object), end='', flush=True)
+                    yield text, event_type, event_obj
     
     def generate_response(self, prompt, history, system_prompt, model, max_tokens=200):
         model_id = self.get_model_id_by_name(model)

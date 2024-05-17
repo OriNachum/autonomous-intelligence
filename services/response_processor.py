@@ -7,13 +7,13 @@ if __name__ == "__main__":
     if parent_dir not in sys.path:
         sys.path.append(parent_dir)
 
-from modelproviders.anthropic_api_client import generate_stream_response
+#from modelproviders.anthropic_api_client import generate_stream_response
+from modelproviders.openai_api_client import OpenAIService
 
 def emit_classified_sentences(stream):
     within_asterisk = False
     within_quote = False
     buffer = ""
-
     for char,_,_ in stream:
         if (char is None):
             continue
@@ -46,7 +46,8 @@ def emit_classified_sentences(stream):
 #    print(section)
 
 if __name__ == "__main__":
-    for text_type,text in emit_classified_sentences(generate_stream_response("I wave at the shopkeeper",  [], "You are a dnd dungeon master. You reply only as characters with * for action and \" for words. Only once of each type of message.", "haiku")):
+    openai = OpenAIService()
+    for text_type,text in emit_classified_sentences(openai.generate_stream_response("I wave at the shopkeeper",  [], "You are a dnd dungeon master. You reply only as characters with * for action and \" for words. Only once of each type of message.", "gpt-3.5-turbo")):
         if (text is not None) and (text_type is not None):
             print(f"{text_type}: {text}", flush=True)
     print("\n\n")

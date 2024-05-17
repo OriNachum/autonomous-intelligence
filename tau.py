@@ -2,7 +2,8 @@ import os
 import datetime
 from dotenv import load_dotenv
 #from modelproviders.anthropic_api_client import generate_response, generate_stream_response
-from modelproviders.openai_api.client import OpenAIService
+from modelproviders.openai_api_client import OpenAIService
+#from modelproviders.openai_api_client import play_mp3, speechify
 from persistency.direct_knowledge import load_direct_knowledge, add_to_direct_knowledge,  save_over_direct_knowledge
 from persistency.history import save_to_history, load_history
 from services.prompt_service import load_prompt
@@ -13,7 +14,6 @@ from services.speech_queue import SpeechQueue
 from services.memory_service import MemoryService
 import re
 
-from modelproviders.openai_api_client import play_mp3, speechify
 load_dotenv()  # Load environment variables from .env file
 
 API_KEY = os.getenv("ANTHROPIC_API_KEY")
@@ -133,7 +133,7 @@ def main_tau_loop(user_input):
         if text_type == "speech":
             path = f"speech_{speech_index}.mp3"
             speech_index+=1
-            path = speechify(text, path)
+            path = openai.speechify(text, path)
             if (path is not None):
                 speech_queue.enqueue(path)
     

@@ -40,18 +40,17 @@ class FaceExpressionEmitter:
         #    connection, client_address = self.sock.accept()
         #    self.connection = connection
         #    self.client_adress = client_address
-#        try:
-        encoded_event = event_data.encode('utf-8')
-        self.sock.sendall(encoded_event)
-        time.sleep(1)
-        ack = self.sock.recv(1024)
-        decoded_ack = ack.decode('utf-8')
-        print(f'Received ack: {decoded_ack}')
-#        self.sock.connect(
-#        self.sock.sandall(event_date.encode('utf-8'))
-        #time.sleep(1)
- #       finally:
-#            connection.close()
+        try:
+            encoded_event = event_data.encode('utf-8')
+            self.sock.sendall(encoded_event)
+            time.sleep(1)
+            ack = self.sock.recv(1024)
+            decoded_ack = ack.decode('utf-8')
+            #print(f'Received ack: {decoded_ack}')
+        except:
+            if self.notified_error is None or self.notified_error == False:
+                print("Warning: no face (face_expression_emitter)")
+                self.notified_error = True
 
 if "__main__" == __name__:
     # Usage
