@@ -1,75 +1,131 @@
-import socket
 import pyaudio
 import soundfile as sf
 import numpy as np
-import time 
-#import librosa
-from scipy.signal import find_peaks
+import time
+import webrtcvad
 
+class SpeechDetector:
+    def __init__(self, lower_threshold=1500, upper_threshold=2500, rate=16000, chunk_duration_ms=30, min_silence_duration=1, filename='temp_audio.wav'):
+        self.lower_threshold = lower_threshold
+        self.upper_threshold = upper_threshold
+        self.rate = rate
+        self.chunk_duration_ms = chunk_duration_ms
+        self.chunk_size = int(rate * chunk_duration_ms / 1000)
+        self.min_silence_duration = min_silence_duration
+        self.filename = filename
+        self.prev_state = False  # False means volume is not high initially
+        self.stop_time = None
+        self.start_time = None
+        self.detecting = True  # Flag to check if detection is enabled
+        self.device_playing = False  # Flag to indicate if device is playing sound
+        self.vad = webrtcvad.Vad(2)  # VAD sensitivity (0-3)
+        self.speech_events = 0  # Counter for speech events
+        self.silence_start_time = None  # Time when silence started
+        self.last_silence_duration = None  # Duration of the last silence period
 
-# Unix domain socket setup
-#sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-#server_address = '/tmp/sound_events'
-#sock.bind(server_address)
-#sock.listen(1)
-#connection, _ = sock.accept()
+        # Audio setup
+        self.p = pyaudio.PyAudio()
+        try:
+            self.stream = self.p.open(format=pyaudio.paInt16, channels=1, rate=self.rate, input=True, frames_per_buffer=self.chunk_size)
+        except IOError as e:
+            print(f"Error opening audio stream: {e}")
+            raise
 
-print("started")
+    def start_detection(self):
+        self.detecting = True
+        print("Started detection")
 
-# Audio setup
-p = pyaudio.PyAudio()
-stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=1024)
+    def stop_detection(self):
+        self.detecting = False
+        print("Stopped detection")
 
-# Initialize variables to track volume state
-prev_state = False  # False means volume is not high initially
-stop_time = None
-start_time = None
-# Open WAV file in append mode
-with sf.SoundFile('temp_audio.wav', mode='w', samplerate=16000, channels=1) as f:
-    while True:
-        # Read audio data
-        data = np.frombuffer(stream.read(1024, exception_on_overflow=False), dtype=np.int16)
+    def device_start_playback(self):
+        self.device_playing = True
+        self.stop_detection()  # Pause detection while device is playing
+        print("Device started playback")
 
-        # Write audio data to the file
-        f.write(data)
-        
-        # Calculate audio level
-        level = np.max(np.abs(data))
-        
-       
-        # Analyze audio for pitch and frequencies
-        #y, sr = librosa.load(data, sr=16000)  # Load the audio data directly from the buffer
-        #pitches, magnitudes = librosa.piptrack(y=y, sr=sr)  # Extract pitch information
-        #frequencies = pitches[np.nonzero(pitches)]  # Extract frequencies from pitch information
+    def device_stop_playback(self):
+        self.device_playing = False
+        self.start_detection()  # Resume detection when device stops playing
+        print("Device stopped playback")
 
-        # Check if volume is high enough to emit an event
-        if level > 10000:
-            # Calculate autocorrelation for pitch detection
-            autocorr = np.correlate(data, data, mode='full')
-            autocorr = autocorr[len(autocorr)//2:]  # Keep only positive lags
-        
-            # Find peaks in autocorrelation to detect pitch
-            peaks, _ = find_peaks(autocorr, height=10000)  # Adjust height threshold as needed
-        
-            if len(peaks) > 0:
-                # Calculate pitch in Hz
-                pitch_hz = 16000 / peaks[0]
-                print("Pitch:", pitch_hz)
+    def is_speech(self, data):
+        # Use VAD to determine if the chunk contains speech
+        return self.vad.is_speech(data.tobytes(), self.rate)
 
-            #print("Pitch:", np.mean(frequencies))  # Print average pitch
-            #print("Frequencies:", frequencies)    # Print frequencies
-            if not prev_state:  # If volume was not high previously
-                start_time = time.time()
-                print(f"Volume became high: {start_time} ({0 if stop_time is None else start_time - stop_time})")
-                prev_state = True  # Update state to indicate volume is now high
-                
-        else:
-            if prev_state:  # If volume was high previously
-                stop_time = time.time()
-                print(f"Volume no longer high: {stop_time} ({stop_time-start_time})")
-                prev_state = False  # Update state to indicate volume is no longer high
+    def log_speech_event(self, event_type):
+        current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        if event_type == "start":
+            silence_duration = 0 if self.last_silence_duration is None else self.last_silence_duration
+            print(f"[{current_time}] Speech started (Event #{self.speech_events + 1}), Last silence: {silence_duration:.2f} seconds")
+        elif event_type == "stop":
+            duration = self.stop_time - self.start_time
+            print(f"[{current_time}] Speech stopped (Event #{self.speech_events}) - Duration: {duration:.2f} seconds")
 
-# Cleanup
-stream.stop_stream()
-stream.close()
-p.terminate()
+    def run(self):
+        print("started")
+        # Open WAV file in append mode
+        try:
+            with sf.SoundFile(self.filename, mode='w', samplerate=self.rate, channels=1) as f:
+                while True:
+                    # Read audio data
+                    data = np.frombuffer(self.stream.read(self.chunk_size, exception_on_overflow=False), dtype=np.int16)
+
+                    # Write audio data to the file
+                    f.write(data)
+
+                    if not self.detecting and not self.device_playing:
+                        continue
+
+                    # Calculate audio level
+                    level = np.max(np.abs(data))
+
+                    # Check if volume is within the valid range and if it is speech
+                    if self.lower_threshold < level < self.upper_threshold and self.is_speech(data):
+                        if not self.prev_state:  # If volume was not high previously
+                            self.start_time = time.time()
+                            self.speech_events += 1
+                            self.log_speech_event("start")
+                            self.prev_state = True  # Update state to indicate volume is now high
+                            self.silence_start_time = None  # Reset silence start time
+
+                            if self.device_playing:  # If device is playing sound
+                                self.device_stop_playback()  # Stop device playback
+                                print("Stopped device playback due to overlapping speech")
+                        else:
+                            # Reset silence start time if we are in speech
+                            self.silence_start_time = None
+
+                    else:
+                        if self.prev_state:  # If volume was high previously
+                            if self.silence_start_time is None:
+                                self.silence_start_time = time.time()
+                            elif time.time() - self.silence_start_time >= self.min_silence_duration:
+                                self.stop_time = time.time()
+                                self.log_speech_event("stop")
+                                self.prev_state = False  # Update state to indicate volume is no longer high
+                                self.last_silence_duration = time.time() - self.stop_time
+                                self.silence_start_time = None  # Reset silence start time
+        except Exception as e:
+            print(f"Error during audio processing: {e}")
+            self.cleanup()
+            raise
+
+    def cleanup(self):
+        self.stream.stop_stream()
+        self.stream.close()
+        self.p.terminate()
+
+if __name__ == "__main__":
+    detector = SpeechDetector()
+
+    # Simulate event triggers
+    try:
+        detector.device_start_playback()  # Simulate device starting playback
+        time.sleep(2)  # Wait for 2 seconds
+        detector.device_stop_playback()  # Simulate device stopping playback
+        detector.run()  # Run detection
+    except KeyboardInterrupt:
+        print("Terminating...")
+    finally:
+        detector.cleanup()

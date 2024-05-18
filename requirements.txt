@@ -17,6 +17,7 @@ pinecone-client
 pygame
 pyaudio
 soundfile
+webrtcvad
 #librosa
 scipy
 #tf-runtimex
