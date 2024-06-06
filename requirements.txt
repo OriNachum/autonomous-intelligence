@@ -20,4 +20,5 @@ soundfile
 webrtcvad
 #librosa
 scipy
+vosk
 #tf-runtimex

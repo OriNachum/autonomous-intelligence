@@ -163,7 +163,7 @@ if __name__ == "__main__":
 
     elif mode == "speech":
         path_input = "test.mp3"
-        path = service.speechify("Hello, World! \"This is a test\". This should not be spoken. \"This is another test\". And here is another test.", path_input)
+        path = service.speechify("Hello, World! \"This is a test\". This should not be spoken. \"This is another test\". And here is another test. \"The quick brown fox jumps over the lazy dog, a phrase known for using every letter in the alphabet, perfectly illustrates how this is a test line I am now writing to show how text is being spoken. As the fox gracefully leaps over the dozing canine, it wonders if it might have a future in gymnastics, perhaps even the Olympics. Meanwhile, the dog, who had just settled in for a nice nap, dreams of finally catching that elusive squirrel that taunts him from the trees every day. Little does the fox know, the dog is secretly a master of martial arts, having trained in the ancient art of Taekwon-dog. This test line seamlessly integrates into the narrative, demonstrating not just how text can be spoken but also adding a humorous twist to a classic tale.\" ", path_input)
         if path:
             try:
                 service.play_mp3(path)
