@@ -24,7 +24,7 @@ class SpeechDetector:
         self.silence_start_time = None
         self.last_silence_duration = None
 
-        self.socket_path = "/tmp/tau_hearing_socket"
+        self.socket_path = "./sockets/tau_hearing_socket"
         self.setup_socket()
 
         self.p = pyaudio.PyAudio()
@@ -44,8 +44,8 @@ class SpeechDetector:
             raise
 
     def setup_socket(self):
-        if os.path.exists(self.socket_path):
-            os.remove(self.socket_path)
+        #if os.path.exists(self.socket_path):
+        #    os.remove(self.socket_path)
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.connect(self.socket_path)
 
@@ -60,7 +60,7 @@ class SpeechDetector:
         device_count = self.p.get_device_count()
         for i in range(device_count):
             device_info = self.p.get_device_info_by_index(i)
-            if "default" in device_info['name']:
+            if "default" == device_info['name']:
                 print(f"Found suitable input device: {device_info['name']} (index {i})")
                 return i
         print("Suitable input device not found")
@@ -160,7 +160,6 @@ if __name__ == "__main__":
         detector.run()
     except KeyboardInterrupt:
         print("Terminating...")
-    finally
-        print("Terminating...")
     finally:
+        print("Terminating...")
         detector.cleanup()

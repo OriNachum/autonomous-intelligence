@@ -23,7 +23,7 @@ SYSTEM_PROMPT_FILE = "prompts/system.md"
 if not API_KEY:
     raise ValueError("ANTHROPIC_API_KEY environment variable is not set.")
 
-socket_path = "/tmp/tau_hearing_socket"
+socket_path = "./sockets/tau_hearing_socket"
 sel = selectors.DefaultSelector()
 
 def setup_socket():
