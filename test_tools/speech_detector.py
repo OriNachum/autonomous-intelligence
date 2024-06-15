@@ -1,92 +1,51 @@
 import pyaudio
-import soundfile as sf
-import numpy as np
+import webrtcvad
+import wave
 
-class SpeechDetector:
-    def __init__(self, filename, rate=44100, chunk_size=1024):
-        self.filename = filename
+class AudioRecorder:
+    def __init__(self, rate=16000, frame_duration=20, record_seconds=10, output_filename="output.wav"):
         self.rate = rate
-        self.chunk_size = chunk_size
+        self.frame_duration = frame_duration  # Duration of a frame in milliseconds
+        self.chunk_size = int(rate * frame_duration / 1000)  # Number of frames per buffer
+        self.record_seconds = record_seconds
+        self.output_filename = output_filename
         self.p = pyaudio.PyAudio()
-        self.stream = None
+        self.vad = webrtcvad.Vad()
+        self.vad.set_mode(1)  # 0: Normal, 1: Low bitrate, 2: Aggressive, 3: Very aggressive
+        self.frames = []
 
-    def list_devices(self):
-        device_count = self.p.get_device_count()
-        for i in range(device_count):
-            device_info = self.p.get_device_info_by_index(i)
-            print(f"Device {i}: {device_info['name']}, Input channels: {device_info['maxInputChannels']}")
+    def record(self):
+        # Open audio stream
+        stream = self.p.open(format=pyaudio.paInt16, channels=1, rate=self.rate,
+                             input=True, frames_per_buffer=self.chunk_size)
 
-    def start_recording(self, duration=10, input_device_index=None):
-        try:
-            print(f"Opening stream with device index: {input_device_index}")
-            self.stream = self.p.open(format=pyaudio.paInt16,
-                                      channels=1,
-                                      rate=self.rate,
-                                      input=True,
-                                      input_device_index=input_device_index,
-                                      frames_per_buffer=self.chunk_size)
-            frames = []
-            print("Recording...")
+        print("Recording...")
 
-            for _ in range(0, int(self.rate / self.chunk_size * duration)):
-                try:
-                    data = self.stream.read(self.chunk_size, exception_on_overflow=False)
-                    frames.append(data)
-                except Exception as e:
-                    print(f"Error reading audio stream: {e}")
-                    break
+        for _ in range(0, int(self.rate / self.chunk_size * self.record_seconds)):
+            data = stream.read(self.chunk_size)
+            # Use VAD to check if chunk contains speech
+            if self.vad.is_speech(data, self.rate):
+                self.frames.append(data)
 
-            print("Recording complete.")
-            audio_data = np.frombuffer(b''.join(frames), dtype=np.int16)
+        print("Finished recording.")
 
-            if len(audio_data) == 0:
-                print("Warning: No audio data recorded.")
-            else:
-                with sf.SoundFile(self.filename, mode='w', samplerate=self.rate, channels=1) as f:
-                    f.write(audio_data)
-                print(f"Audio data written to {self.filename}")
-        except Exception as e:
-            print(f"An error occurred during recording: {e}")
-        finally:
-            if self.stream is not None:
-                self.stream.stop_stream()
-                self.stream.close()
-            self.p.terminate()
+        # Stop and close the audio stream
+        stream.stop_stream()
+        stream.close()
+        self.p.terminate()
 
-    def listen_indefinitely(self, input_device_index=None):
-        try:
-            print(f"Opening stream with device index: {input_device_index}")
-            self.stream = self.p.open(format=pyaudio.paInt16,
-                                      channels=1,
-                                      rate=self.rate,
-                                      input=True,
-                                      input_device_index=input_device_index,
-                                      frames_per_buffer=self.chunk_size)
-            print("Listening... Press Ctrl+C to stop.")
-            while True:
-                try:
-                    data = self.stream.read(self.chunk_size, exception_on_overflow=False)
-                    print(f"Received audio data: {len(data)} bytes")
-                except Exception as e:
-                    print(f"Error reading audio stream: {e}")
-                    break
-        except KeyboardInterrupt:
-            print("Listening stopped by user.")
-        except Exception as e:
-            print(f"An error occurred during listening: {e}")
-        finally:
-            if self.stream is not None:
-                self.stream.stop_stream()
-                self.stream.close()
-            self.p.terminate()
+        # Save the recorded data to a single WAV file
+        self.save_to_wav()
 
-# Example usage
-detector = SpeechDetector(filename='test.wav')
-print("Available audio input devices:")
-detector.list_devices()
+    def save_to_wav(self):
+        with wave.open(self.output_filename, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(self.p.get_sample_size(pyaudio.paInt16))
+            wf.setframerate(self.rate)
+            wf.writeframes(b''.join(self.frames))
+        print(f"Saved to {self.output_filename}")
 
-# Specify the correct input device index
-input_device_index = int(input("Enter the device index to use for recording: "))
-detector.start_recording(duration=5, input_device_index=input_device_index)
-# To listen indefinitely (you can comment out the line above and uncomment the line below)
-# detector.listen_indefinitely(input_device_index=input_device_index)
+# Usage
+if __name__ == "__main__":
+    recorder = AudioRecorder()
+    recorder.record()

@@ -4,6 +4,10 @@ from pathlib import Path
 import pygame
 import requests
 import json
+import wave
+import io
+import numpy as np
+
 from dotenv import load_dotenv
 
 class OpenAIService:
@@ -11,7 +15,8 @@ class OpenAIService:
         load_dotenv()
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.api_url = "https://api.openai.com/v1"
-        self.audio_url = f"{self.api_url}/audio/speech"
+        self.speech_url = f"{self.api_url}/audio/speech"
+        self.transcribe_url = f"{self.api_url}/audio/transcriptions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -32,7 +37,7 @@ class OpenAIService:
             "input": text
         }
 
-        response = requests.post(self.audio_url, json=payload, headers=self.headers)
+        response = requests.post(self.speech_url, json=payload, headers=self.headers)
         if response.status_code != 200:
             message = f"API request failed with status code {response.status_code}: {response.text}"
             print(message)
@@ -137,6 +142,51 @@ class OpenAIService:
         object_response = response.json()
         content = object_response['choices'][0]['message']['content']
         return content
+
+    def transcribe_audio(self, audio_data, rate=16000):
+        # Save raw audio data for inspection
+        with open('raw_audio_data.pcm', 'wb') as raw_file:
+            raw_file.write(audio_data)
+
+        # Convert audio data to a WAV file in memory
+        with io.BytesIO() as wav_io:
+            with wave.open(wav_io, 'wb') as wav_file:
+                wav_file.setnchannels(1)  # Mono
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(rate)
+                # Ensure the audio data is in the correct format
+                audio_np = np.frombuffer(audio_data, dtype=np.int16)
+                wav_file.writeframes(audio_np.tobytes())
+            wav_io.seek(0)
+            wav_data = wav_io.read()
+              
+        
+        # Save the converted WAV data for inspection
+        with open('converted_audio.wav', 'wb') as wav_file:
+            wav_file.write(wav_data)
+
+        files = {
+            'file': ('audio.wav', wav_data, 'audio/wav')
+        }
+        
+        data = {
+            'model': 'whisper-1'
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        
+        response = requests.post(self.transcribe_url, headers=headers, files=files, data=data)
+        if response.status_code != 200:
+            message = f"API request failed with status code {response.status_code}: {response.text}"
+            print(message)
+            raise Exception(message)
+        
+        result = response.json()
+        print(result)
+        return result.get('text', '')
+
 
 if __name__ == "__main__":
     service = OpenAIService()

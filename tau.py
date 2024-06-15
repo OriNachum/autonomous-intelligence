@@ -2,6 +2,7 @@ import os
 import datetime
 import socket
 import selectors
+import re
 from dotenv import load_dotenv
 from modelproviders.openai_api_client import OpenAIService
 from persistency.direct_knowledge import load_direct_knowledge, add_to_direct_knowledge, save_over_direct_knowledge
@@ -12,7 +13,6 @@ from services.actions_service import extract_actions, is_action_supported, parse
 from services.response_processor import emit_classified_sentences
 from services.speech_queue import SpeechQueue
 from services.memory_service import MemoryService
-import re
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -43,10 +43,11 @@ def accept(sock):
 def read(conn):
     data = conn.recv(1024)
     if data:
-        main_tau_loop(data.decode('utf-8'))
+        return data.decode('utf-8')
     else:
         sel.unregister(conn)
         conn.close()
+        return None
 
 def get_time_since_last(history):
     last_entry = history.strip().split("\n")[-1]
@@ -77,6 +78,16 @@ def get_time_since_last(history):
     else:
         return None
 
+def handle_events():
+    event_data = ""
+    events = sel.select()
+    for key, mask in events:
+        callback = key.data
+        data = callback(key.fileobj)
+        if data:
+            event_data += data
+    return event_data
+
 def main_tau_loop(user_input):
     speech_queue = SpeechQueue()
     memory_service = MemoryService()
@@ -94,7 +105,7 @@ def main_tau_loop(user_input):
         history = history[:history.rfind("[User]")]
     else:
         time_since_last = get_time_since_last(history)
-        raw_prompt = user_input
+        raw_prompt = user_input if user_input != "" else handle_events() 
         current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if time_since_last:
             time_since_last_str = str(time_since_last).split('.')[0]
@@ -145,21 +156,23 @@ def main_tau_loop(user_input):
     if automated_prompt is not None:
         next_prompt = automated_prompt
     else:
-        next_prompt = input("Wait for the audio to finish. Enter to exit, Reply if you like to respond\n")
+        print("Wait for the audio to finish.")
+        next_prompt = handle_events()  # Wait for the next event
         speech_queue.clear()
     return next_prompt
 
-if __name__ == "__main__":
+def main():
     sock = setup_socket()
     print(f"Listening on {socket_path}")
+    event_data = ""
     try:
         while True:
-            events = sel.select()
-            for key, mask in events:
-                callback = key.data
-                callback(key.fileobj)
+            event_data = main_tau_loop(event_data)
     except KeyboardInterrupt:
         print("Shutting down.")
     finally:
         sel.close()
         os.remove(socket_path)
+
+if __name__ == "__main__":
+    main()
