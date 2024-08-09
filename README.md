@@ -15,7 +15,8 @@ If you fork. delete history and facts to reset its knowledhe and embark rhe jour
 
 ## Prerequisites
 
-Tau can run anywhere with intenet - but in this instance, only raspberry pi.
+Tau can run anywhere with intrnet - but in this instance, only tested on raspberry pi.  
+It should aupport linux 
 
 ## Installation
 
