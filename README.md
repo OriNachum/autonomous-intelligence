@@ -18,6 +18,15 @@ If you fork. delete history and facts to reset its knowledhe and embark rhe jour
 Tau can run anywhere with intrnet - but in this instance, only tested on raspberry pi.  
 It should aupport linux 
 
+### Keys
+All needed keys are in .env_sample.  
+Copy it to .env and add your keys.  
+Currently, the main key is OpenAI (Chat, Speech, Whisper), and VoyageAI + Pinecone is for vectordb
+
+I plan pn moving back to Anthropic (3.5 sonnet only)
+
+Groq was used for a fast understand action usecase
+
 ## Installation
 
 1. Clone this repository to your Raspberry Pi:
