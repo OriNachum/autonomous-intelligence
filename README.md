@@ -21,7 +21,7 @@ All needed keys are in .env_sample.
 Copy it to .env and add your keys.  
 Currently, the main key is OpenAI (Chat, Speech, Whisper), and VoyageAI + Pinecone is for vectordb
 
-I plan pn moving back to Anthropic (3.5 sonnet only)
+I plan on moving back to Anthropic (3.5 sonnet only)
 
 Groq was used for a fast understand action usecase
 
@@ -45,37 +45,12 @@ git clone https://github.com/your-username/your-repo.git
 
 ## Usage
 
-To run the script manually, execute the following command:
+There are four programs:
+- tau.py: this is the main LLM conversation loop
+- tau_speech.py: this consumes speech events, and produces actual speech
+- services/face_service.py: this starts the face app, and reacts when speech occurs
+- services/microphone_listener.py this listens to your speech and emits events to tau.py as input
 
-```
-./checkout-repo.sh
-```
-
-This script will change the current directory to the specified `LOCAL_PATH`, pull the latest changes from the specified remote repository, and execute any additional commands you might have added to the script.
-
-### Scheduling the Script
-
-You can also schedule the script to run automatically at a specified interval using cron.
-
-Here's how:
-
-1. Open the cron tab editor:
-
-```
-crontab -e
-```
-
-2. Add the following line to the cron tab file, replacing the path with the location of your `checkout-repo.sh` script:
-
-```
-*/30 * * * * /path/to/checkout-repo.sh
-```
-
-This line tells cron to run the `checkout-repo.sh` script every 30 seconds.
-
-3. Save the changes and exit the cron tab editor.
-
-After setting up the cron job, the `checkout-repo.sh` script will run every 30 seconds, checking for updates in the specified repository and pulling the latest changes if there are any.
 
 ## License
 
