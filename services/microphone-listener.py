@@ -7,6 +7,14 @@ import os
 import socket
 import sys
 import logging
+from dotenv import load_dotenv
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
+logging.info("Started...")
+
+# Load environment variables
+load_dotenv()
 
 if __name__ == "__main__":
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,8 +23,6 @@ if __name__ == "__main__":
 
 from modelproviders.openai_api_client import OpenAIService
 
-# Set up logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
 
 class SpeechDetector:
     def __init__(self, lower_threshold=1500, upper_threshold=2500, rate=16000, chunk_duration_ms=30, min_silence_duration=2.0):
@@ -36,6 +42,8 @@ class SpeechDetector:
         self.setup_socket()
 
         self.p = pyaudio.PyAudio()
+        self.device_name = os.getenv('AUDIO_DEVICE_NAME', 'default').lower()
+
         self.input_device_index = self.find_input_device()
         if self.input_device_index is None:
             raise RuntimeError("Suitable input device not found")
@@ -69,8 +77,8 @@ class SpeechDetector:
         device_count = self.p.get_device_count()
         for i in range(device_count):
             device_info = self.p.get_device_info_by_index(i)
-            if "default" == device_info['name']:
-                logging.info(f"Found suitable input device: {device_info['name']} (index {i})")
+            if self.device_name in device_info['name'].lower():
+                logging.info(f"Found matching device: {device_info['name']} (index {i})")
                 return i
         logging.warning("Suitable input device not found")
         return None

@@ -1,6 +1,14 @@
 import pyaudio
 import webrtcvad
 import wave
+import logging
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
 
 class AudioRecorder:
     def __init__(self, rate=16000, frame_duration=20, record_seconds=10, output_filename="output.wav"):
@@ -13,11 +21,26 @@ class AudioRecorder:
         self.vad = webrtcvad.Vad()
         self.vad.set_mode(1)  # 0: Normal, 1: Low bitrate, 2: Aggressive, 3: Very aggressive
         self.frames = []
+        self.device_name = os.getenv('AUDIO_DEVICE_NAME', 'default').lower()
+
+
+    def find_input_device(self):
+        device_count = self.p.get_device_count()
+        for i in range(device_count):
+            device_info = self.p.get_device_info_by_index(i)
+            if self.device_name in device_info['name'].lower():
+                logging.info(f"Found matching device: {device_info['name']} (index {i})")
+            
+                self.input_device_index = i
+                return i
+        logging.warning("Suitable input device not found")
+        return None
+
 
     def record(self):
         # Open audio stream
         stream = self.p.open(format=pyaudio.paInt16, channels=1, rate=self.rate,
-                             input=True, frames_per_buffer=self.chunk_size)
+                             input=True, frames_per_buffer=self.chunk_size, input_device_index=self.input_device_index)
 
         print("Recording...")
 
@@ -48,4 +71,5 @@ class AudioRecorder:
 # Usage
 if __name__ == "__main__":
     recorder = AudioRecorder()
+    input_device_index = recorder.find_input_device()
     recorder.record()
