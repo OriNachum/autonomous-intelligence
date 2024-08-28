@@ -45,11 +45,14 @@ git clone https://github.com/your-username/your-repo.git
 
 ## Usage
 
-There are four programs:
-- tau.py: this is the main LLM conversation loop
+Run this out of order, preferred before microphone
 - tau_speech.py: this consumes speech events, and produces actual speech
+
+There are four programs to run by this order:
 - services/face_service.py: this starts the face app, and reacts when speech occurs
+- tau.py: this is the main LLM conversation loop
 - services/microphone_listener.py this listens to your speech and emits events to tau.py as input
+
 
 
 ## License
