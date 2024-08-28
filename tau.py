@@ -12,7 +12,7 @@ from services.prompt_service import load_prompt
 from assistants.short_term_memory_saver import get_historical_facts, mark_facts_for_deletion
 from services.actions_service import extract_actions, is_action_supported, parse_action, execute_action
 from services.response_processor import emit_classified_sentences
-from services.speech_queue import SpeechQueue
+#from services.speech_queue import SpeechQueue
 from services.memory_service import MemoryService
 
 # Set up logging
@@ -44,6 +44,7 @@ def setup_socket():
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(socket_path)
     sock.listen(1)
+    sock.setblocking(False)  # Set socket to non-blocking mode
     sel.register(sock, selectors.EVENT_READ, accept)
     logger.info("Socket setup complete")
     return sock
@@ -111,99 +112,115 @@ def handle_events():
     return event_data
 
 def main_tau_loop(user_input):
-    logger.info("Starting main Tau loop")
-    speech_queue = SpeechQueue()
-    memory_service = MemoryService()
-    openai = OpenAIService()
-    history = load_history()
-    logger.debug("History loaded")
-    direct_knowledge = load_direct_knowledge()
-    logger.debug("Direct knowledge loaded")
-    tau_system_prompt, _ = load_prompt("tau")
-    tau_system_prompt = tau_system_prompt.replace("{{direct_knowledge}}", direct_knowledge)
-    model_selector_system_prompt, _ = load_prompt("model-selector")
-    logger.debug("Prompts loaded and prepared")
+    try:
+        logger.info(f"Starting main Tau loop with user input {user_input}")
+        #speech_queue = SpeechQueue()
+        logger.debug("Speech queue loaded")
+        memory_service = MemoryService()
+        logger.debug("Memory loaded")
+        openai = OpenAIService()
+        logger.debug("OpenAI service loaded")
+        history = load_history()
+        logger.debug("History loaded")
+        direct_knowledge = load_direct_knowledge()
+        logger.debug("Direct knowledge loaded")
+        tau_system_prompt, _ = load_prompt("tau")
+        tau_system_prompt = tau_system_prompt.replace("{{direct_knowledge}}", direct_knowledge)
+        model_selector_system_prompt, _ = load_prompt("model-selector")
+        logger.debug("Prompts loaded and prepared")
 
-    logger.info("Processing user input")
-    last_entry = history.strip().split("\n")[-1]
-    if "[User]" in last_entry:
-        prompt = last_entry.split("[User]")[1].strip()
-        history = history[:history.rfind("[User]")]
-        logger.debug("Using last user entry as prompt")
-    else:
-        time_since_last = get_time_since_last(history)
-        raw_prompt = user_input if user_input != "" else handle_events() 
-        current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if time_since_last:
-            time_since_last_str = str(time_since_last).split('.')[0]
-            prompt_prefix = f"[{current_datetime}][{time_since_last_str}]"
+        logger.info("Processing user input")
+        last_entry = history.strip().split("\n")[-1]
+        if "[User]" in last_entry:
+            prompt = last_entry.split("[User]")[1].strip()
+            history = history[:history.rfind("[User]")]
+            logger.debug("Using last user entry as prompt")
         else:
-            logger.warning("No previous timestamp found in the conversation history.")
-            prompt_prefix = f"[{current_datetime}]"
-        if isinstance(raw_prompt, str):
-            prompt = f"{prompt_prefix} {raw_prompt}"
-            save_to_history("User", prompt)
-            logger.info(f"Saved user prompt to history: {prompt[:50]}...")  # Log first 50 chars
+            time_since_last = get_time_since_last(history)
+            raw_prompt = user_input if user_input != "" else handle_events()
+            logger.debug(f"raw prompt is: {raw_prompt}")
+            current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if time_since_last:
+                time_since_last_str = str(time_since_last).split('.')[0]
+                prompt_prefix = f"[{current_datetime}][{time_since_last_str}]"
+            else:
+                logger.warning("No previous timestamp found in the conversation history.")
+                prompt_prefix = f"[{current_datetime}]"
+            if isinstance(raw_prompt, str):
+                prompt = f"{prompt_prefix} {raw_prompt}"
+                save_to_history("User", prompt)
+                logger.info(f"Saved user prompt to history: {prompt[:50]}...")  # Log first 50 chars
+            else:
+                prompt = raw_prompt
+                save_to_history("User", f"{prompt_prefix} Here is the photo you have taken *Photo redacted due technical reasons*")
+                logger.info("Saved photo prompt to history")
+
+        if isinstance(prompt, str):
+            wrapped_prompt = f"Please assess the correct model for the following request, wrapped with double '---' lines: \n---\n---\n{prompt} \n---\n---\n Remember to answer only with one of the following models (haiku, sonnet, opus)"
         else:
-            prompt = raw_prompt
-            save_to_history("User", f"{prompt_prefix} Here is the photo you have taken *Photo redacted due technical reasons*")
-            logger.info("Saved photo prompt to history")
+            wrapped_prompt = "opus"
+        logger.debug(f"Wrapped prompt prepared: {wrapped_prompt[:50]}...")  # Log first 50 chars
 
-    if isinstance(prompt, str):
-        wrapped_prompt = f"Please assess the correct model for the following request, wrapped with double '---' lines: \n---\n---\n{prompt} \n---\n---\n Remember to answer only with one of the following models (haiku, sonnet, opus)"
-    else:
-        wrapped_prompt = "opus"
-    logger.debug(f"Wrapped prompt prepared: {wrapped_prompt[:50]}...")  # Log first 50 chars
+        model = "gpt-4o"
+        speech_index = 0
+        response = ""
+        #speech_queue.reset()
+        logger.info("Generating AI response")
+        for text_type, text in emit_classified_sentences(openai.generate_stream_response(prompt, history, tau_system_prompt, model)):
+            if (text is not None) and (text_type is not None):
+                logger.debug(f"Generated {text_type}: {text[:50]}...")  # Log first 50 chars
+                response += text
+            if text_type == "speech":
+                path = f"speech_{speech_index}.mp3"
+                speech_index += 1
+                path = openai.speechify(text, path)
+                if (path is not None):
+                    #speech_queue.enqueue(path)
+                    logger.debug(f"Enqueued speech file: {path}")
 
-    model = "gpt-4o"
-    speech_index = 0
-    response = ""
-    speech_queue.reset()
-    logger.info("Generating AI response")
-    for text_type, text in emit_classified_sentences(openai.generate_stream_response(prompt, history, tau_system_prompt, model)):
-        if (text is not None) and (text_type is not None):
-            logger.debug(f"Generated {text_type}: {text[:50]}...")  # Log first 50 chars
-            response += text
-        if text_type == "speech":
-            path = f"speech_{speech_index}.mp3"
-            speech_index += 1
-            path = openai.speechify(text, path)
-            if (path is not None):
-                speech_queue.enqueue(path)
-                logger.debug(f"Enqueued speech file: {path}")
+        save_to_history("Assistant", response)
+        logger.info("Saved assistant response to history")
 
-    save_to_history("Assistant", response)
-    logger.info("Saved assistant response to history")
+        logger.info("Processing historical facts")
+        facts = get_historical_facts()
+        facts_string = "\n".join(facts)
+        add_to_direct_knowledge(facts_string)
+        memory_service.remember_many(facts, "facts")
+        deprecated_facts = mark_facts_for_deletion()
+        new_facts_string = "\n".join([fact for fact in facts if fact not in deprecated_facts])
+        save_over_direct_knowledge(new_facts_string)
+        logger.debug("Historical facts processed and saved")
 
-    logger.info("Processing historical facts")
-    facts = get_historical_facts()
-    facts_string = "\n".join(facts)
-    add_to_direct_knowledge(facts_string)
-    memory_service.remember_many(facts, "facts")
-    deprecated_facts = mark_facts_for_deletion()
-    new_facts_string = "\n".join([fact for fact in facts if fact not in deprecated_facts])
-    save_over_direct_knowledge(new_facts_string)
-    logger.debug("Historical facts processed and saved")
+        logger.info("Extracting and executing actions")
+        automated_prompt = None
+        actions_list = extract_actions(response)
+        for action in actions_list:
+            parsed_action = parse_action(action, [])
+            if is_action_supported(parsed_action):
+                automated_prompt = execute_action(parsed_action)
+                logger.info(f"Executed action: {parsed_action}")
+                break
 
-    logger.info("Extracting and executing actions")
-    automated_prompt = None
-    actions_list = extract_actions(response)
-    for action in actions_list:
-        parsed_action = parse_action(action, [])
-        if is_action_supported(parsed_action):
-            automated_prompt = execute_action(parsed_action)
-            logger.info(f"Executed action: {parsed_action}")
-            break
+        if automated_prompt is not None:
+            next_prompt = automated_prompt
+            logger.info("Using automated prompt for next iteration")
+        else:
+            logger.info("Waiting for audio to finish and next event")
+            next_prompt = handle_events()  # Wait for the next event
+            logger.debug(f"Next prompt: {next_prompt}")
+            
+            #speech_queue.clear()
 
-    if automated_prompt is not None:
-        next_prompt = automated_prompt
-        logger.info("Using automated prompt for next iteration")
-    else:
-        logger.info("Waiting for audio to finish and next event")
-        next_prompt = handle_events()  # Wait for the next event
-        speech_queue.clear()
+        logger.info("Main Tau loop iteration complete")
+    except Exception as e:
+        logger.error(f"Error in main_tau_loop: {e}", exc_info=True)
+    finally:
+        logger.debug("cleanup")
+        # Ensure cleanup happens even if an exception occurs
+        #speech_queue.clear()
+        #sel.unregister(sock)
+        #sock.close() #sock is not defined
 
-    logger.info("Main Tau loop iteration complete")
     return next_prompt
 
 def main():

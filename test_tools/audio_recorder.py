@@ -2,6 +2,7 @@ import pyaudio
 import webrtcvad
 import wave
 import logging
+import os
 from dotenv import load_dotenv
 
 # Load environment variables

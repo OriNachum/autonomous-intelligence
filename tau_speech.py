@@ -10,13 +10,20 @@ logger = logging.getLogger(__name__)
 
 class SpeechQueue:
     def __init__(self, folder_path):
+        logger.info("SpeechQueue starting")
+
         self.emitter = FaceExpressionEmitter()
+        logger.debug("FaceExpressionEmitter created")
         self.emitter.connect()
-        logger.info("FaceExpressionEmitter connected")
+        logger.debug("FaceExpressionEmitter connected")
         self.talking = False
         self.last_emitted_talking = None
         self._folder_path = folder_path
         logger.debug(f"SpeechQueue initialized with folder path: {folder_path}")
+        
+        # Initialize pygame mixer only once
+        pygame.mixer.init()
+        logger.debug("Pygame mixer initialized")
 
     def process_folder(self):
         files = sorted(os.listdir(self._folder_path))
@@ -44,23 +51,12 @@ class SpeechQueue:
 
     def reset(self):
         logger.info("Resetting SpeechQueue")
-        try:
-            pygame.mixer.init()
-            logger.debug("Pygame mixer initialized")
-            self.talking = False
-            self.emitter.emit_expression("happy", self.talking)
-            logger.debug("Emitted 'happy' expression with talking=False")
-        except pygame.error as e:
-            logger.error(f"Error initializing pygame mixer: {str(e)}")
+        self.talking = False
+        self.emitter.emit_expression("happy", self.talking)
+        logger.debug("Emitted 'happy' expression with talking=False")
 
 if __name__ == "__main__":
     logger.info("Starting Speech Queue application")
-    try:
-        pygame.mixer.init()
-        logger.debug("Pygame mixer initialized")
-    except pygame.error as e:
-        logger.error(f"Failed to initialize pygame mixer: {str(e)}")
-        exit(1)
 
     # Define the folder path to monitor
     folder_path = "./speech_folder"
