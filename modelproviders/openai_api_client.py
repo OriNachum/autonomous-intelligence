@@ -44,6 +44,8 @@ class OpenAIService:
             raise Exception(message)
 
         speech_file_path = Path(__file__).parent / path
+        speech_file_path.parent.mkdir(parents=True, exist_ok=True)
+
         with open(speech_file_path, 'wb') as f:
             f.write(response.content)
 

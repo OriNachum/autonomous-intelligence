@@ -4,6 +4,7 @@ import socket
 import selectors
 import re
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
 from modelproviders.openai_api_client import OpenAIService
 from persistency.direct_knowledge import load_direct_knowledge, add_to_direct_knowledge, save_over_direct_knowledge
@@ -112,6 +113,7 @@ def handle_events():
     return event_data
 
 def main_tau_loop(user_input):
+    next_prompt = None
     try:
         logger.info(f"Starting main Tau loop with user input {user_input}")
         #speech_queue = SpeechQueue()
@@ -137,7 +139,7 @@ def main_tau_loop(user_input):
             logger.debug("Using last user entry as prompt")
         else:
             time_since_last = get_time_since_last(history)
-            raw_prompt = user_input if user_input != "" else handle_events()
+            raw_prompt = user_input if user_input is not None else handle_events()
             logger.debug(f"raw prompt is: {raw_prompt}")
             current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             if time_since_last:
@@ -171,12 +173,14 @@ def main_tau_loop(user_input):
                 logger.debug(f"Generated {text_type}: {text[:50]}...")  # Log first 50 chars
                 response += text
             if text_type == "speech":
-                path = f"speech_{speech_index}.mp3"
+                app_root = Path.cwd()
+                path = f"speech_folder/speech_{speech_index}.mp3"
+                speech_file_path = app_root / path
                 speech_index += 1
-                path = openai.speechify(text, path)
+                speech_file_path = openai.speechify(text, speech_file_path)
                 if (path is not None):
                     #speech_queue.enqueue(path)
-                    logger.debug(f"Enqueued speech file: {path}")
+                    logger.debug(f"Enqueued speech file: {speech_file_path}")
 
         save_to_history("Assistant", response)
         logger.info("Saved assistant response to history")
@@ -227,7 +231,7 @@ def main():
     logger.info("Starting main function")
     sock = setup_socket()
     print(f"Listening on {socket_path}")
-    event_data = ""
+    event_data = None
     try:
         while True:
             event_data = main_tau_loop(event_data)
