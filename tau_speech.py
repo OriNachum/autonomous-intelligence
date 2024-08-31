@@ -45,6 +45,13 @@ class SpeechQueue:
                 self.emitter.emit_expression("happy", self.talking)
                 self.talking = not self.talking
                 pygame.time.Clock().tick(10)  # Adjust playback speed
+                
+                # Check if the file still exists
+                if not os.path.exists(path):
+                    logger.warning(f"File {path} no longer exists. Stopping playback.")
+                    pygame.mixer.music.stop()
+                    break
+
             logger.debug("Finished playing audio file")
         except pygame.error as e:
             logger.error(f"Error playing audio file {path}: {str(e)}")
