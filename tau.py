@@ -1,5 +1,4 @@
 import os
-import datetime
 import socket
 import selectors
 import re
@@ -17,6 +16,7 @@ from services.actions_service import extract_actions, is_action_supported, parse
 from services.response_processor import emit_classified_sentences
 #from services.speech_queue import SpeechQueue
 from services.memory_service import MemoryService
+import asyncio
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -79,8 +79,8 @@ def get_time_since_last(history):
         timestamp_match = re.search(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', last_entry)
     if timestamp_match:
         timestamp_str = timestamp_match.group(1)
-        last_timestamp_obj = datetime.datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-        time_since_last = datetime.datetime.now() - last_timestamp_obj
+        last_timestamp_obj = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+        time_since_last = datetime.now() - last_timestamp_obj
         days = time_since_last.days
         seconds = time_since_last.seconds
         hours = seconds // 3600
@@ -104,15 +104,32 @@ def get_time_since_last(history):
 
 def handle_events():
     logger.debug("Handling events")
-    event_data = ""
-    events = sel.select()
-    for key, mask in events:
-        callback = key.data
-        data = callback(key.fileobj)
-        if data:
-            event_data += data
-    logger.debug(f"Handled events, data length: {len(event_data)}")
-    return event_data
+    while True:
+        events = sel.select()
+        for key, mask in events:
+            callback = key.data
+            data = callback(key.fileobj)
+            if data:
+                logger.debug(f"Received data: {data[:50]}...")  # Log first 50 chars
+                if "Speech started" in data:
+                    logger.info("Speech started event received. Stopping ongoing speech output.")
+                    # Add code here to stop ongoing speech output
+                    # For example: speech_queue.stop_current()
+                    archive_speech()
+        
+                    # Now wait for the "Speech stopped" event
+                    continue
+
+                elif "Speech stopped" in data:
+                    logger.info("Speech stopped event received. Returning input.")
+                    # Extract the actual speech content
+                    speech_content = data.split("Transcript:", 1)[1].strip()
+                    return speech_content  # Return the speech content
+
+                else:
+                    logger.debug("Received other event, continuing to listen.")
+                    continue  # Continue listening for relevant events
+    return None  # This line should never be reached
 
 def archive_speech():
     source_folder = "speech_folder"
@@ -172,7 +189,7 @@ def main_tau_loop(user_input):
             time_since_last = get_time_since_last(history)
             raw_prompt = user_input if user_input is not None else handle_events()
             logger.debug(f"raw prompt is: {raw_prompt}")
-            current_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             if time_since_last:
                 time_since_last_str = str(time_since_last).split('.')[0]
                 prompt_prefix = f"[{current_datetime}][{time_since_last_str}]"

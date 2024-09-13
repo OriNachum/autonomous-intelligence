@@ -8,6 +8,8 @@ import socket
 import sys
 import logging
 from dotenv import load_dotenv
+import asyncio
+from collections import deque
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -27,19 +29,22 @@ if __name__ == "__main__":
 from modelproviders.openai_api_client import OpenAIService
 
 class SpeechDetector:
-    def __init__(self, lower_threshold=1500, upper_threshold=2500, rate=16000, chunk_duration_ms=30, min_silence_duration=2.0):
+    def __init__(self, lower_threshold=1500, upper_threshold=2500, rate=16000, chunk_duration_ms=30, min_silence_duration=2.5, buffer_size=100):
         logger.info("Initializing SpeechDetector")
+        self.min_audio_bytes = 4000
         self.lower_threshold = lower_threshold
         self.upper_threshold = upper_threshold
         self.rate = rate
         self.chunk_duration_ms = chunk_duration_ms
         self.chunk_size = int(rate * chunk_duration_ms / 1000)
         self.min_silence_duration = min_silence_duration
-        self.vad = webrtcvad.Vad(2)
-        self.audio_buffer = []  # List to accumulate audio data during speech
+        self.vad = webrtcvad.Vad(3)  # Options: 0 (least aggressive) to 3 (most aggressive)
+        self.audio_buffer = deque(maxlen=buffer_size)  # Circular buffer
+        self.speech_buffer = []
         self.speech_events = 0
         self.silence_start_time = None
         self.speech_detected = False
+        self.processing_lock = asyncio.Lock()
 
         self.socket_path = "./sockets/tau_hearing_socket"
         self.setup_socket()
@@ -53,17 +58,7 @@ class SpeechDetector:
             logger.error("Suitable input device not found")
             raise RuntimeError("Suitable input device not found")
 
-        try:
-            self.stream = self.p.open(format=pyaudio.paInt16,
-                                      channels=1,
-                                      rate=self.rate,
-                                      input=True,
-                                      frames_per_buffer=self.chunk_size,
-                                      input_device_index=self.input_device_index)
-            logger.info("Audio stream opened successfully")
-        except IOError as e:
-            logger.error(f"Error opening audio stream: {e}")
-            raise
+        self.setup_audio_stream()
 
         self.openai_service = OpenAIService()
         logger.debug("OpenAIService initialized")
@@ -78,6 +73,19 @@ class SpeechDetector:
             logger.info("Successfully connected to Unix socket")
         except Exception as e:
             logger.error(f"Failed to connect to Unix socket: {e}")
+            raise
+
+    def setup_audio_stream(self):
+        try:
+            self.stream = self.p.open(format=pyaudio.paInt16,
+                                      channels=1,
+                                      rate=self.rate,
+                                      input=True,
+                                      frames_per_buffer=self.chunk_size,
+                                      input_device_index=self.input_device_index)
+            logger.info("Audio stream opened successfully")
+        except IOError as e:
+            logger.error(f"Error opening audio stream: {e}")
             raise
 
     def send_event(self, event_message):
@@ -121,59 +129,87 @@ class SpeechDetector:
             logger.info(message)
             self.send_event(message)
 
-    def save_chunk(self, data):
-        self.audio_buffer.append(data)
-        logger.debug(f"Saved audio chunk. Buffer size: {len(self.audio_buffer)}")
+    async def run(self):
+        logger.info(f"Starting speech detection with chunk size: {self.chunk_size}, rate: {self.rate}")
+        listen_task = asyncio.create_task(self.listen())
+        process_task = asyncio.create_task(self.process())
+        
+        try:
+            await asyncio.gather(listen_task, process_task)
+        except Exception as e:
+            logger.error(f"Error during audio processing: {e}", exc_info=True)
+        finally:
+            self.cleanup()
 
-    def write_to_file(self):
+    async def listen(self):
+        while True:
+            try:
+                data = await asyncio.to_thread(self.stream.read, self.chunk_size, exception_on_overflow=False)
+                np_data = np.frombuffer(data, dtype=np.int16)
+                async with self.processing_lock:
+                    self.audio_buffer.append(np_data)
+            except Exception as e:
+                logger.error(f"Error during audio capture: {e}", exc_info=True)
+                await asyncio.sleep(0.1)  # Short delay before retry
+
+    async def process(self):
+        while True:
+            async with self.processing_lock:
+                if len(self.audio_buffer) > 0:
+                    data = self.audio_buffer.popleft()
+                    if self.is_speech(data.tobytes()):
+                        await self.handle_speech(data)
+                    else:
+                        await self.handle_silence()
+            await asyncio.sleep(0.01)  # Small delay to prevent tight loop
+
+    async def handle_speech(self, data):
+        if not self.speech_detected:
+            self.start_time = time.time()
+            self.log_speech_event("start")
+            self.speech_detected = True
+            self.speech_buffer = []
+            logger.debug("Speech detected, starting new buffer")
+        self.speech_buffer.append(data)
+
+    async def handle_silence(self):
+        if self.speech_detected:
+            if self.silence_start_time is None:
+                self.silence_start_time = time.time()
+                logger.debug("Silence detected, starting silence timer")
+            elif time.time() - self.silence_start_time >= self.min_silence_duration:
+                logger.info("Silence duration exceeded, processing speech")
+                await self.process_speech()
+
+    async def process_speech(self):
+        combined_audio = np.concatenate(self.speech_buffer)
+        await self.write_to_file(combined_audio)
+        transcript = await self.perform_whisper_stt(combined_audio.tobytes())
+        self.log_speech_event("stop", transcript)
+        self.speech_detected = False
+        self.silence_start_time = None
+        self.speech_buffer = []
+
+    async def write_to_file(self, audio_data):
         logger.info(f"Writing combined audio to {self.output_filename}")
+        await asyncio.to_thread(self._write_to_file_sync, audio_data)
+        logger.info(f"Written combined audio to {self.output_filename}")
+
+    def _write_to_file_sync(self, audio_data):
         with wave.open(self.output_filename, 'wb') as wav_file:
             wav_file.setnchannels(1)
             wav_file.setsampwidth(self.p.get_sample_size(pyaudio.paInt16))
             wav_file.setframerate(self.rate)
-            wav_file.writeframes(b''.join(self.audio_buffer))
-        logger.info(f"Written combined audio to {self.output_filename}")
+            wav_file.writeframes(audio_data.tobytes())
 
-    def run(self):
-        logger.info(f"Starting speech detection with chunk size: {self.chunk_size}, rate: {self.rate}")
-        try:
-            while True:
-                data = self.stream.read(self.chunk_size, exception_on_overflow=False)
-                if self.is_speech(data):
-                    if not self.speech_detected:
-                        self.start_time = time.time()
-                        self.log_speech_event("start")
-                        self.speech_detected = True
-                        self.audio_buffer = []
-                        logger.debug("Speech detected, starting new buffer")
-
-                    self.save_chunk(data)
-                else:
-                    if self.speech_detected:
-                        if self.silence_start_time is None:
-                            self.silence_start_time = time.time()
-                            logger.debug("Silence detected, starting silence timer")
-                        elif time.time() - self.silence_start_time >= self.min_silence_duration:
-                            logger.info("Silence duration exceeded, processing speech")
-                            self.write_to_file()
-                            combined_audio_data = b''.join(self.audio_buffer)
-                            transcript = self.perform_whisper_stt(combined_audio_data)
-                            self.log_speech_event("stop", transcript)
-                            self.speech_detected = False
-                            self.silence_start_time = None
-        except webrtcvad.VadError as e:
-            logger.error(f"VAD Error: {e}")
-            self.cleanup()
-            raise
-        except Exception as e:
-            logger.error(f"Error during audio processing: {e}", exc_info=True)
-            self.cleanup()
-            raise
-
-    def perform_whisper_stt(self, audio_data):
+    async def perform_whisper_stt(self, audio_data):
         logger.info("Performing STT with Whisper")
         try:
-            transcript = self.openai_service.transcribe_audio(audio_data)
+            if len(audio_data) < self.min_audio_bytes:
+                logger.warning(f"Audio data too short: {len(audio_data)} bytes. Minimum required: {self.min_audio_bytes} bytes.")
+                return "Audio too short for transcription"
+
+            transcript = await asyncio.to_thread(self.openai_service.transcribe_audio, audio_data)
             logger.info(f"Transcription result: {transcript}")
             return transcript
         except Exception as e:
@@ -195,11 +231,8 @@ if __name__ == "__main__":
     detector = SpeechDetector(rate=16000)
 
     try:
-        detector.run()
+        asyncio.run(detector.run())
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received, terminating...")
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-    finally:
-        logger.info("Terminating speech detector...")
-        detector.cleanup()

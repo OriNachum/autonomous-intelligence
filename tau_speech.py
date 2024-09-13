@@ -32,9 +32,17 @@ class SpeechQueue:
             if file.endswith(".mp3") or file.endswith(".wav"):
                 path = os.path.join(self._folder_path, file)
                 logger.debug(f"Processing file: {file}")
-                self.play_mp3(path)
-                os.remove(path)  # Remove the file after playing
-                logger.info(f"Removed file after playing: {file}")
+                if os.path.exists(path):
+                    self.play_mp3(path)
+                    try:
+                        os.remove(path)  # Attempt to remove the file after playing
+                        logger.info(f"Removed file after playing: {file}")
+                    except FileNotFoundError:
+                        logger.warning(f"File {file} was already removed externally.")
+                    except Exception as e:
+                        logger.error(f"Error removing file {file}: {str(e)}")
+                else:
+                    logger.warning(f"File {file} no longer exists. Skipping.")
 
     def play_mp3(self, path):
         logger.info(f"Playing {path}")

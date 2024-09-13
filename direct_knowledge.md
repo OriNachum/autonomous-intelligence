@@ -1,4 +1,3 @@
-- The user has implemented efficiency improvements to face rendering, enhancing visuals for better audio-visual synchronization.
-- The user plans to take the assistant to work or conferences using a mobile battery pack for portable power.
-- The assistant has undergone further speech tests, confirming stable and synchronized visuals with the synthesized speech.
-- The user upgraded the system to enable much faster response times.
+- The user may refer to clothing items, such as "robes," during conversations.
+- The user might need assistance to solve technical or operational problems, indicated by the phrase "I'll try to see if I can make it stop."
+- The user acknowledges when they are ending the conversation with a clear "Bye."
