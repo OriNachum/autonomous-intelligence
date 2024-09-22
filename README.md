@@ -11,6 +11,20 @@ Tau is a personal fun project.
 I open it as an open source for anyone to experiment with (fork), or just follow.
 If you fork. delete history and facts to reset its knowledhe and embark rhe journey anew.
 
+## Update status
+
+- [x] System Prompt: Speech-actions speak conversation structure.
+- [x] Conversation loop: A continueous conversation with ongoing context.
+- [x] Immediate memory: Reduce context by summarizing it to key points. Inject memory to System prompt.
+- [x] Long term memory: Save the running memory to vector database.
+- [ ] **Vision: Add Hailo-8L support for at least 1 model.**
+- [ ] Vision: Add Hailo-8L support for a family of models (Object detection, face recognition, pose detection)
+- [ ] Vision - Scene detection
+- [ ] Vision - Text extraction
+- [ ] Long term fetching: Pull from long term memory into context.
+- [ ] Entity based memory: Add GraphRAG based memory.
+- [ ] Introspection: Add Introspection agent for active and background thinking and processing.
+- [ ] Growth: Add nightly finetuning, move to smaller model.
 
 ## Prerequisites
 
