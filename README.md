@@ -18,8 +18,8 @@ If you fork. delete history and facts to reset its knowledhe and embark rhe jour
 - [x] Immediate memory: Reduce context by summarizing it to key points. Inject memory to System prompt.
 - [x] Long term memory: Save the running memory to vector database.
 - [x] Speech: Voice based conversation with hearing and speaking. (Whisper and OpenAI TTS)
-- [x] Improved Speech: Add the ability to interrupt the model as it speaks - by speaking. 
-- [ ] **Vision: Add Hailo-8L support for at least 1 model.**
+- [ ] **Vision infra: Set up Hailo-8L as an internal vision webservice.**
+- [ ] Vision: Add Hailo-8L support for at least 1 model.
 - [ ] Vision: Add Hailo-8L support for a family of models (Object detection, face recognition, pose detection).
 - [ ] Vision - Scene detection.
 - [ ] Vision - Text extraction.
