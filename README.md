@@ -17,12 +17,15 @@ If you fork. delete history and facts to reset its knowledhe and embark rhe jour
 - [x] Conversation loop: A continueous conversation with ongoing context.
 - [x] Immediate memory: Reduce context by summarizing it to key points. Inject memory to System prompt.
 - [x] Long term memory: Save the running memory to vector database.
+- [x] Speech: Voice based conversation with hearing and speaking. (Whisper and OpenAI TTS)
+- [x] Improved Speech: Add the ability to interrupt the model as it speaks - by speaking. 
 - [ ] **Vision: Add Hailo-8L support for at least 1 model.**
-- [ ] Vision: Add Hailo-8L support for a family of models (Object detection, face recognition, pose detection)
-- [ ] Vision - Scene detection
-- [ ] Vision - Text extraction
+- [ ] Vision: Add Hailo-8L support for a family of models (Object detection, face recognition, pose detection).
+- [ ] Vision - Scene detection.
+- [ ] Vision - Text extraction.
 - [ ] Long term fetching: Pull from long term memory into context.
 - [ ] Entity based memory: Add GraphRAG based memory.
+- [ ] Advanced voice: Move to ElevenLabs advanced voices.
 - [ ] Introspection: Add Introspection agent for active and background thinking and processing.
 - [ ] Growth: Add nightly finetuning, move to smaller model.
 
