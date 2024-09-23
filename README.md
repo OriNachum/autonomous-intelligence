@@ -18,6 +18,9 @@ If you fork - delete history and facts to reset their knowledge and embark the j
 - [x] Long term memory: Save the running memory to vector database.
 - [x] Speech: Voice based conversation with hearing and speaking. (Whisper and OpenAI TTS)
 - [ ] **Vision infra: Set up Hailo-8L as an internal vision webservice.**
+  - [x] Setup Hailo-8L on Raspberry Pi, validate examples work.
+  - [x] Look for best practices and options for integrating Hailo in your application.
+  - [ ] **Set up a submodule git repo with hailo-as-a-service**hailo on 
 - [ ] Vision: Add Hailo-8L support for at least 1 model.
 - [ ] Vision: Add Hailo-8L support for a family of models (Object detection, face recognition, pose detection).
 - [ ] Vision - Scene detection.
