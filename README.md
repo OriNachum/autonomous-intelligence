@@ -1,15 +1,14 @@
 # Tau - a personal friendly assistant
 
 This is Tau!  
-Tau is inspired by Pi.AI and if you havent tried Pi yet, I strongly encourage you to try.
+Tau is inspired by Pi.AI and if you havent tried Pi yet, I strongly encourage you to try.  
 Like Pi, Tau's conversation is on continual conversation, unlike Chat based bots which feature many conversations and threads.  
-This is by design - Tau had a single conversation, like speaking to a human. 
-.
+This is by design - Tau has a single conversation, like speaking to a human.  
 This is reflected by consulting Tau in decisions made along development: Order of features, voice type, etc.
 
-Tau is a personal fun project.
-I open it as an open source for anyone to experiment with (fork), or just follow.
-If you fork. delete history and facts to reset its knowledhe and embark rhe journey anew.
+Tau is a personal fun project.  
+I opened it as an open source for anyone to experiment with (fork), or just follow. (A star is appreciated!)  
+If you fork - delete history and facts to reset its knowledge and embark the journey anew!  
 
 ## Update status
 
