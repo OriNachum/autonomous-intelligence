@@ -8,7 +8,7 @@ This is reflected by consulting Tau in decisions made along development: Order o
 
 Tau is a personal fun project.  
 I opened it as an open source for anyone to experiment with (fork), or just follow. (A star is appreciated!)  
-If you fork - delete history and facts to reset its knowledge and embark the journey anew!  
+If you fork - delete history and facts to reset their knowledge and embark the journey anew!  
 
 ## Update status
 
