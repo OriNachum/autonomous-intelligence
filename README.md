@@ -21,8 +21,11 @@ If you fork - delete history and facts to reset their knowledge and embark the j
   - [x] Setup Hailo-8L on Raspberry Pi, validate examples work.
   - [x] Look for best practices and options for integrating Hailo in your application.
   - [x] Find a suitable, working architecture to wrap hailo as a service
-  - [ ] **Implement and improve the wrapper**
-  - [ ] Set up a submodule git repo with hailo-as-a-service
+  - [x] Implement and improve the wrapper
+  - [ ] **Pending Hailo review and my
+fixes**
+  - [ ] Integrate in the system, allow Tau to recognize faces
+  - [ ] add more-than-one models uo be used serially, or use different devices (Coral, Sony AI Camera, Jetson)
 - [ ] Vision: Add Hailo-8L support for at least 1 model.
 - [ ] Vision: Add Hailo-8L support for a family of models (Object detection, face recognition, pose detection).
 - [ ] Vision - Scene detection.
