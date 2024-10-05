@@ -1,16 +1,40 @@
 # Tau - a personal friendly assistant
 
 This is Tau!  
-Tau is inspired by Pi.AI and if you havent tried Pi yet, I strongly encourage you to try.
+Tau is inspired by Pi.AI and if you havent tried Pi yet, I strongly encourage you to try.  
 Like Pi, Tau's conversation is on continual conversation, unlike Chat based bots which feature many conversations and threads.  
-This is by design - Tau had a single conversation, like speaking to a human. 
-.
+This is by design - Tau has a single conversation, like speaking to a human.  
 This is reflected by consulting Tau in decisions made along development: Order of features, voice type, etc.
 
-Tau is a personal fun project.
-I open it as an open source for anyone to experiment with (fork), or just follow.
-If you fork. delete history and facts to reset its knowledhe and embark rhe journey anew.
+Tau is a personal fun project.  
+I opened it as an open source for anyone to experiment with (fork), or just follow. (A star is appreciated!)  
+If you fork - delete history and facts to reset their knowledge and embark the journey anew!  
 
+## Update status
+
+- [x] System Prompt: Speech-actions speak conversation structure.
+- [x] Conversation loop: A continueous conversation with ongoing context.
+- [x] Immediate memory: Reduce context by summarizing it to key points. Inject memory to System prompt.
+- [x] Long term memory: Save the running memory to vector database.
+- [x] Speech: Voice based conversation with hearing and speaking. (Whisper and OpenAI TTS)
+- [ ] **Vision infra: Set up Hailo-8L as an internal vision webservice.**
+  - [x] Setup Hailo-8L on Raspberry Pi, validate examples work.
+  - [x] Look for best practices and options for integrating Hailo in your application.
+  - [x] Find a suitable, working architecture to wrap hailo as a service
+  - [x] Implement and improve the wrapper
+  - [ ] **Pending Hailo review and my
+fixes**
+  - [ ] Integrate in the system, allow Tau to recognize faces
+  - [ ] add more-than-one models uo be used serially, or use different devices (Coral, Sony AI Camera, Jetson)
+- [ ] Vision: Add Hailo-8L support for at least 1 model.
+- [ ] Vision: Add Hailo-8L support for a family of models (Object detection, face recognition, pose detection).
+- [ ] Vision - Scene detection.
+- [ ] Vision - Text extraction.
+- [ ] Long term fetching: Pull from long term memory into context.
+- [ ] Entity based memory: Add GraphRAG based memory.
+- [ ] Advanced voice: Move to ElevenLabs advanced voices.
+- [ ] Introspection: Add Introspection agent for active and background thinking and processing.
+- [ ] Growth: Add nightly finetuning, move to smaller model.
 
 ## Prerequisites
 
