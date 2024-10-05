@@ -160,7 +160,7 @@ def archive_speech():
     print(f"Files moved to: {timestamped_folder}")
 
 
-def main_tau_loop(user_input):
+def main_tau_loop(user_input, vision_event_listener):
     next_prompt = None
     try:
         logger.info(f"Starting main Tau loop with user input {user_input}")
@@ -210,7 +210,8 @@ def main_tau_loop(user_input):
         else:
             wrapped_prompt = "opus"
         logger.debug(f"Wrapped prompt prepared: {wrapped_prompt[:50]}...")  # Log first 50 chars
-
+        last_vision = vision_event_listener.get_last_event()
+        prompt = f"*What you see: {last_vision}* This what what the person in front of you says: \"{prompt}\""
         model = "gpt-4o"
         speech_index = 0
         response = ""
@@ -280,17 +281,25 @@ def main_tau_loop(user_input):
 def main():
     logger.info("Starting main function")
     sock = setup_socket()
+    
+    # Initialize EventListener for external events
+    gst_socket_path = "/tmp/gst_detection.sock"
+    vision_event_listener = EventListener(gst_socket_path, sel, external_event_callback)
+
     print(f"Listening on {socket_path}")
     event_data = None
     try:
         while True:
-            event_data = main_tau_loop(event_data)
+            event_data = main_tau_loop(event_data, vision_event_listener)
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt, shutting down.")
     except Exception as e:
         logger.error(f"An unexpected error occurred: {str(e)}", exc_info=True)
     finally:
         logger.info("Cleaning up resources")
+        # Close EventListener
+        vision_event_listener.close()
+
         sel.close()
         os.remove(socket_path)
         logger.info("Application shutdown complete")
