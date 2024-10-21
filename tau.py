@@ -15,12 +15,12 @@ from memory.memory_short_term import get_historical_facts, mark_facts_for_deleti
 from memory.memory_service import MemoryService
 from services.actions_service import extract_actions, is_action_supported, parse_action, execute_action
 from ai_service import get_model_response
-#from services.speech_queue import SpeechQueue
+
 import asyncio
 
 from config import API_KEY, HISTORY_FILE, SYSTEM_PROMPT_FILE, logger
 from event_handler import setup_socket, handle_events, sel
-
+from speech_processing import archive_speech
 
 socket_path = "./sockets/tau_hearing_socket"
 
@@ -59,40 +59,10 @@ def get_time_since_last(history):
         logger.warning("No timestamp found in last entry")
         return None
 
-def archive_speech():
-    source_folder = "speech_folder"
-    # Create the main archive folder if it doesn't exist
-    archive_folder = os.path.join(source_folder, 'archive')
-    os.makedirs(archive_folder, exist_ok=True)
-
-    # Create a timestamped subfolder
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    timestamped_folder = os.path.join(archive_folder, timestamp)
-    os.makedirs(timestamped_folder, exist_ok=True)
-
-    # Counter for moved files
-    moved_files = 0
-
-    # Iterate through all files in the source folder
-    for filename in os.listdir(source_folder):
-        if filename.lower().endswith('.mp3'):
-            source_file = os.path.join(source_folder, filename)
-            destination_file = os.path.join(timestamped_folder, filename)
-            
-            # Move the file
-            shutil.move(source_file, destination_file)
-            moved_files += 1
-            print(f"Moved: {filename}")
-
-    print(f"\nTotal files moved: {moved_files}")
-    print(f"Files moved to: {timestamped_folder}")
-
-
 def main_tau_loop(user_input, vision_event_listener):
     next_prompt = None
     try:
         logger.info(f"Starting main Tau loop with user input {user_input}")
-        #speech_queue = SpeechQueue()
         logger.debug("Speech queue loaded")
         memory_service = MemoryService()
         logger.debug("Memory loaded")
