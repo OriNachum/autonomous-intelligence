@@ -11,11 +11,11 @@ from modelproviders.openai_api_client import OpenAIService
 from persistency.direct_knowledge import load_direct_knowledge, add_to_direct_knowledge, save_over_direct_knowledge
 from persistency.history import save_to_history, load_history
 from services.prompt_service import load_prompt
-from assistants.short_term_memory_saver import get_historical_facts, mark_facts_for_deletion
+from memory.memory_short_term import get_historical_facts, mark_facts_for_deletion
+from memory.memory_service import MemoryService
 from services.actions_service import extract_actions, is_action_supported, parse_action, execute_action
-from services.response_processor import emit_classified_sentences
+from ai_service import get_model_response
 #from services.speech_queue import SpeechQueue
-from services.memory_service import MemoryService
 import asyncio
 
 from config import API_KEY, HISTORY_FILE, SYSTEM_PROMPT_FILE, logger
@@ -104,7 +104,6 @@ def main_tau_loop(user_input, vision_event_listener):
         logger.debug("Direct knowledge loaded")
         tau_system_prompt, _ = load_prompt("tau")
         tau_system_prompt = tau_system_prompt.replace("{{direct_knowledge}}", direct_knowledge)
-        model_selector_system_prompt, _ = load_prompt("model-selector")
         logger.debug("Prompts loaded and prepared")
 
         logger.info("Processing user input")
@@ -133,11 +132,6 @@ def main_tau_loop(user_input, vision_event_listener):
                 save_to_history("User", f"{prompt_prefix} Here is the photo you have taken *Photo redacted due technical reasons*")
                 logger.info("Saved photo prompt to history")
 
-        if isinstance(prompt, str):
-            wrapped_prompt = f"Please assess the correct model for the following request, wrapped with double '---' lines: \n---\n---\n{prompt} \n---\n---\n Remember to answer only with one of the following models (haiku, sonnet, opus)"
-        else:
-            wrapped_prompt = "opus"
-        logger.debug(f"Wrapped prompt prepared: {wrapped_prompt[:50]}...")  # Log first 50 chars
         last_vision = vision_event_listener.get_last_event()
         prompt = f"*What you see: {last_vision}* This what what the person in front of you says: \"{prompt}\""
         model = "gpt-4o"
@@ -146,19 +140,7 @@ def main_tau_loop(user_input, vision_event_listener):
         #speech_queue.reset()
         archive_speech()
         logger.info("Generating AI response")
-        for text_type, text in emit_classified_sentences(openai.generate_stream_response(prompt, history, tau_system_prompt, model)):
-            if (text is not None) and (text_type is not None):
-                logger.debug(f"Generated {text_type}: {text[:50]}...")  # Log first 50 chars
-                response += text
-            if text_type == "speech":
-                app_root = Path.cwd()
-                path = f"speech_folder/speech_{speech_index}.mp3"
-                speech_file_path = app_root / path
-                speech_index += 1
-                speech_file_path = openai.speechify(text, speech_file_path)
-                if (path is not None):
-                    #speech_queue.enqueue(path)
-                    logger.debug(f"Enqueued speech file: {speech_file_path}")
+        response = get_model_response(prompt, history, tau_system_prompt, model, logger)
 
         save_to_history("Assistant", response)
         logger.info("Saved assistant response to history")
