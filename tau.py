@@ -9,11 +9,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from modelproviders.openai_api_client import OpenAIService
 from persistency.direct_knowledge import load_direct_knowledge, add_to_direct_knowledge, save_over_direct_knowledge
-from persistency.history import save_to_history, load_history
+from persistency.history import save_to_history, load_history, get_time_since_last
 from services.prompt_service import load_prompt
 from memory.memory_short_term import get_historical_facts, mark_facts_for_deletion
 from memory.memory_service import MemoryService
-from services.actions_service import extract_actions, is_action_supported, parse_action, execute_action
+from action_handler import extract_actions, is_action_supported, parse_action, execute_action
 from ai_service import get_model_response
 
 import asyncio
@@ -24,40 +24,6 @@ from speech_processing import archive_speech
 
 socket_path = "./sockets/tau_hearing_socket"
 
-
-def get_time_since_last(history):
-    logger.debug("Calculating time since last interaction")
-    last_entry = history.strip().split("\n")[-1]
-    timestamp_match = None
-    if "[User]" in last_entry:
-        logger.debug("Last entry was from User, no time calculation needed")
-        return None
-    elif "[Assistant]" in last_entry:
-        timestamp_match = re.search(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', last_entry)
-    if timestamp_match:
-        timestamp_str = timestamp_match.group(1)
-        last_timestamp_obj = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-        time_since_last = datetime.now() - last_timestamp_obj
-        days = time_since_last.days
-        seconds = time_since_last.seconds
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        seconds = (seconds % 60)
-        time_parts = []
-        if days > 0:
-            time_parts.append(f"{days} days")
-        if hours > 0:
-            time_parts.append(f"{hours} hours")
-        if minutes > 0:
-            time_parts.append(f"{minutes} minutes")
-        if seconds > 0 or not time_parts:
-            time_parts.append(f"{seconds} seconds")
-        time_since = ", ".join(time_parts)
-        logger.info(f"Time since last interaction: {time_since}")
-        return time_since
-    else:
-        logger.warning("No timestamp found in last entry")
-        return None
 
 def main_tau_loop(user_input, vision_event_listener):
     next_prompt = None
