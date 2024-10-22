@@ -67,9 +67,9 @@ def main_tau_loop(user_input, vision_event_listener):
                 prompt = raw_prompt
                 save_to_history("User", f"{prompt_prefix} Here is the photo you have taken *Photo redacted due technical reasons*")
                 logger.info("Saved photo prompt to history")
-
         last_vision = vision_event_listener.get_last_event()
-        prompt = f"*What you see: {last_vision}* This what what the person in front of you says: \"{prompt}\""
+        relevant_memories = memory_service.retrieve_relevant_memories(current_context)
+        prompt = f"Relevant memories: {relevant_memories}\n *What you see: {last_vision}*\nThis what you hear: \"{prompt}\""
         model = "gpt-4o"
         speech_index = 0
         response = ""

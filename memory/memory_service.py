@@ -43,7 +43,7 @@ class MemoryService:
         self.pinecone_service.upsert(vectors, namespace)
 
 
-    def do_you_remember(self, query, namespace, top_k=5):
+    def retrieve_relevant_memories(self, query, namespace, top_k=5):
         embedding = embed(query, model="voyage-2", purpose="document")
         results = self.pinecone_service.find(embedding, namespace, top_k)
         #print("Find results:", results)
@@ -62,10 +62,10 @@ if __name__ == "__main__":
     ms.remember("The capital of France is Paris.", "facts")
     ms.remember("The capital of Israel is Jerusalem.", "facts")
     ms.remember_many(["The capital of France is Paris.", "The capital of Israel is Jerusalem."], "facts")
-    remembered_facts = ms.do_you_remember("What is the capital of France?", "facts")
+    remembered_facts = ms.retrieve_relevant_memories("What is the capital of France?", "facts")
     print("Remembered facts:", [(item[0], item[1], item[3], item[4]) for item in remembered_facts], "\n\n")
     forget_response = ms.forget("Paris is the capital of France.", "facts")
     print(forget_response)
-    remembered_facts = ms.do_you_remember("The capital of Israel is Jerusalem.", "facts")
+    remembered_facts = ms.retrieve_relevant_memories("The capital of Israel is Jerusalem.", "facts")
     print("Remembered facts after deletion:", [(item[0], item[1], item[3], item[4]) for item in remembered_facts], "\n\n")
     forget_response = ms.forget("The capital of Israel is Jerusalem.", "facts")
