@@ -28,8 +28,8 @@ fixes**
   - [ ] add more-than-one models uo be used serially, or use different devices (Coral, Sony AI Camera x2, Jetson)
 - [x] Long term fetching: Pull from long term memory into context.
 - [ ] Entity based memory: Add GraphRAG based memory.
-  - [ ] **Learn about GraphRAG, how to implement, etc.**
-  - [ ] Use or implement GraphRAG
+  - [x] Learn about GraphRAG, how to implement, etc.
+  - [ ] **Use or implement GraphRAG**
 - [ ] Advanced voice: Move to ElevenLabs advanced voices.
 - [ ] Introspection: Add Introspection agent for active and background thinking and processing.
 - [ ] Growth: Add nightly finetuning, move to smaller model.
