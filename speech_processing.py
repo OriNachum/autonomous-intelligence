@@ -9,7 +9,7 @@ def archive_speech():
     os.makedirs(archive_folder, exist_ok=True)
 
     # Create a timestamped subfolder
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     timestamped_folder = os.path.join(archive_folder, timestamp)
     os.makedirs(timestamped_folder, exist_ok=True)
 

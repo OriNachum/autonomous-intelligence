@@ -6,6 +6,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+socket_path = "./sockets/tau_hearing_socket"
 
 class EventListener:
     """

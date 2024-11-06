@@ -4,6 +4,8 @@ import selectors
 import logging
 from config import logger  # Ensure logger is imported
 
+socket_path = "./sockets/tau_hearing_socket"
+
 
 sel = selectors.DefaultSelector()
 

@@ -1,5 +1,12 @@
 import os
 import datetime
+import logging
+import re
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+logger.info("Speech Detector application starting...")
 
 HISTORY_FILE = "conversation_history.txt"
 
@@ -35,8 +42,8 @@ def get_time_since_last(history):
         timestamp_match = re.search(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', last_entry)
     if timestamp_match:
         timestamp_str = timestamp_match.group(1)
-        last_timestamp_obj = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-        time_since_last = datetime.now() - last_timestamp_obj
+        last_timestamp_obj = datetime.datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+        time_since_last = datetime.datetime.now() - last_timestamp_obj
         days = time_since_last.days
         seconds = time_since_last.seconds
         hours = seconds // 3600

@@ -1,6 +1,7 @@
 
 import os
 import sys
+from pathlib import Path
 
 if __name__ == "__main__":
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -41,6 +42,8 @@ def emit_classified_sentences(stream):
         yield None,buffer
 
 def get_model_response(prompt, history, tau_system_prompt, model, logger):
+	openai = OpenAIService()
+	response = ""
 	for text_type, text in emit_classified_sentences(openai.generate_stream_response(prompt, history, tau_system_prompt, model)):
 		if (text is not None) and (text_type is not None):
 			logger.debug(f"Generated {text_type}: {text[:50]}...")  # Log first 50 chars

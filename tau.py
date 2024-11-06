@@ -21,10 +21,10 @@ import asyncio
 from config import API_KEY, HISTORY_FILE, SYSTEM_PROMPT_FILE, logger
 from event_handler import setup_socket, handle_events, sel
 from speech_processing import archive_speech
+from services.event_listener import EventListener
 
-socket_path = "./sockets/tau_hearing_socket"
-
-
+logger.info("Initializing log")
+memory_context = "facts"
 def main_tau_loop(user_input, vision_event_listener):
     next_prompt = None
     try:
@@ -68,7 +68,7 @@ def main_tau_loop(user_input, vision_event_listener):
                 save_to_history("User", f"{prompt_prefix} Here is the photo you have taken *Photo redacted due technical reasons*")
                 logger.info("Saved photo prompt to history")
         last_vision = vision_event_listener.get_last_event()
-        relevant_memories = memory_service.retrieve_relevant_memories(current_context)
+        relevant_memories = memory_service.retrieve_relevant_memories(history, memory_context)
         prompt = f"Relevant memories: {relevant_memories}\n *What you see: {last_vision}*\nThis what you hear: \"{prompt}\""
         model = "gpt-4o"
         speech_index = 0
@@ -80,12 +80,12 @@ def main_tau_loop(user_input, vision_event_listener):
 
         save_to_history("Assistant", response)
         logger.info("Saved assistant response to history")
-
+        
         logger.info("Processing historical facts")
         facts = get_historical_facts()
         facts_string = "\n".join(facts)
         add_to_direct_knowledge(facts_string)
-        memory_service.remember_many(facts, "facts")
+        memory_service.remember_many(facts, memory_context)
         deprecated_facts = mark_facts_for_deletion()
         new_facts_string = "\n".join([fact for fact in facts if fact not in deprecated_facts])
         save_over_direct_knowledge(new_facts_string)
@@ -124,6 +124,24 @@ def main_tau_loop(user_input, vision_event_listener):
 
     return next_prompt
 
+def external_event_callback(event_data):
+    """
+    Callback function to handle external events from the EventListener.
+    
+    Args:
+        event_data (str): The data received from the external event.
+    """
+    try:
+        logger.info(f"External event received: {event_data}")
+        
+        # Enqueue the event data for processing in the main loop
+        #external_event_queue.put(event_data)
+        
+        logger.debug("External event enqueued successfully.")
+    except Exception as e:
+        logger.error(f"Error in external_event_callback: {e}", exc_info=True)
+
+
 def main():
     logger.info("Starting main function")
     sock = setup_socket()
@@ -132,7 +150,7 @@ def main():
     gst_socket_path = "/tmp/gst_detection.sock"
     vision_event_listener = EventListener(gst_socket_path, sel, external_event_callback)
 
-    print(f"Listening on {socket_path}")
+    print(f"Listening on {gst_socket_path}")
     event_data = None
     try:
         while True:
@@ -147,7 +165,7 @@ def main():
         vision_event_listener.close()
 
         sel.close()
-        os.remove(socket_path)
+        os.remove(gst_socket_path)
         logger.info("Application shutdown complete")
 
 if __name__ == "__main__":
