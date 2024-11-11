@@ -1,4 +1,4 @@
-# Tau - a personal friendly assistant
+# Tau - The Autonomous, Understanding robot
 
 This is Tau!  
 Tau is inspired by Pi.AI and if you havent tried Pi yet, I strongly encourage you to try.  
