@@ -23,7 +23,7 @@ If you fork - delete history and facts to reset their knowledge and embark the j
   - [x] Find a suitable, working architecture to wrap hailo as a service
   - [x] Implement and improve the wrapper
   - [ ] **Pending Hailo review and my
-fixes**
+fixes** (update, will be integrates as community-examples, confirmed by Hailo)
   - [x] Integrate in the system, allow Tau to recognize faces
   - [ ] add more-than-one models uo be used serially, or use different devices (Coral, Sony AI Camera x2, Jetson)
 - [x] Long term fetching: Pull from long term memory into context.
@@ -31,6 +31,9 @@ fixes**
   - [x] Learn about GraphRAG, how to implement, etc.
   - [ ] **Use or implement GraphRAG**
 - [ ] Advanced voice: Move to ElevenLabs advanced voices.
+- [ ] Tool use: add frameqork for actions:
+  - [ ] Open live camera feed action
+  - [ ] Snap a picture
 - [ ] Introspection: Add Introspection agent for active and background thinking and processing.
 - [ ] Growth: Add nightly finetuning, move to smaller model.
 
