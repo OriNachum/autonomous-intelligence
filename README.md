@@ -31,7 +31,8 @@ fixes** (update, will be integrates as community-examples, confirmed by Hailo)
   - [x] Learn about GraphRAG, how to implement, etc.
   - [ ] **Use or implement GraphRAG**
 - [ ] Advanced voice: Move to ElevenLabs advanced voices.
-- [ ] Tool use: add frameqork for actions:
+- [ ] Tool use
+  - [ ] Add frameqork for actions:
   - [ ] Open live camera feed action
   - [ ] Snap a picture
 - [ ] Introspection: Add Introspection agent for active and background thinking and processing.
