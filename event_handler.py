@@ -3,7 +3,7 @@ import socket
 import selectors
 import logging
 from config import logger  # Ensure logger is imported
-
+from speech_processing import archive_speech
 socket_path = "./sockets/tau_hearing_socket"
 
 

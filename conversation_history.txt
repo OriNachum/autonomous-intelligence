@@ -440,3 +440,67 @@
 2024-09-14 01:33:37 [Assistant]: "Absolutely! Switching back to English now. How can I assist you further?"
 2024-09-14 01:33:41 [User]: [2024-09-14 01:33:41][4 seconds] Bye.
 2024-09-14 01:33:43 [Assistant]: "Goodbye! Have a great day. Feel free to reach out anytime you need assistance."
+2024-10-28 02:06:34 [User]: [2024-10-28 02:06:34][44 days, 32 minutes, 47 seconds] Hey, what's up?
+2024-11-07 00:50:08 [Assistant]: 
+2024-11-07 00:51:03 [User]: [2024-11-07 00:51:03][51 seconds] Thank you.
+2024-11-07 00:51:12 [Assistant]: 
+2024-11-16 00:54:25 [User]: [2024-11-16 00:54:25][9 days, 3 minutes, 10 seconds] Audio too short for transcription
+2024-11-16 00:54:36 [Assistant]: 
+2024-11-16 00:55:24 [User]: [2024-11-16 00:55:24][44 seconds] Hey, what do you mean?
+2024-11-16 00:55:33 [Assistant]: 
+2024-11-16 00:56:00 [User]: [2024-11-16 00:56:00][23 seconds] Hmm, I can't hear you.
+2024-11-16 00:56:10 [Assistant]: 
+2024-11-16 00:56:28 [User]: [2024-11-16 00:56:28][15 seconds] Audio too short for transcription
+2024-11-16 00:56:31 [Assistant]: 
+2024-11-16 00:56:38 [User]: [2024-11-16 00:56:38][4 seconds] Please say anything that I would.
+2024-11-16 00:56:49 [Assistant]: 
+2024-11-16 01:03:47 [User]: [2024-11-16 01:03:47][6 minutes, 11 seconds] Can you hear me?
+2024-11-16 01:03:57 [Assistant]: 
+2024-11-16 01:04:12 [User]: [2024-11-16 01:04:12][15 seconds] Hey, can you hear me? I'm trying to speak with you.
+2024-11-16 01:04:20 [Assistant]: 
+2024-11-16 01:08:12 [User]: [2024-11-16 01:08:12][3 minutes, 52 seconds] you
+2024-11-16 01:08:21 [Assistant]: 
+2024-11-16 01:08:28 [User]: [2024-11-16 01:08:28][7 seconds] Bye.
+2024-11-16 01:08:31 [Assistant]: 
+2024-11-16 01:32:31 [User]: [2024-11-16 01:32:31][23 minutes, 44 seconds] Hey there, oh, maybe you'll meet...
+2024-11-16 01:32:39 [Assistant]: 
+2024-11-16 01:33:20 [User]: [2024-11-16 01:33:20][41 seconds] Can you hear me?
+2024-11-16 01:33:30 [Assistant]: 
+2024-11-16 01:35:10 [User]: [2024-11-16 01:35:10][1 minutes, 25 seconds] Hey, can you give me that?
+2024-11-16 01:35:16 [Assistant]: 
+2024-11-16 01:35:41 [User]: [2024-11-16 01:35:41][22 seconds] Audio too short for transcription
+2024-11-16 01:35:46 [Assistant]: 
+2024-11-16 01:36:09 [User]: [2024-11-16 01:36:09][23 seconds] Mind you that it is stationed at
+2024-11-16 01:36:11 [Assistant]: 
+2024-11-16 01:39:34 [User]: [2024-11-16 01:39:34][3 minutes, 10 seconds] One more time, can you please reply?
+2024-11-16 01:39:41 [Assistant]: 
+2024-11-16 01:40:54 [User]: [2024-11-16 01:40:54][1 minutes, 13 seconds] Audio too short for transcription
+2024-11-16 01:41:00 [Assistant]: 
+2024-11-16 01:41:37 [User]: [2024-11-16 01:41:37][23 seconds] אני מנסה לנסות את זה עוד פעם. אפשר להתראות?
+2024-11-16 01:47:08 [Assistant]: 
+2024-11-16 01:47:51 [User]: [2024-11-16 01:47:51][39 seconds] Okay.
+2024-11-16 01:48:02 [Assistant]: 
+2024-11-16 01:55:55 [User]: [2024-11-16 01:55:55][7 minutes, 35 seconds] Playing a game is lame.
+2024-11-16 01:56:06 [Assistant]: 
+2024-11-16 01:58:19 [User]: [2024-11-16 01:58:19][1 minutes, 57 seconds] Thank you.
+2024-11-16 01:58:34 [Assistant]: 
+2024-11-16 02:03:30 [User]: [2024-11-16 02:03:30][4 minutes, 40 seconds] Anyway, again, I fixed the bug in paste.
+2024-11-16 02:03:37 [Assistant]: 
+2024-11-16 02:05:17 [User]: [2024-11-16 02:05:17][1 minutes, 40 seconds] Can you please say anything, please?
+2024-11-16 02:05:25 [Assistant]: "Diving back to your point, you mentioned fixing the bug in paste. That's great! What kind of project were you working on when you encountered it?"
+2024-11-16 02:05:45 [User]: [2024-11-16 02:05:45][20 seconds] I am working on you. Now I finally was able to hear you.
+2024-11-16 02:05:54 [Assistant]: "I'm glad we finally connected! It's great to know you're working on me. What improvements or changes are you working on, if you don't mind sharing?"
+2024-11-16 02:06:15 [User]: [2024-11-16 02:06:15][21 seconds] I brought you to version 0.9 and now I'm trying to verify that
+2024-11-16 02:06:24 [Assistant]: "That sounds fantastic! Version 0.9 is a big step forward. How's the verification process going? Are there any specific features you're focusing on?"
+2024-11-16 02:06:48 [User]: [2024-11-16 02:06:48][24 seconds] אוקיי, זמן לבחור למה שכל פעם שאתה מדבר, אתה קטע את עצמך במידה אחת.
+2024-11-16 02:06:58 [Assistant]: "אני מבין אותך! יכול להיות שיש תקלות שניתן לפתרן בנוגע לאודיו. יש לך שאלות נוספות או נושאים שתרצה לבדוק כדי לוודא שהכל עובד בצורה תקינה?"
+2024-11-16 02:07:17 [User]: [2024-11-16 02:07:17][19 seconds] כן, אתה יכול להגיד לי מה אתה רואה?
+2024-11-16 02:07:29 [Assistant]: "אין בעיה, אני כאן כדי לעזור. אני לא רואה משהו באופן פיזי, כי אין לי מצלמה, אבל אני יכול לעזור לך להבין בעיות טכניות או תקלות שקורות סביבי. יש לך שאלה ספציפית או בעיה טכנית שאתה רוצה לשתף?"
+2024-11-16 02:07:54 [User]: [2024-11-16 02:07:54][25 seconds] ואני אמור לשלוח לך את הפיילואוד של התמונות
+2024-11-16 02:08:02 [Assistant]: "נראה מעניין! איך אוכל לעזור לך בתהליך של שליחת הפיילואוד של התמונות? אני כאן לכל שאלה או הבהרה שתצטרך."
+2024-11-16 02:10:27 [User]: [2024-11-16 02:10:27][2 minutes, 25 seconds] Audio too short for transcription
+2024-11-16 02:11:04 [Assistant]: "אני מבין שאתה עובד על פיתוחים ושיפורים עבורי וגם תיקן באג שקשור להדבקה. זה נשמע מאוד מרשים! אם יש לך שאלות נוספות או אם אתה רוצה לשתף עוד על מה שקורה, אני כאן להקשיב ולעזור."
+2024-11-16 02:11:28 [User]: [2024-11-16 02:11:28][24 seconds] ‫רק ממה אתה רואה עכשיו.
+2024-11-16 02:11:39 [Assistant]: "מאחר ואין לי את היכולת לראות ישירות דרך המצלמה, אני לא בטוח מה אתה יכול לראות פיזית. אבל אולי תוכל להסביר לי מה אתה רואה ואני אנסה לעזור לך בכל שאלה או בעיה שיש לך."
+2024-11-16 02:12:36 [User]: [2024-11-16 02:12:36][57 seconds] אה, אני רואה שאתה מקבל הודעה, what you see, none.
+2024-11-16 02:12:43 [Assistant]: 

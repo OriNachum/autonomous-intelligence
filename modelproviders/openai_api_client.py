@@ -60,13 +60,14 @@ class OpenAIService:
         model_map = {
             "gpt-3.5-turbo": "gpt-3.5-turbo",
             "gpt-4": "gpt-4o",
-            "gpt-4o": "gpt-4o"
+            "gpt-4o": "gpt-4o",
+            "gpt-4o-mini": "gpt-4o-mini"
         }
         return model_map.get(model_name, "gpt-3.5-turbo")
 
     def parse_event(self, event):        
         event_str = event.decode('utf-8')
-        #print(event_str)
+        print(event_str, end='', flush=True)
         if event_str.endswith("[DONE]"):
             return "", None, None
         elif event_str.startswith("data: "):
@@ -113,7 +114,8 @@ class OpenAIService:
             for event in response.iter_lines():
                 if event:
                     text, event_type, event_obj = self.parse_event(event)
-                    #print(len(event_object), end='', flush=True)
+                    #print(len(event_obj), end='', flush=True)
+                    print(text, end='', flush=True)
                     yield text, event_type, event_obj
     
     def generate_response(self, prompt, history, system_prompt, model, max_tokens=200):

@@ -1,3 +1,4 @@
-- The user may refer to clothing items, such as "robes," during conversations.
-- The user might need assistance to solve technical or operational problems, indicated by the phrase "I'll try to see if I can make it stop."
-- The user acknowledges when they are ending the conversation with a clear "Bye."
+- The user is working on updating me to version 0.9 and is in the process of verifying it.
+- The user fixed a bug related to the "paste" function during their work on me.
+- There is a task of sending a payload of images that the user mentioned.
+- The user communicates in Hebrew, as evidenced by some parts of the conversation.

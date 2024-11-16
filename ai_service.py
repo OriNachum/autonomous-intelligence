@@ -16,22 +16,27 @@ def emit_classified_sentences(stream):
     within_quote = False
     buffer = ""
     for char,_,_ in stream:
+        print(char)
         if (char is None):
             continue
         started_within_asterisk = within_asterisk
         started_within_quote = within_quote
         if '*' in char:
+            print("found *")
             within_asterisk = not within_asterisk
         elif '"' in char:
+            print("found \"")
             within_quote = not within_quote
 
         if not within_quote:
             if started_within_asterisk and not within_asterisk:
+                print(buffer)
                 yield "action", f"{buffer}{char}"
                 buffer = ""
                     
         if not within_asterisk:
             if started_within_quote and not within_quote:
+                print(buffer)
                 yield "speech", f"{buffer}{char}"
                 buffer = ""
         if within_asterisk or within_quote:
@@ -42,22 +47,23 @@ def emit_classified_sentences(stream):
         yield None,buffer
 
 def get_model_response(prompt, history, tau_system_prompt, model, logger):
-	openai = OpenAIService()
-	response = ""
-	for text_type, text in emit_classified_sentences(openai.generate_stream_response(prompt, history, tau_system_prompt, model)):
-		if (text is not None) and (text_type is not None):
-			logger.debug(f"Generated {text_type}: {text[:50]}...")  # Log first 50 chars
-			response += text
-		if text_type == "speech":
-			app_root = Path.cwd()
-			path = f"speech_folder/speech_{speech_index}.mp3"
-			speech_file_path = app_root / path
-			speech_index += 1
-			speech_file_path = openai.speechify(text, speech_file_path)
-			if (path is not None):
-				#speech_queue.enqueue(path)
-				logger.debug(f"Enqueued speech file: {speech_file_path}")
-	return response
+    openai = OpenAIService()
+    response = ""
+    speech_index = 0
+    for text_type, text in emit_classified_sentences(openai.generate_stream_response(prompt, history, tau_system_prompt, model)):
+        if (text is not None) and (text_type is not None):
+            logger.debug(f"Generated {text_type}: {text[:50]}...")  # Log first 50 chars
+            response += text
+        if text_type == "speech":
+            app_root = Path.cwd()
+            path = f"speech_folder/speech_{speech_index}.mp3"
+            speech_file_path = app_root / path
+            speech_index += 1
+            speech_file_path = openai.speechify(text, speech_file_path)
+            if (path is not None):
+                #speech_queue.enqueue(path)
+                logger.debug(f"Enqueued speech file: {speech_file_path}")
+    return response
 
 
 # Example usage:
@@ -67,7 +73,7 @@ def get_model_response(prompt, history, tau_system_prompt, model, logger):
 
 if __name__ == "__main__":
     openai = OpenAIService()
-    for text_type,text in emit_classified_sentences(openai.generate_stream_response("I wave at the shopkeeper",  [], "You are a dnd dungeon master. You reply only as characters with * for action and \" for words. Only once of each type of message.", "gpt-3.5-turbo")):
+    for text_type,text in emit_classified_sentences(openai.generate_stream_response("I wave at the shopkeeper",  [], "You are a dnd dungeon master and you act as a character. You reply only as a character with (* for action and \" for spoken words by your character. Finish one type of message before continuing to the next type. Avoid Asterisk inside quotations or otherwise. Only once of each type of message. Example: *waves* \"Hi there, hello!\"", "gpt-4o-mini")):
         if (text is not None) and (text_type is not None):
             print(f"{text_type}: {text}", flush=True)
     print("\n\n")

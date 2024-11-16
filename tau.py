@@ -75,9 +75,9 @@ def main_tau_loop(user_input, vision_event_listener):
         response = ""
         #speech_queue.reset()
         archive_speech()
-        logger.info("Generating AI response")
+        logger.info(f"Generating AI response for prompt:\n {prompt}")
         response = get_model_response(prompt, history, tau_system_prompt, model, logger)
-
+        logger.info(f"Assistant Response is:\n{response}\n\n---\n") 
         save_to_history("Assistant", response)
         logger.info("Saved assistant response to history")
         
