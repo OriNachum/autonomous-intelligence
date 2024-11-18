@@ -46,8 +46,8 @@ class MemoryService:
     def retrieve_relevant_memories(self, query, namespace, top_k=5):
         embedding = embed(query, model="voyage-2", purpose="document")
         results = self.pinecone_service.find(embedding, namespace, top_k)
-        #print("Find results:", results)
-        remembered_facts = [item.metadata.text for item in results.matches]
+        #print("Find results:", [item.metadata["text"] for item in results.matches])
+        remembered_facts = [item.metadata["text"] for item in results.matches]
         return remembered_facts
 
     def forget(self, fact, namespace):

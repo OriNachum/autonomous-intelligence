@@ -1,4 +1,0 @@
-- The user is working on updating me to version 0.9 and is in the process of verifying it.
-- The user fixed a bug related to the "paste" function during their work on me.
-- There is a task of sending a payload of images that the user mentioned.
-- The user communicates in Hebrew, as evidenced by some parts of the conversation.
