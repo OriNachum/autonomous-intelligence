@@ -1,6 +1,7 @@
 import socket
 import selectors
 import logging
+import threading
 
 # Set up the logger
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +27,8 @@ class EventListener:
         self.callback = callback
         self.client_socket = None
         self.last_event = None  # Store the last event data
+        self.running = False  # Flag to control the thread
+        self.thread = None  # Thread for the event loop
         self._connect()
 
     def _connect(self):
@@ -68,14 +71,66 @@ class EventListener:
             self.selector.unregister(conn)
             conn.close()
 
+    def start(self):
+        """Starts the event listener loop in a separate thread."""
+        if self.client_socket:
+            self.running = True
+            self.thread = threading.Thread(target=self._run, daemon=True)
+            self.thread.start()
+            logger.info("Event listener thread started")
+
+    def _run(self):
+        """The main loop running in a thread to handle events."""
+        while self.running:
+            events = self.selector.select(timeout=1)
+            for key, _ in events:
+                callback = key.data
+                callback(key.fileobj)
+
+    def stop(self):
+        """Stops the event listener thread."""
+        self.running = False
+        if self.thread:
+            self.thread.join()
+            logger.info("Event listener thread stopped")
+
     def get_last_event(self):
         """Returns the last received event data."""
         return self.last_event
 
     def close(self):
         """Closes the client socket and unregisters it from the selector."""
+        self.stop()
         if self.client_socket:
             logger.info("Closing external event listener socket")
             self.selector.unregister(self.client_socket)
             self.client_socket.close()
             self.client_socket = None
+            
+#import selectors
+
+def handle_event(data):
+    """Callback to handle incoming event data."""
+    print(f"Received event: {data}")
+
+def main():
+    """Main function to initialize and run the EventListener."""
+    socket_path = "./sockets/tau_hearing_socket"
+    selector = selectors.DefaultSelector()
+    event_listener = EventListener(socket_path, selector, handle_event)
+
+    try:
+        event_listener.start()  # Start the event listener in a thread
+        print("Event listener is running. Press Ctrl+C to stop.")
+        
+        while True:
+            last_event = event_listener.get_last_event()
+            if last_event:
+                print(f"Last Event: {last_event}")
+    except KeyboardInterrupt:
+        print("Stopping the listener...")
+    finally:
+        event_listener.close()
+
+if __name__ == "__main__":
+    main()
