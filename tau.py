@@ -149,7 +149,7 @@ def main():
     # Initialize EventListener for external events
     gst_socket_path = "/tmp/gst_detection.sock"
     vision_event_listener = EventListener(gst_socket_path, sel, external_event_callback)
-
+    vision_event_listener.start()
     print(f"Listening on {gst_socket_path}")
     event_data = None
     try:
