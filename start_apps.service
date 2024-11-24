@@ -1,0 +1,14 @@
+[Unit]
+Description=Start Multiple Applications on Startup
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /home/pi/start_apps.sh
+Restart=always
+User=pi
+Environment=DISPLAY=:0
+WorkingDirectory=/home/pi
+
+[Install]
+WantedBy=multi-user.target
