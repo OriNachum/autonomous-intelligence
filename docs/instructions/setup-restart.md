@@ -6,7 +6,7 @@ Ensure the file start_apps.sh is executable:
 
 ## update the service file
 
-Create a `service_apps.service` at `/etc/systemmd/system/start_apps.service`
+Create a `service_apps.service` at `/etc/systemd/system/start_apps.service`
 ### Content: 
 ```service
 [Unit]
@@ -15,7 +15,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash /home/pi/start_apps.sh
+ExecStart=/bin/bash /home/tau/git/autonomous-intelligence/start_apps.sh
 Restart=always
 User=pi
 Environment=DISPLAY=:0
