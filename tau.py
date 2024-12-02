@@ -17,6 +17,7 @@ from action_handler import extract_actions, is_action_supported, parse_action, e
 from ai_service import get_model_response
 
 import asyncio
+import threading  # Added import
 
 from config import API_KEY, HISTORY_FILE, SYSTEM_PROMPT_FILE, logger
 from event_handler import setup_socket, handle_events, sel
@@ -61,11 +62,11 @@ def main_tau_loop(user_input, vision_event_listener):
                 prompt_prefix = f"[{current_datetime}]"
             if isinstance(raw_prompt, str):
                 prompt = f"{prompt_prefix} {raw_prompt}"
-                save_to_history("User", prompt)
+                threading.Thread(target=save_to_history, args=("User", prompt)).start()
                 logger.info(f"Saved user prompt to history: {prompt[:50]}...")  # Log first 50 chars
             else:
                 prompt = raw_prompt
-                save_to_history("User", f"{prompt_prefix} Here is the photo you have taken *Photo redacted due technical reasons*")
+                threading.Thread(target=save_to_history, args=("User", f"{prompt_prefix} Here is the photo you have taken *Photo redacted due technical reasons*")).start()
                 logger.info("Saved photo prompt to history")
         last_vision = vision_event_listener.get_last_event()
         relevant_memories = memory_service.retrieve_relevant_memories(history, memory_context)
@@ -78,17 +79,16 @@ def main_tau_loop(user_input, vision_event_listener):
         logger.info(f"Generating AI response for prompt:\n {prompt}")
         response = get_model_response(prompt, history, tau_system_prompt, model, logger)
         logger.info(f"Assistant Response is:\n{response}\n\n---\n") 
-        save_to_history("Assistant", response)
-        logger.info("Saved assistant response to history")
+        threading.Thread(target=save_to_history, args=("Assistant", response)).start()
         
         logger.info("Processing historical facts")
         facts = get_historical_facts()
         facts_string = "\n".join(facts)
-        add_to_direct_knowledge(facts_string)
-        memory_service.remember_many(facts, memory_context)
-        deprecated_facts = mark_facts_for_deletion()
-        new_facts_string = "\n".join([fact for fact in facts if fact not in deprecated_facts])
-        save_over_direct_knowledge(new_facts_string)
+        threading.Thread(target=lambda: (
+            add_to_direct_knowledge(facts_string),
+            memory_service.remember_many(facts, memory_context),
+            save_over_direct_knowledge("\n".join([fact for fact in facts if fact not in deprecated_facts]))
+        )).start()
         logger.debug("Historical facts processed and saved")
 
         logger.info("Extracting and executing actions")
