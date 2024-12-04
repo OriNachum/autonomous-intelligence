@@ -3,13 +3,13 @@ import os
 import datetime
 import threading
 
-from memory_short_term import MemoryShortTerm
 
 if __name__ == "__main__":
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if parent_dir not in sys.path:
         sys.path.append(parent_dir)
 
+from memory.memory_short_term import MemoryShortTerm
 from persistency.pinecone_client import PineconeService
 from persistency.voyageai_client import embed, embed_many
 from persistency.direct_knowledge import add_to_direct_knowledge, save_over_direct_knowledge
