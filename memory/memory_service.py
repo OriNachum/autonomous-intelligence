@@ -1,18 +1,25 @@
 import sys
 import os
 import datetime
+import threading
+
+from memory_short_term import MemoryShortTerm
 
 if __name__ == "__main__":
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if parent_dir not in sys.path:
         sys.path.append(parent_dir)
-        
+
 from persistency.pinecone_client import PineconeService
 from persistency.voyageai_client import embed, embed_many
+from persistency.direct_knowledge import add_to_direct_knowledge, save_over_direct_knowledge
+from persistency.history import save_to_history
+from config import logger
 
 class MemoryService:
     def __init__(self):
         self.pinecone_service = PineconeService()
+        self.memory_short_term = MemoryShortTerm()
 
     def remember(self, fact, namespace):
         model = "voyage-2"
@@ -55,6 +62,23 @@ class MemoryService:
         ids = [item[0] for item in remembered_facts if item[1] > 0.95]        
         response = self.pinecone_service.remove(ids, namespace)
         return response
+
+
+    def _process_response(self, response, memory_context):
+        save_to_history("Assistant", response)
+        
+        logger.info("Processing historical facts")
+        facts = self.memory_short_term.get_historical_facts()
+        facts_string = "\n".join(facts)
+        add_to_direct_knowledge(facts_string),
+        self.remember_many(facts, memory_context),
+        save_over_direct_knowledge("\n".join([fact for fact in facts if fact not in deprecated_facts]))
+        self.memory_short_term.mark_facts_for_deletion()
+        logger.debug("Historical facts processed and saved")
+
+    def process_response_async(self, response, memory_context):
+        threading.Thread(target=self._process_response, args=(self, response, memory_context)).start()
+        
 
 # Example usage:
 if __name__ == "__main__":

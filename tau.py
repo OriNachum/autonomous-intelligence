@@ -8,10 +8,10 @@ from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 from modelproviders.openai_api_client import OpenAIService
-from persistency.direct_knowledge import load_direct_knowledge, add_to_direct_knowledge, save_over_direct_knowledge
-from persistency.history import save_to_history, load_history, get_time_since_last
+from persistency.direct_knowledge import load_direct_knowledge
+from persistency.history import load_history, get_time_since_last
 from services.prompt_service import load_prompt
-from memory.memory_short_term import get_historical_facts, mark_facts_for_deletion
+from memory.memory_short_term import MemoryShortTerm
 from memory.memory_service import MemoryService
 from action_handler import extract_actions, is_action_supported, parse_action, execute_action
 from ai_service import get_model_response
@@ -23,6 +23,7 @@ from config import API_KEY, HISTORY_FILE, SYSTEM_PROMPT_FILE, logger
 from event_handler import setup_socket, handle_events, sel
 #from speech_processing import archive_speech
 from services.event_listener import EventListener
+from persistency.history import save_to_history
 
 logger.info("Initializing log")
 memory_context = "facts"
@@ -32,6 +33,7 @@ def main_tau_loop(user_input, vision_event_listener):
         logger.info(f"Starting main Tau loop with user input {user_input}")
         logger.debug("Speech queue loaded")
         memory_service = MemoryService()
+        memory_short_term = MemoryShortTerm()
         logger.debug("Memory loaded")
         openai = OpenAIService()
         logger.debug("OpenAI service loaded")
@@ -79,18 +81,7 @@ def main_tau_loop(user_input, vision_event_listener):
         logger.info(f"Generating AI response for prompt:\n {prompt}")
         response = get_model_response(prompt, history, tau_system_prompt, model, logger)
         logger.info(f"Assistant Response is:\n{response}\n\n---\n") 
-        threading.Thread(target=save_to_history, args=("Assistant", response)).start()
-        
-        logger.info("Processing historical facts")
-        facts = get_historical_facts()
-        facts_string = "\n".join(facts)
-        threading.Thread(target=lambda: (
-            add_to_direct_knowledge(facts_string),
-            memory_service.remember_many(facts, memory_context),
-            save_over_direct_knowledge("\n".join([fact for fact in facts if fact not in deprecated_facts]))
-        )).start()
-        logger.debug("Historical facts processed and saved")
-
+        memory_service.process_response_async(response, memory_context)
         logger.info("Extracting and executing actions")
         automated_prompt = None
         actions_list = extract_actions(response)
