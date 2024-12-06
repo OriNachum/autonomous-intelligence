@@ -12,7 +12,7 @@ source .venv/bin/activate
 # Install required packages
 echo "Installing dependencies..."
 sudo apt-get update
-sudo apt-get install nmap portaudio19-dev python3-pyaudio
+sudo apt-get install nmap portaudio19-dev python3-pyaudio espeak
 pip3 install --upgrade pip
 pip3 install -r requirements.txt
 
