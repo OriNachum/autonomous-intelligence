@@ -72,7 +72,7 @@ def main_tau_loop(user_input, vision_event_listener):
                 logger.info("Saved photo prompt to history")
         last_vision = vision_event_listener.get_last_event()
         relevant_memories = memory_service.retrieve_relevant_memories(history, memory_context)
-        prompt = f"*As we speak, you recall these bits, thank to your RAG system:\n{relevant_memories}*\n\n *In front of you, this What you see using your AI Camera: {last_vision}*\n\n*And this what you hear, using speech to text* \"{prompt}\""
+        prompt = f"*From STT*: \"{prompt}\"\n\n*In front of you, this What you see using your Camera and Computer Vision: {last_vision}*\n\n*As we speak, you recall these bits, thank to your RAG system:\n{relevant_memories}*"
         model = "gpt-4o"
         speech_index = 0
         response = ""
