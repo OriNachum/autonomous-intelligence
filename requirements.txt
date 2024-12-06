@@ -22,3 +22,4 @@ webrtcvad
 scipy
 vosk
 #tf-runtimex
+huggingface_hub
