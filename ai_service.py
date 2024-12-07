@@ -3,6 +3,7 @@ import os
 import sys
 from pathlib import Path
 
+
 if __name__ == "__main__":
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if parent_dir not in sys.path:
@@ -10,6 +11,7 @@ if __name__ == "__main__":
 
 #from modelproviders.anthropic_api_client import generate_stream_response
 from modelproviders.openai_api_client import OpenAIService
+from modelproviders.speechify_espeak import SpeechService
 
 def emit_classified_sentences(stream):
     within_asterisk = False
@@ -48,6 +50,7 @@ def emit_classified_sentences(stream):
 
 def get_model_response(prompt, history, tau_system_prompt, model, logger):
     openai = OpenAIService()
+    speech_engine = SpeechService()
     response = ""
     speech_index = 0
     for text_type, text in emit_classified_sentences(openai.generate_stream_response(prompt, history, tau_system_prompt, model)):
@@ -59,7 +62,7 @@ def get_model_response(prompt, history, tau_system_prompt, model, logger):
             path = f"speech_folder/speech_{speech_index}.mp3"
             speech_file_path = app_root / path
             speech_index += 1
-            speech_file_path = openai.speechify(text, speech_file_path)
+            speech_file_path = speech_engine.speechify(text, speech_file_path)
             if (path is not None):
                 #speech_queue.enqueue(path)
                 logger.debug(f"Enqueued speech file: {speech_file_path}")
