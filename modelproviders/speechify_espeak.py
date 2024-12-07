@@ -27,7 +27,7 @@ class SpeechService:
 
 if __name__ == "__main__":
     service = SpeechService()
-    sample_text = 'Hello, "This should be spoken." And this should not be.'
+    sample_text = 'Hello, "This part of the sentence should be spoken." And this should not be.'
     output_path = "output.wav"
     result = service.speechify(sample_text, output_path)
     if result:
