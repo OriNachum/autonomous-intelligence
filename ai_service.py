@@ -10,7 +10,8 @@ if __name__ == "__main__":
         sys.path.append(parent_dir)
 
 #from modelproviders.anthropic_api_client import generate_stream_response
-from modelproviders.openai_api_client import OpenAIService
+#from modelproviders.openai_api_client import OpenAIService
+from modelproviders.groq_client import GroqService
 from modelproviders.speechify_espeak import SpeechService
 
 def emit_classified_sentences(stream):
@@ -49,7 +50,7 @@ def emit_classified_sentences(stream):
         yield None,buffer
 
 def get_model_response(prompt, history, tau_system_prompt, model, logger):
-    openai = OpenAIService()
+    openai = GroqService()
     speech_engine = SpeechService()
     response = ""
     speech_index = 0
