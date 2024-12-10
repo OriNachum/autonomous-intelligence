@@ -73,7 +73,8 @@ def main_tau_loop(user_input, vision_event_listener):
         last_vision = vision_event_listener.get_last_event()
         relevant_memories = memory_service.retrieve_relevant_memories(history, memory_context)
         prompt = f"*From STT*: \"{prompt}\"\n\n*In front of you, this What you see using your Camera and Computer Vision: {last_vision}*\n\n*As we speak, you recall these bits, thank to your RAG system:\n{relevant_memories}*"
-        model = "llama-3.2-3b" #"gpt-4o"
+        #model = "llama-3.2-3b"
+        model = "gpt-4o"
         speech_index = 0
         response = ""
         #speech_queue.reset()

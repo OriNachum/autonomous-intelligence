@@ -72,12 +72,12 @@ class MemoryService:
         facts_string = "\n".join(facts)
         add_to_direct_knowledge(facts_string),
         self.remember_many(facts, memory_context),
+        deprecated_facts = self.memory_short_term.mark_facts_for_deletion()
         save_over_direct_knowledge("\n".join([fact for fact in facts if fact not in deprecated_facts]))
-        self.memory_short_term.mark_facts_for_deletion()
         logger.debug("Historical facts processed and saved")
 
     def process_response_async(self, response, memory_context):
-        threading.Thread(target=self._process_response, args=(self, response, memory_context)).start()
+        threading.Thread(target=self._process_response, args=(response, memory_context)).start()
         
 
 # Example usage:

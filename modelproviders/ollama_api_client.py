@@ -25,7 +25,7 @@ class OllamaService:
             "Ngrok-Version": "2"
         }
         try:
-            response = requests.get(f"{ngrok_api_url}/endpoints", headers=headers, verify=False)
+            response = requests.get(f"{ngrok_api_url}/endpoints", headers=headers)
             if response.status_code == 200:
                 endpoints = response.json()
                 return endpoints["endpoints"][0].get('public_url', "https://default-ollama-url.com")  # Fallback URL
@@ -38,7 +38,8 @@ class OllamaService:
 
     def get_model_id_by_name(self, model_name):
         model_map = {
-            "ollama-model": "llama3.2:3b",
+            "llama-3.2-3b": "llama3.2:3b",
+            "llama-3.2-1b": "llama3.2:1b",
             # Add other model mappings if necessary
         }
         return model_map.get(model_name, "ollama/ollama-model")
@@ -54,10 +55,18 @@ class OllamaService:
         }
         
         if use_chat:
-            messages = history.copy()
+            messages = []
+            for entry in history.split("\n"):
+                if "[User]" in entry:
+                    user_message = entry.split("[User]: ")[1]
+                    messages.append({"role": "user", "content": user_message})
+                elif "[Assistant]" in entry:
+                    assistant_message = entry.split("[Assistant]: ")[1]
+                    messages.append({"role": "assistant", "content": assistant_message})
+        
+            messages.append({"role": "user", "content": prompt})
             if system_prompt:
                 messages.insert(0, {"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
             payload["messages"] = messages  # Added messages to payload
         else:
             payload["system"] = system_prompt
@@ -86,33 +95,35 @@ class OllamaService:
         }
         
         if use_chat:
-            messages = history.copy()
+            messages = []
+            for entry in history.split("\n"):
+                if "[User]" in entry:
+                    user_message = entry.split("[User]: ")[1]
+                    messages.append({"role": "user", "content": user_message})
+                elif "[Assistant]" in entry:
+                    assistant_message = entry.split("[Assistant]: ")[1]
+                    messages.append({"role": "assistant", "content": assistant_message})
+        
+            messages.append({"role": "user", "content": prompt})
             # place system prompt at the beginning of the messages list, push the rest to next index
             # if system_prompt is provided 
             if system_prompt:
                 messages.insert(0, {"role": "system", "content": system_prompt})
                 
-            messages.append({"role": "user", "content": prompt})
             payload["messages"] = messages  # Added messages to payload
         else:
             payload["system"] = system_prompt
             payload["messages"] = prompt  # Add history to payload for generate endpoint
         
         try:
-            response = requests.post(f"{self.api_url}/{endpoint}", headers=self.headers, json=payload, stream=True, verify=False)
+            response = requests.post(f"{self.api_url}/{endpoint}", headers=self.headers, json=payload, stream=True)
             print(f"Status Code: {response.status_code}")            
             if response.status_code == 200:
                 for line in response.iter_lines():
-                    if line:
-                        decoded_line = json.loads(line.decode('utf-8'))
-                        if use_chat:
-                            choice = decoded_line.get('message', [{}])["content"]
-                            print(choice, end='', flush=True)
-                            yield choice
-                        else:
-                            text = decoded_line.get("response", "")
-                            print(text, end='', flush=True)
-                            yield text
+                    text, event_type, event_obj = self.parse_event(line)
+                    #print(len(event_obj), end='', flush=True)
+                    print(text, end='', flush=True)
+                    yield text, event_type, event_obj
             else:
                 print(f"Request failed with status code {response.status_code}")
                 print(response.text)
@@ -122,6 +133,28 @@ class OllamaService:
     def transcribe_audio(self, audio_data, rate=16000):
         # Implement audio transcription if Ollama API offers it
         raise NotImplementedError("Audio transcription is not supported for Ollama API.")
+
+    def parse_event(self, event):        
+        event_str = event.decode('utf-8')
+        print(event_str, end='', flush=True)
+        if event_str.endswith("[DONE]"):
+            return "", None, None
+        elif event_str.startswith("data: "):
+            event_str = event_str[6:]
+            try:
+                object_response = json.loads(event_str)
+                first_choice = object_response["choices"][0]
+                if first_choice["finish_reason"] is None:
+                    delta = first_choice["delta"]
+                    content = delta["content"] if "content" in delta.keys() else ""
+                    return content, first_choice, object_response 
+                else:
+                    return "", None, None
+            except:
+                print(f"ERROR {event_str}")
+                return "", None, None
+        else:
+            return "", None, None
 
 if __name__ == "__main__":
     service = OllamaService()

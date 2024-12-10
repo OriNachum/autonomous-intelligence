@@ -35,7 +35,15 @@ class GroqService:
         }
         
         if use_chat:
-            messages = history.copy()
+            messages = []
+            for entry in history.split("\n"):
+                if "[User]" in entry:
+                    user_message = entry.split("[User]: ")[1]
+                    messages.append({"role": "user", "content": user_message})
+                elif "[Assistant]" in entry:
+                    assistant_message = entry.split("[Assistant]: ")[1]
+                    messages.append({"role": "assistant", "content": assistant_message})
+        
             messages.append({"role": "user", "content": prompt})
             if system_prompt:
                 messages.insert(0, {"role": "system", "content": system_prompt})
@@ -44,7 +52,7 @@ class GroqService:
             payload["prompt"] = f"{system_prompt}\n{prompt}" if system_prompt else prompt
         
         response = requests.post(f"{self.api_url}/chat/completions" if use_chat or history else f"{self.api_url}/completions",
-                                 headers=self.headers, json=payload, verify=False)
+                                 headers=self.headers, json=payload)
         if response.status_code != 200:
             raise Exception(f"API request failed with status code {response.status_code}: {response.text}")
         
@@ -63,7 +71,15 @@ class GroqService:
         }
         
         if use_chat:
-            messages = history.copy()
+            messages = []
+            for entry in history.split("\n"):
+                if "[User]" in entry:
+                    user_message = entry.split("[User]: ")[1]
+                    messages.append({"role": "user", "content": user_message})
+                elif "[Assistant]" in entry:
+                    assistant_message = entry.split("[Assistant]: ")[1]
+                    messages.append({"role": "assistant", "content": assistant_message})
+        
             messages.append({"role": "user", "content": prompt})
             if system_prompt:
                 messages.insert(0, {"role": "system", "content": system_prompt})
@@ -73,9 +89,8 @@ class GroqService:
         
         try:
             response = requests.post(f"{self.api_url}/chat/completions" if use_chat or history else f"{self.api_url}/completions",
-                                     headers=self.headers, json=payload, stream=True, verify=False)
+                                     headers=self.headers, json=payload, stream=True)
             print(f"Status Code: {response.status_code}")
-            print(json.dumps(response))
             if response.status_code == 200:
                 for line in response.iter_lines():
                     if line:

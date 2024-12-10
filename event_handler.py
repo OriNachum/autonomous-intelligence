@@ -31,7 +31,7 @@ def accept(sock):
 def read(conn):
     data = conn.recv(1024)
     if data:
-        logger.debug(f"Received data: {data.decode('utf-8')[:50]}...")  # Log first 50 chars
+        logger.debug(f"Received data: {data.decode('utf-8')[:20]}...")  # Log first 50 chars
         return data.decode('utf-8')
     else:
         logger.info("Connection closed")

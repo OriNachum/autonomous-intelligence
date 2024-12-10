@@ -18,7 +18,8 @@ def save_to_history(role, message):
     with open(HISTORY_FILE, "a") as file:
         file.write(history_entry + "\n")
 
-backward_history_length=20
+backward_history_length=10
+
 def load_history():
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r") as file:
