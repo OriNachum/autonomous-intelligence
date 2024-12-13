@@ -26,7 +26,7 @@ class GoogleGenerativeAIClient:
         response = chat.send_message(prompt)
         return response.text
 
-    def start_chat_stream(self, history, prompt):
+    def generate_stream_response(self, prompt, history, system_prompt, model, max_tokens=200):
         chat_history = []
         for entry in history.split("\n"):
             if entry.startswith("[User]: "):
@@ -35,9 +35,13 @@ class GoogleGenerativeAIClient:
             elif entry.startswith("[Assistant]: "):
                 assistant_message = entry.split("[Assistant]: ", 1)[1]
                 chat_history.append({"role": "model", "parts": assistant_message})
-
-        chat = self.model.start_chat(history=chat_history)
-        response = chat.send_message(prompt, stream=True)
+        generation_config = genai.GenerationConfig(
+            max_output_tokens=max_tokens,
+            temperature=0.3)
+        if system_prompt:
+            chat_history.insert({"role": "system", "parts": system_prompt})
+        chat = self.model.start_chat(history=chat_history, generation_config=generation_config)
+        response = chat.send_message(prompt, stream=True, )
         for chunk in response:
             yield chunk.text
 
