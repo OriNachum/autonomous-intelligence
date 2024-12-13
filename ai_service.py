@@ -10,10 +10,12 @@ if __name__ == "__main__":
         sys.path.append(parent_dir)
 
 #from modelproviders.anthropic_api_client import generate_stream_response
-from modelproviders.openai_api_client import OpenAIService
+#from modelproviders.openai_api_client import OpenAIService
 #from modelproviders.groq_client import GroqService
 #from modelproviders.ollama_api_client import OllamaService
-from modelproviders.speechify_espeak import SpeechService
+from modelproviders.genai_client import GenAIClient
+#from modelproviders.speechify_espeak import SpeechService
+from modelproviders.speech_client import SpeechClient
 
 def emit_classified_sentences(stream):
     within_asterisk = False
@@ -51,11 +53,11 @@ def emit_classified_sentences(stream):
         yield None,buffer
 
 def get_model_response(prompt, history, tau_system_prompt, model, logger):
-    openai = OpenAIService()
-    speech_engine = SpeechService()
+    genai_client = GenAIClient()
+    speech_engine = SpeechClient('openai')
     response = ""
     speech_index = 0
-    for text_type, text in emit_classified_sentences(openai.generate_stream_response(prompt, history, tau_system_prompt, model)):
+    for text_type, text in emit_classified_sentences(genai_client.generate_stream_response(prompt, history, tau_system_prompt, model)):
         if (text is not None) and (text_type is not None):
             logger.debug(f"Generated {text_type}: {text[:50]}...")  # Log first 50 chars
             response += text
@@ -77,8 +79,8 @@ def get_model_response(prompt, history, tau_system_prompt, model, logger):
 #    print(section)
 
 if __name__ == "__main__":
-    openai = OpenAIService()
-    for text_type,text in emit_classified_sentences(openai.generate_stream_response("I wave at the shopkeeper",  [], "You are a dnd dungeon master and you act as a character. You reply only as a character with (* for action and \" for spoken words by your character. Finish one type of message before continuing to the next type. Avoid Asterisk inside quotations or otherwise. Only once of each type of message. Example: *waves* \"Hi there, hello!\"", "gpt-4o-mini")):
+    genai_client = GenAIClient()
+    for text_type,text in emit_classified_sentences(genai_client.generate_stream_response("I wave at the shopkeeper",  [], "You are a dnd dungeon master and you act as a character. You reply only as a character with (* for action and \" for spoken words by your character. Finish one type of message before continuing to the next type. Avoid Asterisk inside quotations or otherwise. Only once of each type of message. Example: *waves* \"Hi there, hello!\"", "gpt-4o-mini")):
         if (text is not None) and (text_type is not None):
             print(f"{text_type}: {text}", flush=True)
     print("\n\n")
