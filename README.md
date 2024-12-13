@@ -37,6 +37,7 @@ fixes** (update, will be integrates as community-examples, confirmed by Hailo)
   - [ ] Add frameqork for actions:
   - [ ] Open live camera feed action
   - [ ] Snap a picture
+- [ ] Add aec for voice recognition from https://gist.github.com/thewh1teagle/929af1c6b05d5f96ceef01130e758471
 - [ ] Introspection: Add Introspection agent for active and background thinking and processing.
 - [ ] Growth: Add nightly finetuning, move to smaller model.
 
