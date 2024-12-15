@@ -1,7 +1,5 @@
 #!/bin/bash
 
-#!/bin/bash
-
-cd ~
+cd /home/tau
 source tau.sh
 python tau.py
