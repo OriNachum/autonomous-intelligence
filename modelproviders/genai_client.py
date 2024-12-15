@@ -1,7 +1,13 @@
 
-from openai_api_client import OpenAIService
-from huggingface_api_client import HuggingFaceService
-from google_api_client import GoogleGenerativeAIClient
+
+if __name__ == "__main__":
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.append(parent_dir)
+
+from modelproviders.openai_api_client import OpenAIService
+from modelproviders.huggingface_api_client import HuggingFaceService
+from modelproviders.google_api_client import GoogleGenerativeAIClient
 
 class GenAIClient:
     def __init__(self):

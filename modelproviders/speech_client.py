@@ -1,6 +1,10 @@
+if __name__ == "__main__":
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.append(parent_dir)
 
-from speechify_espeak import SpeechService
-from openai_api_client import OpenAIService
+from modelproviders.speechify_espeak import SpeechService
+from modelproviders.openai_api_client import OpenAIService
 
 class SpeechClient:
     def __init__(self, provider: str):
