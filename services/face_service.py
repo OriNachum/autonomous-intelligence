@@ -83,7 +83,8 @@ class FaceService:
                 data = connection.recv(1024)
                 if not data:
                     logger.warning("No data received, breaking the loop")
-                    break
+                    pygame.time.wait(500)
+                    continue
                 data = data.decode('utf-8')
                 logger.info(f"Received data: {data}")
                 event = json.loads(data)

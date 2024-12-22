@@ -51,12 +51,9 @@ class SpeechDetector:
 
         self.p = pyaudio.PyAudio()
         self.device_name = os.getenv('AUDIO_DEVICE_NAME', 'default').lower()
-        logger.debug(f"Using audio device: {self.device_name}")
+        logger.debug(f"Looking for audio device: {self.device_name}")
 
-        self.input_device_index = self.find_input_device()
-        if self.input_device_index is None:
-            logger.error("Suitable input device not found")
-            raise RuntimeError("Suitable input device not found")
+        self.initialize_input_device()
 
         self.setup_audio_stream()
 
@@ -64,6 +61,19 @@ class SpeechDetector:
         logger.debug("OpenAIService initialized")
         self.output_filename = 'combined_audio.wav'
         logger.info("SpeechDetector initialization complete")
+
+    def initialize_input_device(self):
+        wait_times = [1, 2, 4, 8, 16, 32]
+        for wait_time in wait_times:
+            self.input_device_index = self.find_input_device()
+            if self.input_device_index is not None:
+                break
+            logger.warning(f"Input device not found, retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
+        else:
+            logger.error("Suitable input device not found after multiple attempts")
+            raise RuntimeError("Suitable input device not found")
+
 
     def setup_socket(self):
         logger.debug(f"Setting up Unix socket at {self.socket_path}")
@@ -99,9 +109,12 @@ class SpeechDetector:
     def find_input_device(self):
         logger.info("Searching for input device")
         device_count = self.p.get_device_count()
+        logger.info(f"Found {device_count} devices")
         for i in range(device_count):
             device_info = self.p.get_device_info_by_index(i)
-            if self.device_name in device_info['name'].lower():
+            device_name = device_info['name'].lower()
+            logger.info(f"Checking {device_name}")
+            if self.device_name in device_name:
                 logger.info(f"Found matching device: {device_info['name']} (index {i})")
                 return i
         logger.warning("Suitable input device not found")
