@@ -95,7 +95,12 @@ There are five programs to run by this order:
   3. tau_speech.py: this consumes speech events, and produces actual speech
   4. services/microphone_listener.py this listens to your speech and emits events to tau.py as input
 
+## Acknowledgements
 
+There are multiple people for which I want to acknowledge for this development.  
+Of them, these are the people who confirmed for me to mention them: 
+- @Sagigamil 
+  
 
 ## License
 
