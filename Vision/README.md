@@ -1,3 +1,7 @@
+# DISCLAIMER
+This folder is a copy of Hailo's Hailo-rp5-examples.  
+It holds the community project for event based integration.  
+Any code written by Hailo is thier and subject to their license.
 
 ![Banner](doc/images/hailo_rpi_examples_banner.png)
 
