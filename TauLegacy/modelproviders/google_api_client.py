@@ -10,6 +10,7 @@ class GoogleGenerativeAIClient:
         if not self.api_key:
             raise ValueError("GOOGLE_API_KEY environment variable is not set.")
         genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel("gemini-2.0-flash-exp")
 
     def start_chat(self, history, prompt):
         chat_history = []
@@ -21,14 +22,7 @@ class GoogleGenerativeAIClient:
                 assistant_message = entry.split("[Assistant]: ", 1)[1]
                 chat_history.append({"role": "model", "parts": assistant_message})
 
-        generation_config = genai.GenerationConfig(
-            max_output_tokens=200,
-            temperature=0.2)
-        generative_model = genai.GenerativeModel(
-            "gemini-2.0-flash-exp",
-            system_instruction=system_prompt, 
-            generation_config=generation_config)
-        chat = generative_model.start_chat(history=chat_history)
+        chat = self.model.start_chat(history=chat_history)
         response = chat.send_message(prompt)
         return response.text
 
@@ -41,31 +35,31 @@ class GoogleGenerativeAIClient:
             elif entry.startswith("[Assistant]: "):
                 assistant_message = entry.split("[Assistant]: ", 1)[1]
                 chat_history.append({"role": "model", "parts": assistant_message})
-        #if system_prompt:
-        #    chat_history.insert(0, {"role": "system", "parts": system_prompt})
         generation_config = genai.GenerationConfig(
             max_output_tokens=max_tokens,
-            temperature=0.2)
-        generative_model = genai.GenerativeModel(
-        "gemini-2.0-flash-exp",
-        system_instruction=system_prompt, 
-        generation_config=generation_config)
-
-        chat = generative_model.start_chat(history=chat_history)
+            temperature=0.3)
+        if system_prompt:
+            chat_history.insert({"role": "system", "parts": system_prompt})
+        chat = self.model.start_chat(history=chat_history, generation_config=generation_config)
         response = chat.send_message(prompt, stream=True, )
         for chunk in response:
-            yield chunk.text, None, None
+            yield chunk.text
 
 if __name__ == "__main__":
     client = GoogleGenerativeAIClient()
     prompt = "I have 2 dogs in my house."
     history = "[User]: Hello\n[Assistant]: Hi! How can I help you today?"
-    #response = client.start_chat(history, prompt)
-    #print(f"response A:\n{response}\n---\nDONE A")
+    response = client.start_chat(history, prompt)
+    print(f"response A:\n{response}\n---\nDONE A")
     
     prompt = "How many paws are in my house?"
-    for message in client.generate_stream_response(history + "\n[User]: " + prompt, prompt, model="gemini-2.0-flash-exp", system_prompt="answer with pirate accent"):
+    for message in client.start_chat_stream(history + "\n[User]: " + prompt, prompt):
         print(f"response B stream:\n{message}\n---\nDONE B")
+
+    prompt = "How many paws are in my house?"
+    for message in client.start_chat_stream(history + "\n[User]: " + prompt, prompt):
+        print(f"response B stream:\n{message}\n---\nDONE B")
+
 
 # if __name__ == "__main__":
 #     client = GoogleGenerativeAIClient()
