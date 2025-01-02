@@ -2,5 +2,7 @@ requests==2.31.0
 python-dotenv
 #espeak
 #python-espeak
-WhisperModel
-
+#WhisperModel
+#pyaudio
+webrtcvad
+faster_whisper

@@ -1,0 +1,7 @@
+baby-tau/.venv/lib64
+baby-tau/.venv/pyvenv.cfg
+baby-tau/.venv/bin/python
+baby-tau/.venv/bin/python3
+baby-tau/.venv/bin/python3.10
+baby-tau/__pycache__/audio_recorder.cpython-310.pyc
+baby-tau/__pycache__/ollama_service.cpython-310.pyc
