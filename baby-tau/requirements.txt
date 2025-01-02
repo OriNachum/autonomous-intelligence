@@ -1,0 +1,6 @@
+requests==2.31.0
+python-dotenv
+#espeak
+#python-espeak
+WhisperModel
+
