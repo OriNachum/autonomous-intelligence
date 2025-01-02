@@ -61,6 +61,26 @@ class AudioRecorder:
         # Save the recorded data to a single WAV file
         self.save_to_wav()
 
+    def stream_recording(self):
+        # Open audio stream
+        stream = self.p.open(format=pyaudio.paInt16, channels=1, rate=self.rate,
+                             input=True, frames_per_buffer=self.chunk_size, input_device_index=self.input_device_index)
+
+        print("Streaming recording... Press Ctrl+C to stop.")
+
+        try:
+            while True:
+                data = stream.read(self.chunk_size)
+                if self.vad.is_speech(data, self.rate):
+                    yield data
+        except KeyboardInterrupt:
+            print("Stopped streaming recording.")
+
+        # Stop and close the audio stream
+        stream.stop_stream()
+        stream.close()
+        self.p.terminate()
+
     def save_to_wav(self):
         with wave.open(self.output_filename, 'wb') as wf:
             wf.setnchannels(1)
