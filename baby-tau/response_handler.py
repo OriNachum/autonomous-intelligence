@@ -10,10 +10,12 @@ def process_ollama_response(ollama, prompt, history, system_prompt):
         max_tokens=200,
         use_chat=True
     )
+    buffer=""
     for event in parse_stream(response_stream):
+        print(event)
         if event.type == "speech":
-            print(event.content)
             speak_piper(event.content)
+            buffer+=f"{event.content}\n"
     print(f"\n\nStreaming Response from Ollama:\n{buffer}")
     
 def parse_stream(stream):
