@@ -1,5 +1,5 @@
 
-from speak import speak
+from speak import speak_piper
 
 def process_ollama_response(ollama, prompt, history, system_prompt):
     response_stream = ollama.generate_stream_response(
@@ -13,7 +13,7 @@ def process_ollama_response(ollama, prompt, history, system_prompt):
     for event in parse_stream(response_stream):
         if event.type == "speech":
             print(event.content)
-            speak(event.content)
+            speak_piper(event.content)
     print(f"\n\nStreaming Response from Ollama:\n{buffer}")
     
 def parse_stream(stream):
