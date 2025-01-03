@@ -2,7 +2,7 @@ from ollama_service import OllamaService
 #import espeak
 import argparse
 from audio_recorder import AudioRecorder
-from transcribe_audio import transcribe_stream
+from transcribe_audio import transcribe_stream, transcribe_audio  # Updated import
 from response_handler import process_ollama_response  # New import
 
 def print_callback(*args):
@@ -45,16 +45,21 @@ def main():
             print("Audio recording device not found.")
     else:
         prompt = get_prompt(args)
-        print("Write what you say, or /q to exist")
-        user = prompt
-        in_action = False
-        while (user != "/q"):
-            if (user != ""):
-                response = ""
-                process_ollama_response(ollama, user, history_split_with_newline, system_prompt)  # Updated call
-                history_split_with_newline = response if history_split_with_newline == "" else f"{history_split_with_newline}\n{response}"
+        if args.audio:
+            # Pass the recorded audio for transcription
+            audio_path, transcription = transcribe_audio(prompt)
+            process_ollama_response(ollama, transcription, history_split_with_newline, system_prompt)
+        else:
             print("Write what you say, or /q to exist")
-            user = input()
+            user = prompt
+            in_action = False
+            while (user != "/q"):
+                if (user != ""):
+                    response = ""
+                    process_ollama_response(ollama, user, history_split_with_newline, system_prompt)  # Updated call
+                    history_split_with_newline = response if history_split_with_newline == "" else f"{history_split_with_newline}\n{response}"
+                print("Write what you say, or /q to exist")
+                user = input()
 
 if __name__ == "__main__":
     main()
