@@ -9,7 +9,7 @@ class Speaker:
     def speak_piper(self, text):
         try:
             echo = subprocess.Popen(['echo', text], stdout=subprocess.PIPE)
-            piper = subprocess.Popen(['piper', '--model', 'en_US-lessac-high', '--output_raw'], 
+            piper = subprocess.Popen(['piper', '--model', './en_US-lessac-high.onnx', '--output_raw'], 
                                    stdin=echo.stdout,
                                    stdout=subprocess.PIPE)
             aplay = subprocess.Popen(['aplay', '-f', 'S16_LE', '-c1', '-r22050'],
