@@ -32,7 +32,7 @@ If you fork - delete history and facts to reset their knowledge and embark the j
   - [x] Learn about GraphRAG, how to implement, etc.
   - [ ] **Use or implement GraphRAG**
 - [x] Design further split to applications, event communications
-- [ ] Integrate Nvidia Jetson Orin Nano Super 8GB
+- [ ] **Integrate Nvidia Jetson Orin Nano Super 8GB**
   - [ ] Local LLM on Jetson (Llama 3.2 3:b)
   - [ ] Local Speech to text (faster-whisper) on Jetson
 - [ ] Implement piperTTS, replace espeak
