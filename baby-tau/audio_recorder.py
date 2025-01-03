@@ -57,7 +57,7 @@ class AudioRecorder:
             transcription += transcription_chunk
             print(f"Transcription Chunk: {transcription_chunk.strip()}")
 
-            if transcription_chunk.strip() == "":
+            if transcription_chunk.strip() == "" and not transcription.strip() == "":
                 silence_counter += 1
                 if silence_counter >= silence_threshold:
                     print("Silence detected. Stopping recording.")
