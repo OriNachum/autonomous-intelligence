@@ -40,12 +40,30 @@ class AudioRecorder:
         stream = self.p.open(format=pyaudio.paInt16, channels=1, rate=self.rate,
                              input=True, frames_per_buffer=self.chunk_size, input_device_index=self.input_device_index)
 
-        print("Recording...")
+        print("Recording... Speak now.")
+        print("Recording has started.")  # Added indication
 
         frames = []
-        for _ in range(0, int(self.rate / self.chunk_size * self.record_seconds)):
+        transcription = ""
+        silence_counter = 0
+        silence_threshold = 3  # Number of consecutive silent chunks to stop
+
+        while True:
             data = stream.read(self.chunk_size)
             frames.append(data)
+
+            # Transcribe the current chunk
+            transcription_chunk = self.transcriber.transcribe_stream([data])
+            transcription += transcription_chunk
+            print(f"Transcription Chunk: {transcription_chunk.strip()}")
+
+            if transcription_chunk.strip() == "":
+                silence_counter += 1
+                if silence_counter >= silence_threshold:
+                    print("Silence detected. Stopping recording.")
+                    break
+            else:
+                silence_counter = 0  # Reset counter if speech is detected
 
         print("Finished recording.")
 
@@ -57,9 +75,8 @@ class AudioRecorder:
         # Save the recorded data to a WAV file
         self.save_to_wav(frames)
 
-        # Transcribe the recorded audio
-        transcription = self.transcriber.transcribe_audio(self.output_filename)
-        return transcription[1]  # Return the transcription text
+        # Return the full transcription
+        return transcription.strip()
 
     def stream_recording(self):
         # Open audio stream
@@ -69,12 +86,23 @@ class AudioRecorder:
         print("Streaming recording... Press Ctrl+C to stop.")
 
         transcription_text = ""
+        silence_counter = 0
+        silence_threshold = 2  # Number of consecutive silent chunks to stop
+
         try:
             while True:
                 data = stream.read(self.chunk_size)
                 transcription = self.transcriber.transcribe_stream([data])
                 transcription_text += transcription
-                print(f"Streaming Transcription:\n{transcription}")
+                print(f"Streaming Transcription:\n{transcription.strip()}")
+
+                if transcription.strip() == "":
+                    silence_counter += 1
+                    if silence_counter >= silence_threshold:
+                        print("Silence detected. Stopping streaming recording.")
+                        break
+                else:
+                    silence_counter = 0  # Reset counter if speech is detected
         except KeyboardInterrupt:
             print("Stopped streaming recording.")
 
@@ -83,7 +111,7 @@ class AudioRecorder:
         stream.close()
         self.p.terminate()
 
-        return transcription_text
+        return transcription_text.strip()
 
     def save_to_wav(self, frames):
         with wave.open(self.output_filename, 'wb') as wf:
