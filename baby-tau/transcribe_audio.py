@@ -60,7 +60,7 @@ class Transcriber:
     def transcribe_stream(self, audio_stream):
         start_time = time.time()
 
-        transcription_text = ""
+        transcription_text = ""  # Initialize local transcription text
 
         for chunk in audio_stream:
             # Wrap chunk in WAV format
@@ -98,7 +98,7 @@ class Transcriber:
         # Log the transcription time and segment count
         logging.info(f"{self.process_name}: Transcribed audio stream in {transcription_time:.2f} seconds with {segment_count} segments.")
 
-        # Return the transcription text
+        # Return the transcription text for this chunk
         return transcription_text
 
 def main(audio_files):

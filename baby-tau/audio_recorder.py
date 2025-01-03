@@ -28,7 +28,6 @@ class AudioRecorder:
         # Initialize queue and transcription threads
         self.transcription_queue = queue.Queue()
         self.transcription_results_queue = queue.Queue()  # Added transcription results queue
-        self.transcription_text = ""
         self.transcription_thread = threading.Thread(target=self.process_transcription, daemon=True)
         self.transcription_thread.start()
 
@@ -70,6 +69,7 @@ class AudioRecorder:
         frames = []
         silence_counter = 0
         silence_threshold = 3  # Number of consecutive silent chunks to stop
+        transcription_text = ""  # Initialize local transcription text
 
         while True:
             data = stream.read(self.chunk_size)
@@ -84,8 +84,12 @@ class AudioRecorder:
             except queue.Empty:
                 transcription_chunk = ""
 
+            # Accumulate transcription text
+            if transcription_chunk:
+                transcription_text += transcription_chunk + "\n"
+
             # Update silence counter based on transcription result
-            if transcription_chunk == "" and self.transcription_text.strip() != "":
+            if transcription_chunk.strip() == "":
                 silence_counter += 1
                 if silence_counter >= silence_threshold:
                     print("Silence detected. Stopping recording.")
@@ -108,7 +112,7 @@ class AudioRecorder:
         self.save_to_wav(frames)
 
         # Return the full transcription
-        return self.transcription_text.strip()
+        return transcription_text.strip()
 
     def stream_recording(self):
         # Open audio stream
@@ -133,8 +137,12 @@ class AudioRecorder:
                 except queue.Empty:
                     transcription_chunk = ""
 
+                # Accumulate transcription text
+                if transcription_chunk:
+                    transcription_text += transcription_chunk + "\n"
+
                 # Update silence counter based on transcription result
-                if transcription_chunk == "":
+                if transcription_chunk.strip() == "":
                     silence_counter += 1
                     if silence_counter >= silence_threshold:
                         print("Silence detected. Stopping streaming recording.")
@@ -142,8 +150,7 @@ class AudioRecorder:
                 else:
                     silence_counter = 0  # Reset counter if speech is detected
 
-                # Accumulate transcription text
-                transcription_text += transcription_chunk + "\n"
+                # Print the latest transcription
                 print(f"Streaming Transcription:\n{transcription_text.strip()}")
         except KeyboardInterrupt:
             print("Stopped streaming recording.")
