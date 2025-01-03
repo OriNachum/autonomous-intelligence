@@ -5,7 +5,7 @@ import threading
 def speak_piper(text):
     try:
         # Run piper with the specified language and text
-        subprocess.run(["echo", text, "|", "piper", "--model", "en_US-lessac-medium", "--output_raw", "|", "aplay", "-f", "S16_LE", "-c1", "-r16000"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["echo", text, "|", "piper", "--model", "en_US-amy-medium", "--output_raw", "|", "aplay", "-f", "S16_LE", "-c1", "-r26000"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
         print(f"Error speaking: {e}")
 
