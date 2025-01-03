@@ -45,11 +45,21 @@ class AudioRecorder:
 
         print("Recording...")
 
+        silence_duration = 0
+        silence_threshold = 2  # seconds
+        silence_chunks = int(silence_threshold * 1000 / self.frame_duration)  # Number of consecutive silent chunks
+
         for _ in range(0, int(self.rate / self.chunk_size * self.record_seconds)):
             data = stream.read(self.chunk_size)
             # Use VAD to check if chunk contains speech
             if self.vad.is_speech(data, self.rate):
                 self.frames.append(data)
+                silence_duration = 0  # Reset silence counter
+            else:
+                silence_duration += 1
+                if silence_duration >= silence_chunks:
+                    print("Silence detected for 2 seconds. Stopping recording.")
+                    break
 
         print("Finished recording.")
 
@@ -68,11 +78,21 @@ class AudioRecorder:
 
         print("Streaming recording... Press Ctrl+C to stop.")
 
+        silence_duration = 0
+        silence_threshold = 2  # seconds
+        silence_chunks = int(silence_threshold * 1000 / self.frame_duration)  # Number of consecutive silent chunks
+
         try:
             while True:
                 data = stream.read(self.chunk_size)
                 if self.vad.is_speech(data, self.rate):
                     yield data
+                    silence_duration = 0  # Reset silence counter
+                else:
+                    silence_duration += 1
+                    if silence_duration >= silence_chunks:
+                        print("Silence detected for 2 seconds. Stopping streaming recording.")
+                        break
         except KeyboardInterrupt:
             print("Stopped streaming recording.")
 
