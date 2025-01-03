@@ -4,7 +4,10 @@ python-dotenv
 #python-espeak
 #WhisperModel
 #pyaudio
-webrtcvad
+#webrtcvad
+webrtcvad  # Removed comment to keep if needed elsewhere
 faster_whisper
 numpy==1.26.4
 piper-tts
+#torch>=1.7.1  # Added torch for Silero VAD, Jetson special library
+#torchaudio>=0.7.2  # Added torchaudio for Silero VAD, Jetson special library

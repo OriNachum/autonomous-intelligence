@@ -6,7 +6,9 @@ from dotenv import load_dotenv
 from transcribe_audio import Transcriber  # New import
 import threading  # Added import
 import queue      # Added import
-import webrtcvad  # Added import
+#import webrtcvad  # Added import
+import torch  # Added import
+import torchaudio  # Added import
 
 # Load environment variables
 load_dotenv()
@@ -33,20 +35,40 @@ class AudioRecorder:
         self.transcription_thread.start()
 
         # Initialize Voice Activity Detector (VAD)
-        self.vad = webrtcvad.Vad()
-        self.vad.set_mode(1)  # 0: least aggressive, 3: most aggressive
+        # self.vad = webrtcvad.Vad()
+        # self.vad.set_mode(1)  # 0: least aggressive, 3: most aggressive
+
+        # Initialize Silero VAD
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        try:
+            self.model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=False)
+            self.model.to(self.device)
+            self.get_speech_timestamps = utils.get_speech_timestamps
+            self.save_audio = utils.save_audio
+            logging.info("Silero VAD model loaded successfully.")
+        except Exception as e:
+            logging.error(f"Failed to load Silero VAD model: {e}")
+            raise e
 
     def find_input_device(self):
         device_count = self.p.get_device_count()
-        for i in range(device_count):
-            device_info = self.p.get_device_info_by_index(i)
-            if self.device_name in device_info['name'].lower():
-                logging.info(f"Found matching device: {device_info['name']} (index {i})")
-            
-                self.input_device_index = i
-                return i
-        logging.warning("Suitable input device not found")
-        return None
+        input_devices = [i for i in range(device_count) if self.p.get_device_info_by_index(i)['maxInputChannels'] > 0]
+        
+        if len(input_devices) == 1:
+            self.input_device_index = input_devices[0]
+            device_info = self.p.get_device_info_by_index(self.input_device_index)
+            logging.info(f"Only one input device found: {device_info['name']} (index {self.input_device_index})")
+            return self.input_device_index
+        else:
+            for i in input_devices:
+                device_info = self.p.get_device_info_by_index(i)
+                if self.device_name and self.device_name in device_info['name'].lower():
+                    logging.info(f"Found matching device: {device_info['name']} (index {i})")
+                    self.input_device_index = i
+                    return i
+            logging.warning("Suitable input device not found. Using default device.")
+            self.input_device_index = None  # PyAudio will use default device
+            return None
 
     def process_transcription(self):
         while True:
@@ -80,8 +102,14 @@ class AudioRecorder:
             data = stream.read(self.chunk_size)
             frames.append(data)
             
-            # VAD expects 16-bit mono PCM, ensure the data format matches
-            is_speech = self.vad.is_speech(data, sample_rate=self.rate)
+            # Convert byte data to tensor
+            audio_tensor = torch.frombuffer(data, dtype=torch.int16).float()
+            audio_tensor = audio_tensor / 32768.0  # Normalize to [-1, 1]
+            audio_tensor = audio_tensor.unsqueeze(0).to(self.device)
+            
+            # Get speech timestamps using Silero VAD
+            speech_timestamps = self.get_speech_timestamps(audio_tensor, self.model, sampling_rate=self.rate)
+            is_speech = len(speech_timestamps) > 0
             
             if is_speech:
                 # Enqueue the current chunk for transcription
@@ -148,8 +176,14 @@ class AudioRecorder:
             while True:
                 data = stream.read(self.chunk_size)
                 
-                # VAD expects 16-bit mono PCM, ensure the data format matches
-                is_speech = self.vad.is_speech(data, sample_rate=self.rate)
+                # Convert byte data to tensor
+                audio_tensor = torch.frombuffer(data, dtype=torch.int16).float()
+                audio_tensor = audio_tensor / 32768.0  # Normalize to [-1, 1]
+                audio_tensor = audio_tensor.unsqueeze(0).to(self.device)
+                
+                # Get speech timestamps using Silero VAD
+                speech_timestamps = self.get_speech_timestamps(audio_tensor, self.model, sampling_rate=self.rate)
+                is_speech = len(speech_timestamps) > 0
                 
                 if is_speech:
                     # Enqueue the current chunk for transcription
