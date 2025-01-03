@@ -13,9 +13,10 @@ def process_ollama_response(ollama, prompt, history, system_prompt):
     buffer=""
     for event in parse_stream(response_stream):
         print(event)
-        if event.type == "speech":
-            speak_piper(event.content)
-            buffer+=f"{event.content}\n"
+        if event["type"] == "speech":
+            content = event["content"]
+            speak_piper(content)
+            buffer+=f"{content}\n"
     print(f"\n\nStreaming Response from Ollama:\n{buffer}")
     
 def parse_stream(stream):
