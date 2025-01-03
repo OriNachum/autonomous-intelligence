@@ -22,16 +22,21 @@ If you fork - delete history and facts to reset their knowledge and embark the j
   - [x] Look for best practices and options for integrating Hailo in your application.
   - [x] Find a suitable, working architecture to wrap hailo as a service
   - [x] Implement and improve the wrapper
-  - [ ] **Pending Hailo review and my
-fixes** (update, will be integrates as community-examples, confirmed by Hailo)
+  - [ ] **Pending Hailo review** (update, will be integrates as community-examples, confirmed by Hailo)
   - [x] Integrate in the system, allow Tau to recognize faces
-  - [ ] add more-than-one models uo be used serially, or use different devices (Coral, Sony AI Camera x2, Jetson)
+  - [ ] add more-than-one models to be used serially, or use different devices (Coral, Sony AI Camera x2, Jetson)
 - [x] Long term fetching: Pull from long term memory into context.
-- [ ] Auto-start on device startup.
-- [ ] Long term memory archiving support.
+- [x] Auto-start on device startup.
+- [x] Long term memory archiving support.
 - [ ] Entity based memory: Add GraphRAG based memory.
   - [x] Learn about GraphRAG, how to implement, etc.
   - [ ] **Use or implement GraphRAG**
+- [x] Design further split to applications, event communications
+- [ ] Integrate Nvidia Jetson Orin Nano Super 8GB
+  - [ ] Local LLM on Jetson (Llama 3.2 3:b)
+  - [ ] Local Speech to text (faster-whisper) on Jetson
+- [ ] Implement piperTTS, replace espeak
+- [ ] Integrate Hailo 10 as inference station (Llama 3.2 3b)
 - [ ] Advanced voice: Move to ElevenLabs advanced voices.
 - [ ] Tool use
   - [ ] Add frameqork for actions:
