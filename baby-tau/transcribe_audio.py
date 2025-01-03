@@ -3,6 +3,7 @@ import logging
 import time
 import multiprocessing
 from faster_whisper import WhisperModel
+import io  # Added import
 
 class Transcriber:
     def __init__(self):
@@ -61,6 +62,10 @@ class Transcriber:
         transcription_text = ""
 
         for chunk in audio_stream:
+            # Wrap chunk in BytesIO if it's bytes
+            if isinstance(chunk, bytes):
+                chunk = io.BytesIO(chunk)
+            
             # Log before transcription
             logging.info(f"{self.process_name}: Beginning transcription of audio chunk")
 
