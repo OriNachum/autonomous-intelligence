@@ -6,3 +6,4 @@ python-dotenv
 #pyaudio
 webrtcvad
 faster_whisper
+numpy==1.26.4

@@ -13,7 +13,7 @@ def process_ollama_response(ollama, prompt, history, system_prompt):
     buffer = ""
     in_action = False
     for token, _, _ in response_stream:
-        buffer += token
+        #buffer += token
         in_action_changed = False
         if token == "*":
             in_action = not in_action
