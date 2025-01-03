@@ -19,7 +19,7 @@ def process_ollama_response(ollama, prompt, history, system_prompt):
 def parse_stream(stream):
     buffer = ""
     current_field = None
-    for chunk in stream:
+    for chunk,_,_ in stream:
         buffer += chunk  # Accumulate incoming chunks of text
         
         # Process until we find a complete key-value pair or a period in the 'speech' field
