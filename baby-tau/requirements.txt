@@ -4,7 +4,7 @@ python-dotenv
 #python-espeak
 #WhisperModel
 #pyaudio
-webrtcvad
+#webrtcvad
 faster_whisper
 numpy==1.26.4
 piper-tts

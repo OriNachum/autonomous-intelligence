@@ -1,9 +1,9 @@
 import pyaudio
-import webrtcvad
 import wave
 import logging
 import os
 from dotenv import load_dotenv
+from transcribe_audio import Transcriber  # New import
 
 # Load environment variables
 load_dotenv()
@@ -19,11 +19,9 @@ class AudioRecorder:
         self.record_seconds = record_seconds
         self.output_filename = output_filename
         self.p = pyaudio.PyAudio()
-        self.vad = webrtcvad.Vad()
-        self.vad.set_mode(1)  # 0: Normal, 1: Low bitrate, 2: Aggressive, 3: Very aggressive
-        self.frames = []
+        # Initialize Transcriber
+        self.transcriber = Transcriber()
         self.device_name = os.getenv('AUDIO_DEVICE_NAME', 'default').lower()
-
 
     def find_input_device(self):
         device_count = self.p.get_device_count()
@@ -37,7 +35,6 @@ class AudioRecorder:
         logging.warning("Suitable input device not found")
         return None
 
-
     def record(self):
         # Open audio stream
         stream = self.p.open(format=pyaudio.paInt16, channels=1, rate=self.rate,
@@ -45,22 +42,10 @@ class AudioRecorder:
 
         print("Recording...")
 
-        silence_duration = 0
-        silence_threshold = 3  # seconds
-        silence_chunks = int(silence_threshold * 1000 / self.frame_duration)  # Number of consecutive silent chunks
-        started = False
+        frames = []
         for _ in range(0, int(self.rate / self.chunk_size * self.record_seconds)):
             data = stream.read(self.chunk_size)
-            # Use VAD to check if chunk contains speech
-            if self.vad.is_speech(data, self.rate) or not started:
-                self.frames.append(data)
-                silence_duration = 0  # Reset silence counter
-                started = True
-            else:
-                silence_duration += 1
-                if silence_duration >= silence_chunks:
-                    print(f"Silence detected for {silence_threshold} seconds and started: {started}. Stopping recording.")
-                    break
+            frames.append(data)
 
         print("Finished recording.")
 
@@ -69,8 +54,12 @@ class AudioRecorder:
         stream.close()
         self.p.terminate()
 
-        # Save the recorded data to a single WAV file
-        self.save_to_wav()
+        # Save the recorded data to a WAV file
+        self.save_to_wav(frames)
+
+        # Transcribe the recorded audio
+        transcription = self.transcriber.transcribe_audio(self.output_filename)
+        return transcription[1]  # Return the transcription text
 
     def stream_recording(self):
         # Open audio stream
@@ -79,21 +68,13 @@ class AudioRecorder:
 
         print("Streaming recording... Press Ctrl+C to stop.")
 
-        silence_duration = 0
-        silence_threshold = 2  # seconds
-        silence_chunks = int(silence_threshold * 1000 / self.frame_duration)  # Number of consecutive silent chunks
-
+        transcription_text = ""
         try:
             while True:
                 data = stream.read(self.chunk_size)
-                if self.vad.is_speech(data, self.rate):
-                    yield data
-                    silence_duration = 0  # Reset silence counter
-                else:
-                    silence_duration += 1
-                    if silence_duration >= silence_chunks:
-                        print("Silence detected for 2 seconds. Stopping streaming recording.")
-                        break
+                transcription = self.transcriber.transcribe_stream([data])
+                transcription_text += transcription
+                print(f"Streaming Transcription:\n{transcription}")
         except KeyboardInterrupt:
             print("Stopped streaming recording.")
 
@@ -102,16 +83,19 @@ class AudioRecorder:
         stream.close()
         self.p.terminate()
 
-    def save_to_wav(self):
+        return transcription_text
+
+    def save_to_wav(self, frames):
         with wave.open(self.output_filename, 'wb') as wf:
             wf.setnchannels(1)
             wf.setsampwidth(self.p.get_sample_size(pyaudio.paInt16))
             wf.setframerate(self.rate)
-            wf.writeframes(b''.join(self.frames))
+            wf.writeframes(b''.join(frames))
         print(f"Saved to {self.output_filename}")
 
 # Usage
 if __name__ == "__main__":
     recorder = AudioRecorder()
     input_device_index = recorder.find_input_device()
-    recorder.record()
+    transcription = recorder.record()
+    print(f"Transcription:\n{transcription}")
