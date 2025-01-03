@@ -69,6 +69,8 @@ def main():
                 transcription = ""
                 while (transcription == ""):
                     audio_path, transcription = transcribe_audio(prompt)
+                    if transcription == "":
+                        prompt = get_prompt(args)
                 print(f"Audio Transcription:\n{transcription}")
                 transcription_text = transcription.split("s]  ")[1]
                 process_ollama_response(ollama, transcription_text, history_split_with_newline, system_prompt)

@@ -1,14 +1,14 @@
 import subprocess
 import threading   
 
-# echo 'Welcome to the world of speech synthesis!' | piper --model en_US-lessac-medium   --output_raw | aplay -f S16_LE -c1 -r16000
+# echo 'Welcome to the world of speech synthesis!' | piper --model en_US-lessac-medium   --output_raw | aplay -f S16_LE -c1 -r22050
 def speak_piper(text):
     try:
         echo = subprocess.Popen(['echo', text], stdout=subprocess.PIPE)
-        piper = subprocess.Popen(['piper', '--model', 'en_US-amy-medium', '--output_raw'], 
+        piper = subprocess.Popen(['piper', '--model', 'en_US-lessac-high', '--output_raw'], 
                                stdin=echo.stdout,
                                stdout=subprocess.PIPE)
-        aplay = subprocess.Popen(['aplay', '-f', 'S16_LE', '-c1', '-r26000'],
+        aplay = subprocess.Popen(['aplay', '-f', 'S16_LE', '-c1', '-r22050'],
                                stdin=piper.stdout)
         aplay.wait()
     except Exception as e:

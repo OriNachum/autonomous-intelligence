@@ -32,7 +32,6 @@ def transcribe_audio(audio_path):
 
     # Collect transcription text
     transcription_text = ""
-
     logging.info(f"{process_name}: Starting to iterate over segments.")
     for i, segment in enumerate(segments):
         segment_length = segment.end - segment.start
@@ -47,6 +46,8 @@ def transcribe_audio(audio_path):
 
     # Log the transcription time and segment count
     logging.info(f"{process_name}: Transcribed '{audio_path}' in {transcription_time:.2f} seconds with {segment_count} segments.")
+    if segment_count == 0:
+        return "", ""
 
     # Return the transcription text
     return (audio_path, transcription_text)
