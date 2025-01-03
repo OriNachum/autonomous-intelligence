@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from transcribe_audio import Transcriber  # New import
 import threading  # Added import
 import queue      # Added import
+import webrtcvad  # Added import
 
 # Load environment variables
 load_dotenv()
@@ -30,6 +31,10 @@ class AudioRecorder:
         self.transcription_results_queue = queue.Queue()  # Added transcription results queue
         self.transcription_thread = threading.Thread(target=self.process_transcription, daemon=True)
         self.transcription_thread.start()
+
+        # Initialize Voice Activity Detector (VAD)
+        self.vad = webrtcvad.Vad()
+        self.vad.set_mode(1)  # 0: least aggressive, 3: most aggressive
 
     def find_input_device(self):
         device_count = self.p.get_device_count()
@@ -74,10 +79,24 @@ class AudioRecorder:
         while True:
             data = stream.read(self.chunk_size)
             frames.append(data)
-
-            # Enqueue the current chunk for transcription
-            self.transcription_queue.put(data)  # Changed from direct transcription
-
+            
+            # VAD expects 16-bit mono PCM, ensure the data format matches
+            is_speech = self.vad.is_speech(data, sample_rate=self.rate)
+            
+            if is_speech:
+                # Enqueue the current chunk for transcription
+                self.transcription_queue.put(data)  # Changed from direct transcription
+            else:
+                # Increment silence counter if no speech detected
+                silence_counter += 1
+                if silence_counter >= silence_threshold:
+                    print("Silence detected. Stopping recording.")
+                    break
+                continue  # Skip transcription for silent chunks
+            
+            # Reset silence counter on speech detection
+            silence_counter = 0
+            
             # Retrieve transcription result
             try:
                 transcription_chunk = self.transcription_results_queue.get_nowait()
@@ -128,19 +147,34 @@ class AudioRecorder:
         try:
             while True:
                 data = stream.read(self.chunk_size)
-                # Enqueue the current chunk for transcription
-                self.transcription_queue.put(data)  # Changed from direct transcription
-
+                
+                # VAD expects 16-bit mono PCM, ensure the data format matches
+                is_speech = self.vad.is_speech(data, sample_rate=self.rate)
+                
+                if is_speech:
+                    # Enqueue the current chunk for transcription
+                    self.transcription_queue.put(data)  # Changed from direct transcription
+                else:
+                    # Increment silence counter if no speech detected
+                    silence_counter += 1
+                    if silence_counter >= silence_threshold:
+                        print("Silence detected. Stopping streaming recording.")
+                        break
+                    continue  # Skip transcription for silent chunks
+                
+                # Reset silence counter on speech detection
+                silence_counter = 0
+                
                 # Retrieve transcription result
                 try:
                     transcription_chunk = self.transcription_results_queue.get_nowait()
                 except queue.Empty:
                     transcription_chunk = ""
-
+                
                 # Accumulate transcription text
                 if transcription_chunk:
                     transcription_text += transcription_chunk + "\n"
-
+                
                 # Update silence counter based on transcription result
                 if transcription_chunk.strip() == "":
                     silence_counter += 1
@@ -149,7 +183,7 @@ class AudioRecorder:
                         break
                 else:
                     silence_counter = 0  # Reset counter if speech is detected
-
+                
                 # Print the latest transcription
                 print(f"Streaming Transcription:\n{transcription_text.strip()}")
         except KeyboardInterrupt:
