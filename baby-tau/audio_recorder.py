@@ -4,6 +4,8 @@ import logging
 import os
 from dotenv import load_dotenv
 from transcribe_audio import Transcriber  # New import
+import threading  # Added import
+import queue      # Added import
 
 # Load environment variables
 load_dotenv()
@@ -23,6 +25,12 @@ class AudioRecorder:
         self.transcriber = Transcriber()
         self.device_name = os.getenv('AUDIO_DEVICE_NAME', 'default').lower()
 
+        # Initialize queue and transcription thread
+        self.transcription_queue = queue.Queue()
+        self.transcription_text = ""
+        self.transcription_thread = threading.Thread(target=self.process_transcription, daemon=True)
+        self.transcription_thread.start()
+
     def find_input_device(self):
         device_count = self.p.get_device_count()
         for i in range(device_count):
@@ -35,6 +43,20 @@ class AudioRecorder:
         logging.warning("Suitable input device not found")
         return None
 
+    def process_transcription(self):
+        while True:
+            data = self.transcription_queue.get()
+            if data is None:
+                break  # Exit signal
+            try:
+                # Pass data as a list containing a single chunk
+                transcription_chunk = self.transcriber.transcribe_stream([data])
+                self.transcription_text += transcription_chunk
+                print(f"Transcription Chunk: {transcription_chunk.strip()}")
+            except Exception as e:
+                logging.error(f"Error during transcription: {e}")
+        logging.info("Transcription thread terminated.")
+
     def record(self):
         # Open audio stream
         stream = self.p.open(format=pyaudio.paInt16, channels=1, rate=self.rate,
@@ -44,7 +66,6 @@ class AudioRecorder:
         print("Recording has started.")  # Added indication
 
         frames = []
-        transcription = ""
         silence_counter = 0
         silence_threshold = 3  # Number of consecutive silent chunks to stop
 
@@ -52,12 +73,11 @@ class AudioRecorder:
             data = stream.read(self.chunk_size)
             frames.append(data)
 
-            # Transcribe the current chunk
-            transcription_chunk = self.transcriber.transcribe_stream([data])
-            transcription += transcription_chunk
-            print(f"Transcription Chunk: {transcription_chunk.strip()}")
+            # Enqueue the current chunk for transcription
+            self.transcription_queue.put(data)  # Changed from direct transcription
 
-            if transcription_chunk.strip() == "" and not transcription.strip() == "":
+            # Optional: Implement silence detection based on transcription_text
+            if self.transcription_text.strip() == "":
                 silence_counter += 1
                 if silence_counter >= silence_threshold:
                     print("Silence detected. Stopping recording.")
@@ -72,11 +92,15 @@ class AudioRecorder:
         stream.close()
         self.p.terminate()
 
+        # Signal transcription thread to terminate
+        self.transcription_queue.put(None)
+        self.transcription_thread.join()
+
         # Save the recorded data to a WAV file
         self.save_to_wav(frames)
 
         # Return the full transcription
-        return transcription.strip()
+        return self.transcription_text.strip()
 
     def stream_recording(self):
         # Open audio stream
@@ -92,11 +116,13 @@ class AudioRecorder:
         try:
             while True:
                 data = stream.read(self.chunk_size)
-                transcription = self.transcriber.transcribe_stream([data])
-                transcription_text += transcription
-                print(f"Streaming Transcription:\n{transcription.strip()}")
+                # Enqueue the current chunk for transcription
+                self.transcription_queue.put(data)  # Changed from direct transcription
+                # Transcription is handled in the background
+                transcription_text = self.transcription_text
+                print(f"Streaming Transcription:\n{transcription_text.strip()}")
 
-                if transcription.strip() == "":
+                if transcription_text.strip() == "":
                     silence_counter += 1
                     if silence_counter >= silence_threshold:
                         print("Silence detected. Stopping streaming recording.")
@@ -110,6 +136,10 @@ class AudioRecorder:
         stream.stop_stream()
         stream.close()
         self.p.terminate()
+
+        # Signal transcription thread to terminate
+        self.transcription_queue.put(None)
+        self.transcription_thread.join()
 
         return transcription_text.strip()
 
