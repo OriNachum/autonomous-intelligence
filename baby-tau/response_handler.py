@@ -1,24 +1,27 @@
+from speak import Speaker  # Updated import
 
-from speak import speak_piper
+class ResponseHandler:
+    def __init__(self):
+        self.speaker = Speaker()  # Initialize Speaker
 
-def process_ollama_response(ollama, prompt, history, system_prompt):
-    response_stream = ollama.generate_stream_response(
-        prompt,
-        history,
-        system_prompt,
-        "llama-3.2-3b",
-        max_tokens=200,
-        use_chat=True
-    )
-    buffer=""
-    for event in parse_stream(response_stream):
-        print(event)
-        if event["type"] == "speech":
-            content = event["content"]
-            speak_piper(content)
-            buffer+=f"{content}\n"
-    print(f"\n\nStreaming Response from Ollama:\n{buffer}")
-    
+    def process_ollama_response(self, ollama, prompt, history, system_prompt):
+        response_stream = ollama.generate_stream_response(
+            prompt,
+            history,
+            system_prompt,
+            "llama-3.2-3b",
+            max_tokens=200,
+            use_chat=True
+        )
+        buffer=""
+        for event in parse_stream(response_stream):
+            print(event)
+            if event["type"] == "speech":
+                content = event["content"]
+                self.speaker.speak_piper(content)  # Updated call
+                buffer += f"{content}\n"
+        print(f"\n\nStreaming Response from Ollama:\n{buffer}")
+
 def parse_stream(stream):
     buffer = ""
     current_field = None
@@ -99,4 +102,3 @@ def parse_stream_chat(stream):
             print(buffer)
             speak(buffer)
             buffer = ""
-    

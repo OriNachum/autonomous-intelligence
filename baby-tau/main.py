@@ -2,8 +2,8 @@ from ollama_service import OllamaService
 #import espeak
 import argparse
 from audio_recorder import AudioRecorder
-from transcribe_audio import transcribe_stream, transcribe_audio  # Updated import
-from response_handler import process_ollama_response  # New import
+from transcribe_audio import Transcriber  # Updated import
+from response_handler import ResponseHandler  # Updated import
 
 def print_callback(*args):
     print(args)
@@ -47,6 +47,9 @@ def main():
 
     ollama, history_split_with_newline, system_prompt = initialize_ollama()
 
+    transcriber = Transcriber()  # Instantiate Transcriber
+    response_handler = ResponseHandler()  # Instantiate ResponseHandler
+
     if args.audio and args.stream:
         recorder = AudioRecorder()
         input_device_index = recorder.find_input_device()
@@ -55,10 +58,10 @@ def main():
                 transcription = ""
                 while (transcription == ""):
                     audio_stream = recorder.stream_recording()
-                    transcription = transcribe_stream(audio_stream)
+                    transcription = transcriber.transcribe_stream(audio_stream)  # Updated call
                 print(f"Streaming Transcription:\n{transcription}")
                 transcription_text = transcription.split("s]  ")[1]
-                process_ollama_response(ollama, transcription_text, history_split_with_newline, system_prompt)  # Updated call
+                response_handler.process_ollama_response(ollama, transcription_text, history_split_with_newline, system_prompt)  # Updated call
         else:
             print("Audio recording device not found.")
     else:
@@ -68,12 +71,12 @@ def main():
                 # Pass the recorded audio for transcription
                 transcription = ""
                 while (transcription == ""):
-                    audio_path, transcription = transcribe_audio(prompt)
+                    audio_path, transcription = transcriber.transcribe_audio(prompt)  # Updated call
                     if transcription == "":
                         prompt = get_prompt(args)
                 print(f"Audio Transcription:\n{transcription}")
                 transcription_text = transcription.split("s]  ")[1]
-                process_ollama_response(ollama, transcription_text, history_split_with_newline, system_prompt)
+                response_handler.process_ollama_response(ollama, transcription_text, history_split_with_newline, system_prompt)  # Updated call
                 prompt = get_prompt(args)
         else:
             print("Write what you say, or /q to exist")
@@ -82,7 +85,7 @@ def main():
             while (user != "/q"):
                 if (user != ""):
                     response = ""
-                    process_ollama_response(ollama, user, history_split_with_newline, system_prompt)  # Updated call
+                    response_handler.process_ollama_response(ollama, user, history_split_with_newline, system_prompt)  # Updated call
                     history_split_with_newline = response if history_split_with_newline == "" else f"{history_split_with_newline}\n{response}"
                 print("Write what you say, or /q to exist")
                 user = input()
