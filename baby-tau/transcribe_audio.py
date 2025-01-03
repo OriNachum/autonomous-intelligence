@@ -4,6 +4,7 @@ import time
 import multiprocessing
 from faster_whisper import WhisperModel
 import io  # Added import
+import wave  # Added import
 
 class Transcriber:
     def __init__(self):
@@ -62,10 +63,17 @@ class Transcriber:
         transcription_text = ""
 
         for chunk in audio_stream:
-            # Wrap chunk in BytesIO if it's bytes
+            # Wrap chunk in WAV format
             if isinstance(chunk, bytes):
-                chunk = io.BytesIO(chunk)
-            
+                wav_buffer = io.BytesIO()
+                with wave.open(wav_buffer, 'wb') as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)  # Assuming 16-bit audio
+                    wf.setframerate(16000)  # Ensure this matches the Recorder's rate
+                    wf.writeframes(chunk)
+                wav_buffer.seek(0)
+                chunk = wav_buffer
+
             # Log before transcription
             logging.info(f"{self.process_name}: Beginning transcription of audio chunk")
 
