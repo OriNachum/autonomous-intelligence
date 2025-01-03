@@ -38,10 +38,13 @@ def main():
         input_device_index = recorder.find_input_device()
         if input_device_index is not None:
             while True:
-                audio_stream = recorder.stream_recording()
-                transcription = transcribe_stream(audio_stream)
+                transcription = ""
+                while (transcription == ""):
+                    audio_stream = recorder.stream_recording()
+                    transcription = transcribe_stream(audio_stream)
                 print(f"Streaming Transcription:\n{transcription}")
-                process_ollama_response(ollama, transcription, history_split_with_newline, system_prompt)  # Updated call
+                transcription_text = transcription.split("s]  ")[1]
+                process_ollama_response(ollama, transcription_text, history_split_with_newline, system_prompt)  # Updated call
         else:
             print("Audio recording device not found.")
     else:
@@ -49,10 +52,12 @@ def main():
         if args.audio:
             while True:
                 # Pass the recorded audio for transcription
-                audio_path, transcription = transcribe_audio(prompt)
+                transcription = ""
+                while (transcription == ""):
+                    audio_path, transcription = transcribe_audio(prompt)
                 print(f"Audio Transcription:\n{transcription}")
                 transcription_text = transcription.split("s]  ")[1]
-                process_ollama_response(ollama, transcription, history_split_with_newline, system_prompt)
+                process_ollama_response(ollama, transcription_text, history_split_with_newline, system_prompt)
                 prompt = get_prompt(args)
         else:
             print("Write what you say, or /q to exist")
