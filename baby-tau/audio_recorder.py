@@ -9,6 +9,7 @@ import queue      # Added import
 #import webrtcvad  # Added import
 import torch  # Added import
 import torchaudio  # Added import
+import time
 
 # Load environment variables
 load_dotenv()
@@ -27,12 +28,6 @@ class AudioRecorder:
         # Initialize Transcriber
         self.transcriber = Transcriber()
         self.device_name = os.getenv('AUDIO_DEVICE_NAME', 'default').lower()
-
-        # Initialize queue and transcription threads
-        self.transcription_queue = queue.Queue()
-        self.transcription_results_queue = queue.Queue()  # Added transcription results queue
-        self.transcription_thread = threading.Thread(target=self.process_transcription, daemon=True)
-        self.transcription_thread.start()
 
         # Initialize Voice Activity Detector (VAD)
         # self.vad = webrtcvad.Vad()
@@ -88,63 +83,95 @@ class AudioRecorder:
         logging.info("Transcription thread terminated.")
 
     def record(self):
+        # Initialize queue and transcription threads
+        self.transcription_queue = queue.Queue()
+        self.transcription_results_queue = queue.Queue()  # Added transcription results queue
+        self.transcription_thread = threading.Thread(target=self.process_transcription, daemon=True)
+        self.transcription_thread.start()
+
         # Open audio stream
-        stream = self.p.open(format=pyaudio.paInt16, channels=1, rate=self.rate,
-                             input=True, frames_per_buffer=self.chunk_size, input_device_index=self.input_device_index)
+        stream = self.p.open(format=pyaudio.paInt16, 
+                            channels=1, 
+                            rate=self.rate,
+                            input=True, 
+                            frames_per_buffer=self.chunk_size,
+                            input_device_index=self.input_device_index,
+                            stream_callback=None,
+                            start=False)  # Don't start immediately
 
         print("Recording... Speak now.")
-        print("Recording has started.")  # Added indication
+        print("Recording has started.")
 
         frames = []
         silence_counter = 0
-        silence_threshold = 3  # Number of consecutive silent chunks to stop
-        transcription_text = ""  # Initialize local transcription text
+        silence_threshold = 3
 
-        while True:
-            data = stream.read(self.chunk_size)
-            frames.append(data)
+        try:
+            stream.start_stream()  # Start the stream when ready
             
-            # Convert byte data to tensor
-            audio_tensor = torch.frombuffer(data, dtype=torch.int16).float()
-            audio_tensor = audio_tensor / 32768.0  # Normalize to [-1, 1]
-            audio_tensor = audio_tensor.unsqueeze(0).to(self.device)
+            while True:
+                try:
+                    data = stream.read(self.chunk_size, exception_on_overflow=False)
+                    frames.append(data)
             
-            # Get speech timestamps using Silero VAD
-            speech_timestamps = self.get_speech_timestamps(audio_tensor, self.model, sampling_rate=self.rate)
-            is_speech = len(speech_timestamps) > 0
-            
-            if is_speech:
-                # Enqueue the current chunk for transcription
-                self.transcription_queue.put(data)  # Changed from direct transcription
-            else:
-                # Increment silence counter if no speech detected
-                silence_counter += 1
-                if silence_counter >= silence_threshold:
-                    print("Silence detected. Stopping recording.")
-                    break
-                continue  # Skip transcription for silent chunks
-            
-            # Reset silence counter on speech detection
-            silence_counter = 0
-            
-            # Retrieve transcription result
-            try:
-                transcription_chunk = self.transcription_results_queue.get_nowait()
-            except queue.Empty:
-                transcription_chunk = ""
+                
+                    # Convert byte data to tensor
+                    audio_tensor = torch.frombuffer(data, dtype=torch.int16).float()
+                    audio_tensor = audio_tensor / 32768.0  # Normalize to [-1, 1]
+                    audio_tensor = audio_tensor.unsqueeze(0).to(self.device)
+                    
+                    # Get speech timestamps using Silero VAD
+                    speech_timestamps = self.get_speech_timestamps(audio_tensor, self.model, sampling_rate=self.rate)
+                    is_speech = len(speech_timestamps) > 0
+                    speech_started = False
+                    if is_speech:
+                        print("Speech detected. Stopping recording.")
+                        speech_started = True
+                        # Enqueue the current chunk for transcription
+                        self.transcription_queue.put(data)  # Changed from direct transcription
+                    else:
+                        # Increment silence counter if no speech detected
+                        silence_counter += 1
+                        if speech_started and silence_counter >= silence_threshold:
+                            print("Silence detected. Stopping recording.")
+                            break
+                        print("no speech, sleeping")
+                        time.sleep(0.1)
+                        continue  # Skip transcription for silent chunks
+                    
+                    # Reset silence counter on speech detection
+                    silence_counter = 0
+                    
+                    # Retrieve transcription result
+                    try:
+                        transcription_chunk = self.transcription_results_queue.get_nowait()
+                    except queue.Empty:
+                        transcription_chunk = ""
 
-            # Accumulate transcription text
-            if transcription_chunk:
-                transcription_text += transcription_chunk + "\n"
+                    # Accumulate transcription text
+                    if transcription_chunk:
+                        transcription_text += transcription_chunk + "\n"
 
-            # Update silence counter based on transcription result
-            if transcription_chunk.strip() == "":
-                silence_counter += 1
-                if silence_counter >= silence_threshold:
-                    print("Silence detected. Stopping recording.")
-                    break
-            else:
-                silence_counter = 0  # Reset counter if speech is detected
+                    # Update silence counter based on transcription result
+                    if transcription_chunk.strip() == "":
+                        silence_counter += 1
+                        if silence_counter >= silence_threshold:
+                            print("Silence detected. Stopping recording.")
+                            break
+                    else:
+                        silence_counter = 0  # Reset counter if speech is detected
+                    time.sleep(0.1)
+                except IOError as e:
+                    if e.errno == pyaudio.paInputOverflowed:
+                        print("Warning: Input overflow")
+                        stream.read(stream.get_read_available(), exception_on_overflow=False)  # Clear buffer
+                        continue
+                    else:
+                        raise e
+
+        finally:
+            stream.stop_stream()
+            stream.close()            
 
         print("Finished recording.")
 
@@ -158,8 +185,9 @@ class AudioRecorder:
         self.transcription_thread.join()
 
         # Save the recorded data to a WAV file
-        self.save_to_wav(frames)
+        #self.save_to_wav(frames)
 
+        print(f"AudioRecorder record transcribed: {transcription_text.strip()}")
         # Return the full transcription
         return transcription_text.strip()
 
