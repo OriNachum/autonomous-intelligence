@@ -5,3 +5,7 @@ baby-tau/.venv/bin/python3
 baby-tau/.venv/bin/python3.10
 baby-tau/__pycache__/audio_recorder.cpython-310.pyc
 baby-tau/__pycache__/ollama_service.cpython-310.pyc
+baby-tau/*.onnx
+baby-tau/*.onnx.json
+baby-tau/*.wav
+***/__pycache__/*

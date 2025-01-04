@@ -14,3 +14,6 @@ sudo dpkg -i cusparselt-local-tegra-repo-ubuntu2204-0.6.3_1.0-1_arm64.deb
 
 sudo apt-get install portaudio19-dev python-all-dev python3-all-dev
 pip install pyaudio
+
+
+
