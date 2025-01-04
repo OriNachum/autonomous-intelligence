@@ -43,8 +43,10 @@ class AudioRecorder:
         try:
             self.model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=False)
             self.model.to(self.device)
-            self.get_speech_timestamps = utils.get_speech_timestamps
-            self.save_audio = utils.save_audio
+            (self.get_speech_timestamps, _, self.save_audio, _, _) = utils  # Unpack the tuple correctly
+
+            #self.get_speech_timestamps = utils.get_speech_timestamps
+            #self.save_audio = utils.save_audio
             logging.info("Silero VAD model loaded successfully.")
         except Exception as e:
             logging.error(f"Failed to load Silero VAD model: {e}")
