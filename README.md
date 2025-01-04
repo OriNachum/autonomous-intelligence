@@ -35,7 +35,7 @@ If you fork - delete history and facts to reset their knowledge and embark the j
 - [ ] **Integrate Nvidia Jetson Orin Nano Super 8GB**
   - [ ] Local LLM on Jetson (Llama 3.2 3:b)
   - [ ] *Local Speech to text (faster-whisper) on Jetson*
-    - [x] Basic VAD
+    - [x] WebRT VAD
     - [ ] *Silero VAD*
 - [ ] *Implement piperTTS, replace espeak*
 - [ ] Integrate Hailo 10 as inference station (Llama 3.2 3b)
