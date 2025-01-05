@@ -1,3 +1,5 @@
+import json
+import re
 from speak import Speaker  # Updated import
 
 class ResponseHandler:
@@ -14,91 +16,113 @@ class ResponseHandler:
             use_chat=True
         )
         buffer=""
-        for event in parse_stream(response_stream):
-            print(event)
+        for event in self.parse_stream(response_stream):
+            print(event, flush=True)
             if event["type"] == "speech":
-                content = event["content"]
-                self.speaker.speak_piper(content)  # Updated call
+                content = event["content"].replace("\"", "")
+                #self.speaker.speak_piper(content)  # Updated call
                 buffer += f"{content}\n"
         print(f"\n\nStreaming Response from Ollama:\n{buffer}")
 
-def parse_stream(stream):
-    buffer = ""
-    current_field = None
-    for chunk,_,_ in stream:
-        buffer += chunk  # Accumulate incoming chunks of text
+    def _split_into_sentences(self, text):
+        """Split text into sentences, handling edge cases."""
+        sentences = re.split(r'(?<=[.!?])(?=\s|$)', text)
+        return [s.strip() for s in sentences if s.strip()]
+
+    def parse_stream(self, response_stream):
+        """Parse LLM token stream and yield events."""
+        buffer = ""
         
-        # Process until we find a complete key-value pair or a period in the 'speech' field
-        while buffer:
-            if not current_field:  # Detect the key (field name)
-                key_start = buffer.find('"')
-                if key_start == -1:
-                    break
-                key_end = buffer.find('"', key_start + 1)
-                if key_end == -1:
-                    break
-                current_field = buffer[key_start + 1:key_end]
-                buffer = buffer[key_end + 1:].lstrip()
-            else:  # Process the value of the current field
-                if buffer.startswith(":"):  # Skip the colon
-                    buffer = buffer[1:].lstrip()
-                
-                if buffer.startswith('"'):  # Handle string value
-                    value_start = 1
-                    value_end = buffer.find('"', value_start)
-                    if value_end == -1:
-                        break  # Incomplete value, wait for more data
-                    value = buffer[value_start:value_end]
-                    buffer = buffer[value_end + 1:].lstrip()
-                    
-                    if current_field == "speech":  # Handle sentences in the speech field
-                        sentences = value.split(". ")
-                        for sentence in sentences[:-1]:
-                            yield {"type": "speech", "content": sentence.strip() + "."}
-                        if sentences[-1]:  # Incomplete sentence
-                            buffer = sentences[-1] + buffer
-                        current_field = None
-                    else:
-                        yield {"type": current_field, "content": value}
-                        current_field = None
-                elif buffer.startswith("{") or buffer.startswith("["):
-                    # Skip nested objects/arrays for simplicity
-                    stack = [buffer[0]]
-                    i = 1
-                    while i < len(buffer) and stack:
-                        if buffer[i] in "{[":
-                            stack.append(buffer[i])
-                        elif buffer[i] in "}]":
-                            stack.pop()
-                        i += 1
-                    if not stack:  # Found matching braces
-                        value = buffer[:i]
-                        buffer = buffer[i:].lstrip()
-                        yield {"type": current_field, "content": value}
-                        current_field = None
-                    else:
-                        break  # Incomplete nested object/array
-                else:  # Unquoted value (e.g., numbers, booleans)
-                    value_end = buffer.find(",")
-                    if value_end == -1:
-                        break
-                    value = buffer[:value_end].strip()
-                    buffer = buffer[value_end + 1:].lstrip()
-                    yield {"type": current_field, "content": value}
-                    current_field = None
-    
-def parse_stream_chat(stream):
-    buffer = ""
-    in_action = False
-    for token, _, _ in stream:
-        #buffer += token
-        in_action_changed = False
-        if token == "*":
-            in_action = not in_action
-            in_action_changed = True
-        if not in_action:
+        for token,_,_ in response_stream:
             buffer += token
-        if "." in token or (in_action_changed and not in_action):
-            print(buffer)
-            speak(buffer)
-            buffer = ""
+            
+            # Try to find complete JSON objects
+            while True:
+                try:
+                    # Find the end of a JSON object
+                    end = buffer.find("}")
+                    if end == -1:
+                        break
+                        
+                    # Extract potential JSON object
+                    obj_str = buffer[:end + 1]
+                    
+                    try:
+                        event = json.loads(obj_str)
+                        
+                        # Valid JSON object found
+                        if "speech" in event:
+                            yield {
+                                "type": "speech",
+                                "content": event["speech"]
+                            }
+                        elif "thinking" in event:
+                            yield {
+                                "type": "thinking",
+                                "content": event["thinking"]
+                            }
+                        elif "action" in event:
+                            yield {
+                                "type": "action",
+                                "content": event["action"]
+                            }
+                        
+                        # Remove processed object from buffer
+                        buffer = buffer[end + 1:].lstrip()
+                        
+                    except json.JSONDecodeError:
+                        # Not a complete/valid JSON object yet
+                        break
+                        
+                except Exception as e:
+                    # Any other error, skip this token
+                    print(f"Error processing token: {e}")
+                    break
+
+        
+    def parse_stream_chat(self, stream):
+        buffer = ""
+        in_action = False
+        for token, _, _ in stream:
+            #buffer += token
+            in_action_changed = False
+            if token == "*":
+                in_action = not in_action
+                in_action_changed = True
+            if not in_action:
+                buffer += token
+            if "." in token or (in_action_changed and not in_action):
+                print(buffer, flush=True)
+                speak(buffer)
+                buffer = ""
+
+
+# Example usage
+if __name__ == "__main__":
+    # Simulate LLM token stream
+    test_input = '''{
+  "speech": "Okay, here's one: Why couldn't the bicycle stand up by itself?"
+}
+{
+  "thinking": "Generating a punchline..."
+}
+{
+  "speech": "Because it was two-tired!"
+}
+{
+  "action": "displaying a smiley face on screen"
+}
+{
+  "speech": "Hope that made you laugh! Do you want to hear another one?"
+}'''
+    
+    # Split into tokens to simulate streaming
+    test_stream = [char for char in test_input]
+    handler = ResponseHandler()
+    buffer = ""
+    for event in handler.parse_stream(test_stream):
+        print(event, flush=True)
+        if event["type"] == "speech":
+            content = event["content"].replace("\"", "")
+            buffer += f"{content}\n"
+    print(f"\n\nStreaming Response from Ollama:\n{buffer}")

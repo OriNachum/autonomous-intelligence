@@ -4,16 +4,19 @@ import time
 import logging
 from typing import Optional
 from speech_transcriber import SpeechTranscriber
+from speech_detector import SpeechDetector
 
 class VoiceRecorder:
-    def __init__(self, device='cuda', model_size="small"):
+    def __init__(self, initial_prompt=None, device='cuda', model_size="small"):
         # Configure logging
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - VoiceRecorder - %(message)s')
         self.logger = logging.getLogger(__name__)
         
         # Initialize transcriber with the specified settings
-        self.transcriber = SpeechTranscriber(device=device, model_size=model_size)
+        self.transcriber = SpeechTranscriber(initial_prompt=initial_prompt, device=device, model_size=model_size)
         
+        self.detector = SpeechDetector(device=device)
+
         # Queue to store the transcription result
         self.result_queue = queue.Queue()
         
@@ -45,7 +48,53 @@ class VoiceRecorder:
             self.logger.error(f"Error in recording thread: {str(e)}")
             self.result_queue.put(None)  # Signal error to main thread
 
-    def record(self, timeout: Optional[float] = 30.0) -> str:
+    def record_and_transcribe(self, timeout=30.0):
+        """Record speech and return the transcription."""
+        try:
+            # Record audio
+            audio_data = self.detector.record(timeout=timeout)
+            
+            if audio_data is None:
+                print("No speech detected")
+                return ""
+            
+            # Convert audio data to WAV format
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)  # 16-bit audio
+                wf.setframerate(16000)  # Match the recording rate
+                wf.writeframes(audio_data)
+            
+            # Rewind buffer for reading
+            wav_buffer.seek(0)
+            
+            # Transcribe
+            segments, info = self.transcriber.transcribe(
+                wav_buffer,
+                beam_size=5,
+                initial_prompt=self.initial_prompt,
+                language='en',
+                condition_on_previous_text=True
+            )
+            
+            # Collect transcription
+            transcription = ""
+            for segment in segments:
+                transcription += f"{segment.text}\n"
+            
+            return transcription.strip()
+            
+        except Exception as e:
+            print(f"Error during recording/transcription: {str(e)}")
+            return ""
+        
+    def close(self):
+        """Clean up resources."""
+        self.detector.close()
+
+
+    def record(self, timeout: Optional[float] = 2.0) -> str:
         """
         Record audio until speech is detected and transcribed.
         
@@ -57,18 +106,16 @@ class VoiceRecorder:
             str: The transcribed text, or empty string if no speech was detected.
         """
         try:
-            # Start recording in a separate thread
-            thread = threading.Thread(target=self._recording_thread)
-            thread.daemon = True
-            thread.start()
+            # Start the transcriber
+            self.transcriber.start()
             
             self.logger.info("Recording started. Speak now...")
             
             # Wait for the result with timeout
             try:
-                result = self.result_queue.get(timeout=timeout)
-                if result is None:
-                    raise RuntimeError("Recording failed")
+                # Get result from the transcriber's queue
+                result = self.transcriber.result_queue.get(timeout=timeout)
+                self.logger.info(f"Got result from queue: {result}")
                 return result
             except queue.Empty:
                 self.logger.warning("Recording timed out - no speech detected")
@@ -80,18 +127,20 @@ class VoiceRecorder:
         
         finally:
             # Ensure cleanup happens
-            if hasattr(self, 'transcriber'):
-                self.transcriber.stop()
+            self.transcriber.stop()
 
 def main():
-    """Example usage of the VoiceRecorder class."""
-    recorder = VoiceRecorder()
+    """Example usage of the VoiceRecorder class with initial prompt."""
+    # Example initial prompt to guide transcription
+    initial_prompt = "The following is a clear and accurate transcription of speech:"
+    
+    recorder = VoiceRecorder(initial_prompt=initial_prompt)
     
     try:
         print("Press Ctrl+C to stop recording")
         while True:
             print("\nListening for speech...")
-            transcription = recorder.record()  # Get transcribed text directly
+            transcription = recorder.record(timeout=10.0)  # Shorter timeout for testing
             
             if transcription:
                 print(f"\nTranscription: {transcription}")
@@ -103,9 +152,6 @@ def main():
             
     except KeyboardInterrupt:
         print("\nStopping...")
-    finally:
-        if hasattr(recorder, 'transcriber'):
-            recorder.transcriber.stop()
 
 if __name__ == "__main__":
     main()

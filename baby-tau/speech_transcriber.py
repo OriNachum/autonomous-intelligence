@@ -10,12 +10,12 @@ from threading import Thread
 from faster_whisper import WhisperModel
 
 class SpeechTranscriber:
-    def __init__(self, device='cuda', model_size="small"):
+    def __init__(self, on_transcription=None, device='cuda', model_size="small", initial_prompt=None, parallel_callback_handling=True):
         # Configure logging
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         self.logger = logging.getLogger(__name__)
-
-        # Initialize speech detection
+        
+        # Initialize VAD model
         self.device = torch.device(device)
         self.vad_model, _ = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                          model='silero_vad',
@@ -26,9 +26,9 @@ class SpeechTranscriber:
         self.logger.info("Loading Whisper model...")
         self.whisper_model = WhisperModel(model_size, device=device, compute_type="int8")
         self.logger.info("Whisper model loaded successfully")
-
+        
         # Audio settings
-        self.chunk_size = 512 # 1024 not supported. 256 for 8000, 512 for 16000 
+        self.chunk_size = 512  # 512 for 16000 Hz
         self.rate = 16000
         self.p = pyaudio.PyAudio()
         self.input_device_index = self.get_input_device()
@@ -37,12 +37,17 @@ class SpeechTranscriber:
         self.threshold = 0.5
         self.speaking = False
         self.silence_duration = 0
-        self.max_silence_duration = 1.0  # seconds
+        self.max_silence_duration = 2.0  # seconds
         
-        # Recording buffers and queues
+        # Recording state
         self.audio_buffer = []
-        self.transcription_queue = Queue()
         self.is_recording = False
+        
+        # Transcription settings
+        self.initial_prompt = initial_prompt
+        self.on_transcription = on_transcription
+        self.parallel_callback_handling = parallel_callback_handling
+        self.callback_running = False
         
     def get_input_device(self):
         """Find the index of the default input device."""
@@ -52,26 +57,27 @@ class SpeechTranscriber:
                 self.logger.info(f"Found input device: {device_info['name']}")
                 return i
         return None
-
-    def audio_to_wav_bytes(self, audio_frames):
-        """Convert audio frames to WAV format bytes."""
-        wav_buffer = io.BytesIO()
-        with wave.open(wav_buffer, 'wb') as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)  # 16-bit audio
-            wf.setframerate(self.rate)
-            wf.writeframes(b''.join(audio_frames))
-        return wav_buffer.getvalue()
-
+        
     def transcribe_audio(self, audio_data):
         """Transcribe audio using Whisper."""
         try:
-            # Create temporary WAV file in memory
-            wav_data = self.audio_to_wav_bytes(audio_data)
-            wav_buffer = io.BytesIO(wav_data)
+            # Create WAV buffer from audio data
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(self.rate)
+                wf.writeframes(b''.join(audio_data))
+            wav_buffer.seek(0)
             
-            # Transcribe
-            segments, info = self.whisper_model.transcribe(wav_buffer, beam_size=5)
+            # Transcribe with initial prompt
+            segments, info = self.whisper_model.transcribe(
+                wav_buffer,
+                beam_size=5,
+                initial_prompt=self.initial_prompt,
+                language='en',
+                condition_on_previous_text=True
+            )
             
             # Collect transcription text
             transcription = ""
@@ -82,16 +88,16 @@ class SpeechTranscriber:
         except Exception as e:
             self.logger.error(f"Transcription error: {str(e)}")
             return ""
-
+    
     def process_audio(self, in_data, frame_count, time_info, status):
-        """Process audio data and detect speech."""
+        """Process audio data, detect speech, and trigger transcription."""
         try:
             # Convert byte data to tensor
             audio_data = np.frombuffer(in_data, dtype=np.int16)
             audio_tensor = torch.from_numpy(audio_data).float()
             audio_tensor = audio_tensor / 32768.0  # Normalize to [-1, 1]
             audio_tensor = audio_tensor.unsqueeze(0).to(self.device)
-
+            
             # Get speech probability
             speech_prob = self.vad_model(audio_tensor, self.rate).item()
             
@@ -115,15 +121,18 @@ class SpeechTranscriber:
                         # Transcribe the collected audio
                         if self.audio_buffer:
                             transcription = self.transcribe_audio(self.audio_buffer)
-                            if transcription:
-                                self.logger.info(f"Transcription: {transcription}")
+                            if transcription and self.on_transcription:
+                                if self.parallel_callback_handling or not self.callback_running:
+                                    self.callback_running = True 
+                                    self.on_transcription(transcription)
+                                    self.callback_running = False
                             self.audio_buffer = []
-
+            
             return (in_data, pyaudio.paContinue)
         except Exception as e:
             self.logger.error(f"Error in process_audio: {str(e)}")
             return (None, pyaudio.paAbort)
-
+    
     def start(self):
         """Start recording and transcribing speech."""
         try:
@@ -137,20 +146,18 @@ class SpeechTranscriber:
                                frames_per_buffer=self.chunk_size,
                                input_device_index=self.input_device_index,
                                stream_callback=self.process_audio)
-
+            
             self.logger.info("Started recording. Speak to test...")
             
             # Keep the stream open
             while self.is_recording and stream.is_active():
                 time.sleep(0.1)
-
-        except KeyboardInterrupt:
-            self.logger.info("Stopping...")
+                
         except Exception as e:
             self.logger.error(f"Error: {str(e)}")
         finally:
-            self.stop(stream)
-
+            self.stop(stream if 'stream' in locals() else None)
+    
     def stop(self, stream=None):
         """Stop recording and clean up resources."""
         self.is_recording = False
@@ -160,10 +167,28 @@ class SpeechTranscriber:
         self.p.terminate()
         self.logger.info("Recording stopped and resources cleaned up")
 
-if __name__ == "__main__":
-    # Create and start the transcriber
-    transcriber = SpeechTranscriber()
+
+def main():
+    """Example usage with callback."""
+    def handle_transcription(text):
+        print(f"\nTranscription received: {text}\n")
+        print("Listening for more speech...")
+    
+    # Create transcriber with callback
+    transcriber = SpeechTranscriber(
+        on_transcription=handle_transcription,
+        initial_prompt="The following is a clear and accurate transcription of speech:",
+        model_size="small",
+        device="cuda"
+    )
+    
     try:
+        print("Starting transcriber. Speak to test (Ctrl+C to exit)...")
         transcriber.start()
     except KeyboardInterrupt:
+        print("\nStopping...")
+    finally:
         transcriber.stop()
+
+if __name__ == "__main__":
+    main()
