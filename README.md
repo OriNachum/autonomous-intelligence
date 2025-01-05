@@ -32,12 +32,25 @@ If you fork - delete history and facts to reset their knowledge and embark the j
   - [x] Learn about GraphRAG, how to implement, etc.
   - [ ] **Use or implement GraphRAG**
 - [x] Design further split to applications, event communications
-- [ ] **Integrate Nvidia Jetson Orin Nano Super 8GB**
-  - [ ] Local LLM on Jetson (Llama 3.2 3:b)
-  - [ ] *Local Speech to text (faster-whisper) on Jetson*
+- [x] Setup Nvidia Jetson Orin Nano Super 8GB
+  - [x] Local LLM on Jetson (Llama 3.2 3:b)
+  - [x] *Local Speech to text (faster-whisper) on Jetson*
     - [x] WebRT VAD
-    - [ ] *Silero VAD*
-- [ ] *Implement piperTTS, replace espeak*
+    - [x] Silero VAD
+  - [x] Implement piperTTS, replace espeak
+- [ ] Write a setup guide for Nvidia Jetson Orin Nano Super 8GB
+- [ ] **Build every component as a single event-based app**
+  - [ ] Communication infra with websocket or unix domain socket (Global)
+  - [ ] Configuration infra, local configuration per device (Global)
+  - [ ] Detect main component, connects the secondary device to main device (Global)
+  - [ ] LLM as a service (Jetson)
+  - [ ] Speech detection as a service (Jetson)
+  - [ ] Speech as a service (Jetson)
+  - [ ] Memory as a service (Jetson)
+  - [ ] Vision as a service (Raspberry Pi)
+  - [ ] Face as a service (Raspberry Pi)
+  - [ ] Main loop (Jetson)
+- [ ] Integrate Nvidia Jetson Orin Nano Super 8GB
 - [ ] Integrate Hailo 10 as inference station (Llama 3.2 3b)
 - [ ] Advanced voice: Move to ElevenLabs advanced voices.
 - [ ] Tool use
