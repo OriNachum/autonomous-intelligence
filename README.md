@@ -39,7 +39,6 @@ If you fork - delete history and facts to reset their knowledge and embark the j
     - [x] Silero VAD
   - [x] Implement Text to speech
     - [x] piperTTS
-    - [ ] kokoroTTS
 - [ ] Write a setup guide for Nvidia Jetson Orin Nano Super 8GB
 - [ ] **Build every component as a single event-based app**
   - [ ] Communication infra with websocket or unix domain socket (Global)
@@ -48,6 +47,7 @@ If you fork - delete history and facts to reset their knowledge and embark the j
   - [ ] LLM as a service (Jetson)
   - [ ] Speech detection as a service (Jetson)
   - [ ] Speech as a service (Jetson)
+    - [ ] Add kokoroTTS support
   - [ ] Memory as a service (Jetson)
   - [ ] Vision as a service (Raspberry Pi)
   - [ ] Face as a service (Raspberry Pi)
