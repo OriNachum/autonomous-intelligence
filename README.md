@@ -37,7 +37,9 @@ If you fork - delete history and facts to reset their knowledge and embark the j
   - [x] *Local Speech to text (faster-whisper) on Jetson*
     - [x] WebRT VAD
     - [x] Silero VAD
-  - [x] Implement piperTTS, replace espeak
+  - [x] Implement Text to speech
+    - [x] piperTTS
+    - [ ] kokoroTTS
 - [ ] Write a setup guide for Nvidia Jetson Orin Nano Super 8GB
 - [ ] **Build every component as a single event-based app**
   - [ ] Communication infra with websocket or unix domain socket (Global)
