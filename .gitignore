@@ -9,3 +9,8 @@ baby-tau/*.onnx
 baby-tau/*.onnx.json
 baby-tau/*.wav
 ***/__pycache__/*
+***/.venv/***
+***/*.onnx
+***/*.deb
+***/*.onnx.json
+***/*.whl

@@ -3,9 +3,9 @@ python-dotenv
 #espeak
 #python-espeak
 #WhisperModel
-#pyaudio
+pyaudio
 #webrtcvad
-webrtcvad  # Removed comment to keep if needed elsewhere
+#webrtcvad  # Removed comment to keep if needed elsewhere
 faster_whisper
 numpy==1.26.4
 piper-tts
