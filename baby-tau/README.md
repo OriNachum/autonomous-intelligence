@@ -6,4 +6,11 @@ Its purpose is testing libraries on Jetson and POCing the setup.
 
 ## piper-tts
 ### Example use
+```bash
 echo 'Welcome to the world of speech synthesis!' | piper   --model en_US-lessac-medium   --output_file welcome.wav
+```
+
+# Check specs
+```bash
+sudo pip3 install -U jetson-stats 
+```
