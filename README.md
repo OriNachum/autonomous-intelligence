@@ -43,6 +43,7 @@ If you fork - delete history and facts to reset their knowledge and embark the j
   - [x] Implement Text to speech
     - [x] piperTTS
     - [x] kokoroTTS
+    - [ ] israwave 
 - [ ] Write a setup guide for Nvidia Jetson Orin Nano Super 8GB
 - [ ] **Build every component as a single event-based app**
   - [ ] Communication infra with websocket or unix domain socket (Global)
