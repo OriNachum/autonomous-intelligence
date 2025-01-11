@@ -8,6 +8,7 @@ import logging
 from queue import Queue
 from threading import Thread
 from faster_whisper import WhisperModel
+import onnxruntime as ort
 
 class SpeechTranscriber:
     def __init__(self, on_transcription=None, device='cuda', model_size="small", initial_prompt=None, parallel_callback_handling=True):
@@ -16,6 +17,7 @@ class SpeechTranscriber:
         self.logger = logging.getLogger(__name__)
         
         # Initialize VAD model
+        print(f"torch cuda is_available: {torch.cuda.is_available()}")
         self.device = torch.device(device)
         self.vad_model, _ = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                          model='silero_vad',
@@ -23,6 +25,7 @@ class SpeechTranscriber:
         self.vad_model = self.vad_model.to(self.device)
         
         # Initialize Whisper model
+        self.logger.info("ONNX Available providers:", ort.get_available_providers())
         self.logger.info("Loading Whisper model...")
         self.whisper_model = WhisperModel(model_size, device=device, compute_type="int8")
         self.logger.info("Whisper model loaded successfully")

@@ -20,7 +20,7 @@ class ResponseHandler:
             print(event, flush=True)
             if event["type"] == "speech":
                 content = event["content"].replace("\"", "")
-                self.speaker.speak_piper(content)  # Updated call
+                self.speaker.speak_kokoro_sync(content)  # Updated call
                 buffer += f"{content}\n"
         #print(f"\n\nStreaming Response from Ollama:\n{buffer}")
 
