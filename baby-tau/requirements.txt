@@ -11,3 +11,7 @@ numpy==1.26.4
 piper-tts
 #torch>=1.7.1  # Added torch for Silero VAD, Jetson special library
 #torchaudio>=0.7.2  # Added torchaudio for Silero VAD, Jetson special library
+sounddevice
+#kokoro-onnx deps: rfc3986, pylatexenc, language-tags, dlinfo, uritemplate, threadpoolctl, tabulate, soxr, six, scipy, rpds-py, regex, pyparsing, pycparser, platformdirs, msgpack, markdown, lxml, llvmlite, lazy-loader, joblib, isodate, espeakng-loader, decorator, colorlog, colorama, bibtexparser, babel, audioread, attrs, scikit-learn, referencing, rdflib, python-dateutil, pooch, onnxruntime, numba, cffi, soundfile, jsonschema-specifications, clldutils, librosa, jsonschema, csvw, segments, phonemizer-fork, kokoro-onnx
+kokoro-onnx
+## remove onnxruntime and reinstall from wheel after
