@@ -33,12 +33,16 @@ If you fork - delete history and facts to reset their knowledge and embark the j
   - [ ] **Use or implement GraphRAG**
 - [x] Design further split to applications, event communications
 - [x] Setup Nvidia Jetson Orin Nano Super 8GB
-  - [x] Local LLM on Jetson (Llama 3.2 3:b)
+  - [x] Local LLM on Jetson
+    - [x] Ollama (Llama 3.2 3:b)
+    - [ ] TensorRT
+    - [ ] Transformers
   - [x] *Local Speech to text (faster-whisper) on Jetson*
     - [x] WebRT VAD
     - [x] Silero VAD
   - [x] Implement Text to speech
     - [x] piperTTS
+    - [x] kokoroTTS
 - [ ] Write a setup guide for Nvidia Jetson Orin Nano Super 8GB
 - [ ] **Build every component as a single event-based app**
   - [ ] Communication infra with websocket or unix domain socket (Global)
@@ -47,7 +51,6 @@ If you fork - delete history and facts to reset their knowledge and embark the j
   - [ ] LLM as a service (Jetson)
   - [ ] Speech detection as a service (Jetson)
   - [ ] Speech as a service (Jetson)
-    - [ ] Add kokoroTTS support
   - [ ] Memory as a service (Jetson)
   - [ ] Vision as a service (Raspberry Pi)
   - [ ] Face as a service (Raspberry Pi)
