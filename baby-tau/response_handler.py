@@ -1,6 +1,6 @@
 import json
 import re
-from speak import Speaker  # Updated import
+from speaker import Speaker  # Updated import
 
 class ResponseHandler:
     def __init__(self):
