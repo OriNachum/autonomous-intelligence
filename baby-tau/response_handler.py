@@ -1,10 +1,10 @@
 import json
 import re
-from speaker import Speaker  # Updated import
+from kokoro_onnx_speaker import KokoroOnnxSpeaker  # Updated import
 
 class ResponseHandler:
     def __init__(self):
-        self.speaker = Speaker()  # Initialize Speaker
+        self.speaker = KokoroOnnxSpeaker()  # Initialize Speaker
 
     def process_ollama_response(self, ollama, prompt, history, system_prompt):
         response_stream = ollama.generate_stream_response(
@@ -20,7 +20,7 @@ class ResponseHandler:
             print(event, flush=True)
             if event["type"] == "speech":
                 content = event["content"].replace("\"", "")
-                self.speaker.speak_kokoro_sync(content)  # Updated call
+                self.speaker.speak(content)  # Updated call
                 buffer += f"{content}\n"
         #print(f"\n\nStreaming Response from Ollama:\n{buffer}")
 

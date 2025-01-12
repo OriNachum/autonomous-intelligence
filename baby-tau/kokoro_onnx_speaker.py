@@ -63,6 +63,7 @@ class KokoroOnnxSpeaker:
     def __init__(self):
         logger.info("Initializing Speaker class")
         self.logger = logging.getLogger('TTS_System.Speaker')
+        self.session = self.create_session()
     
     @timing_decorator
     def create_session(self):
@@ -76,10 +77,9 @@ class KokoroOnnxSpeaker:
         return session
 
     @timing_decorator
-    def speak_kokoro_session(self, text):
+    def speak(self, text):
         self.logger.info(f"Processing text with Kokoro session (length: {len(text)} chars)")
-        session = self.create_session()
-        kokoro = Kokoro.from_session(session, "voices.json", espeak_config=None)
+        kokoro = Kokoro.from_session(self.session, "voices.json", espeak_config=None)
         samples, sample_rate = kokoro.create("ta", voice="af_sky", speed=1.0, lang="en-us")
         start_time = time.perf_counter()
         samples, sample_rate = kokoro.create(text, voice="af_sky", speed=1.0, lang="en-us")
