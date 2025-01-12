@@ -64,6 +64,10 @@ class KokoroOnnxSpeaker:
         logger.info("Initializing Speaker class")
         self.logger = logging.getLogger('TTS_System.Speaker')
         self.session = self.create_session()
+        self.logger.info(f"Processing text with Kokoro session (length: {len(text)} chars)")
+        self.kokoro = Kokoro.from_session(self.session, "voices.json", espeak_config=None)
+        # active loading
+        samples, sample_rate = self.kokoro.create("ta", voice="af_sky", speed=1.0, lang="en-us")
     
     @timing_decorator
     def create_session(self):
@@ -78,11 +82,8 @@ class KokoroOnnxSpeaker:
 
     @timing_decorator
     def speak(self, text):
-        self.logger.info(f"Processing text with Kokoro session (length: {len(text)} chars)")
-        kokoro = Kokoro.from_session(self.session, "voices.json", espeak_config=None)
-        samples, sample_rate = kokoro.create("ta", voice="af_sky", speed=1.0, lang="en-us")
         start_time = time.perf_counter()
-        samples, sample_rate = kokoro.create(text, voice="af_sky", speed=1.0, lang="en-us")
+        samples, sample_rate = self.kokoro.create(text, voice="af_sky", speed=1.0, lang="en-us")
         generation_time = time.perf_counter() - start_time
         self.logger.info(f"Audio generation completed in {generation_time:.3f} seconds")
         
@@ -98,8 +99,7 @@ class KokoroOnnxSpeaker:
     @async_timing_decorator
     async def speak_kokoro_async(self, text):
         self.logger.info(f"Processing text asynchronously with Kokoro (length: {len(text)} chars)")
-        kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
-        stream = kokoro.create_stream(text, voice="af_sky", speed=1.0, lang="en-us")
+        stream = self.kokoro.create_stream(text, voice="af_sky", speed=1.0, lang="en-us")
         count = 0
         async for samples, sample_rate in stream:
             count += 1
@@ -113,8 +113,7 @@ class KokoroOnnxSpeaker:
     @timing_decorator
     def speak_kokoro_sync(self, text):
         self.logger.info(f"Processing text synchronously with Kokoro (length: {len(text)} chars)")
-        kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
-        samples, sample_rate = kokoro.create("te", voice="af_sky", speed=1.0, lang="en-us")
+        samples, sample_rate = self.kokoro.create("te", voice="af_sky", speed=1.0, lang="en-us")
         start_time = time.perf_counter()
         samples, sample_rate = kokoro.create(text, voice="af_sky", speed=1.0, lang="en-us")
         generation_time = time.perf_counter() - start_time
