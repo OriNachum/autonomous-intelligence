@@ -43,7 +43,7 @@ echo ""
 
 # Add grep pip list | ctranslate2
 echo " Installing ctranslate2 from https://pypi.jetson-ai-lab.dev/jp6/cu126" 
-wget_if_not_exists https://pypi.jetson-ai-lab.dev/jp6/cu126/+f/6d2/9d09ec4904d72/ctranslate2-4.4.0-cp310-cp310-linux_aarch64.whl#sha256=6d29d09ec4904d721aa3e65fe6d52177e6644b55f64524cb72fe6867e8727bf7
+wget_if_not_exists  /+f/6d2/9d09ec4904d72/ctranslate2-4.4.0-cp310-cp310-linux_aarch64.whl#sha256=6d29d09ec4904d721aa3e65fe6d52177e6644b55f64524cb72fe6867e8727bf7
 pip install ctranslate2-4.4.0-cp310-cp310-linux_aarch64.whl 
 
 # Add grep pip list | torchaudio
@@ -51,3 +51,9 @@ echo ""
 echo " Installing torchaudio from https://pypi.jetson-ai-lab.dev/jp6/cu126" 
 wget_if_not_exists https://pypi.jetson-ai-lab.dev/jp6/cu126/+f/812/4fbc4ba6df0a3/torchaudio-2.5.0-cp310-cp310-linux_aarch64.whl#sha256=8124fbc4ba6df0a30b1d8176aa5ce6f571c2dd5263e6401109d2e29708352c97
 pip install torchaudio-2.5.0-cp310-cp310-linux_aarch64.whl
+
+wget_if_not_exists https://pypi.jetson-ai-lab.dev/jp6/cu126/+f/0c4/18beb3326027d/onnxruntime_gpu-1.20.0-cp310-cp310-linux_aarch64.whl#sha256=0c418beb3326027d83acc283372ae42ebe9df12f71c3a8c2e9743a4e323443a
+
+# For getting pth models
+curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+sudo apt-get install git-lfs

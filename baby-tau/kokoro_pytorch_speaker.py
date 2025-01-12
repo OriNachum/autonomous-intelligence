@@ -1,16 +1,34 @@
-import subprocess
-import threading   
-from kokoro_onnx import Kokoro
-import onnxruntime as ort
-from onnxruntime import InferenceSession
+import torch
 import sounddevice as sd
-import os 
 import asyncio
+from typing import AsyncGenerator, Tuple
+import numpy as np
 import logging
+from datetime import datetime
 import time
 from functools import wraps
-from datetime import datetime
 import argparse
+
+from models import build_model
+import torch
+
+# import subprocess
+# import threading   
+# import sounddevice as sd
+# import os 
+# import asyncio
+# import logging
+# import time
+# from functools import wraps
+# from datetime import datetime
+# import argparse
+from kokoro import generate
+# import asyncio
+# from typing import AsyncGenerator, Tuple
+# import numpy as np
+
+
+
 
 # Configure logging
 logging.basicConfig(
@@ -59,72 +77,159 @@ def async_timing_decorator(func):
             raise
     return wrapper
 
-class KokoroOnnxSpeaker:
+class KokoroPytorchSpeaker:
     def __init__(self):
         logger.info("Initializing Speaker class")
         self.logger = logging.getLogger('TTS_System.Speaker')
-    
-    @timing_decorator
-    def create_session(self):
-        session_options = ort.SessionOptions()
-        cpu_count = os.cpu_count()
-        self.logger.info(f"Creating session with {cpu_count} CPU threads")
-        session_options.intra_op_num_threads = cpu_count
-        providers = ort.get_available_providers()
-        self.logger.info(f"Available ONNX providers: {providers}")
-        session = InferenceSession("kokoro-v0_19.onnx", providers=['CUDAExecutionProvider'], sess_options=session_options)
-        return session
-
-    @timing_decorator
-    def speak_kokoro_session(self, text):
-        self.logger.info(f"Processing text with Kokoro session (length: {len(text)} chars)")
-        session = self.create_session()
-        kokoro = Kokoro.from_session(session, "voices.json", espeak_config=None)
-        samples, sample_rate = kokoro.create("ta", voice="af_sky", speed=1.0, lang="en-us")
-        start_time = time.perf_counter()
-        samples, sample_rate = kokoro.create(text, voice="af_sky", speed=1.0, lang="en-us")
-        generation_time = time.perf_counter() - start_time
-        self.logger.info(f"Audio generation completed in {generation_time:.3f} seconds")
-        
-        start_time = time.perf_counter()
-        sd.play(samples, sample_rate)
-        sd.wait()
-        playback_time = time.perf_counter() - start_time
-        self.logger.info(f"Audio playback completed in {playback_time:.3f} seconds")
-
-    def speak_kokoro_async_wrapper(self, text):
-        asyncio.run(self.speak_kokoro_async(text))
-
-    @async_timing_decorator
-    async def speak_kokoro_async(self, text):
-        self.logger.info(f"Processing text asynchronously with Kokoro (length: {len(text)} chars)")
-        kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
-        stream = kokoro.create_stream(text, voice="af_sky", speed=1.0, lang="en-us")
-        count = 0
-        async for samples, sample_rate in stream:
-            count += 1
-            self.logger.info(f"Processing stream chunk {count}")
-            start_time = time.perf_counter()
-            sd.play(samples, sample_rate)
-            sd.wait()
-            chunk_time = time.perf_counter() - start_time
-            self.logger.info(f"Chunk {count} played in {chunk_time:.3f} seconds")
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        logger.info(f"Running with torch {self.device}")
+        self.MODEL = build_model('kokoro-v0_19.pth', self.device)
+        self.VOICE_NAMES = [
+            'af', # Default voice is a 50-50 mix of Bella & Sarah
+            'af_bella', 'af_sarah', 'am_adam', 'am_michael',
+            'bf_emma', 'bf_isabella', 'bm_george', 'bm_lewis',
+            'af_nicole', 'af_sky',
+        ]
+        self.VOICE_NAME = self.VOICE_NAMES[0] 
+        self.VOICEPACK = torch.load(f'voices/{self.VOICE_NAME}.pt', weights_only=True).to(self.device)
+        logger.info(f'Loaded voice: {self.VOICE_NAME}')
+        # Warm up the model
+        audio, out_ps = generate(self.MODEL, "ta", self.VOICEPACK, lang=self.VOICE_NAME[0])
+        logger.info(f'Initial generation finished')
 
     @timing_decorator
     def speak_kokoro_sync(self, text):
         self.logger.info(f"Processing text synchronously with Kokoro (length: {len(text)} chars)")
-        kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
-        samples, sample_rate = kokoro.create("te", voice="af_sky", speed=1.0, lang="en-us")
         start_time = time.perf_counter()
-        samples, sample_rate = kokoro.create(text, voice="af_sky", speed=1.0, lang="en-us")
+        audio, out_ps = generate(self.MODEL, text, self.VOICEPACK, lang=self.VOICE_NAME[0])
         generation_time = time.perf_counter() - start_time
         self.logger.info(f"Audio generation completed in {generation_time:.3f} seconds")
         
         start_time = time.perf_counter()
-        sd.play(samples, sample_rate)
+        sd.play(audio, 24000)
         sd.wait()
         playback_time = time.perf_counter() - start_time
         self.logger.info(f"Audio playback completed in {playback_time:.3f} seconds")
+
+    async def generate_stream(self, text: str) -> AsyncGenerator[Tuple[np.ndarray, int], None]:
+        """
+        Generate audio in two chunks: first sentence, then the rest.
+        
+        Args:
+            text: Input text to synthesize
+            
+        Yields:
+            Tuple of (audio_chunk, sample_rate)
+        """
+        self.logger.info(f"Starting streaming generation for text: {len(text)} chars")
+        
+        # Split into first sentence and rest
+        # Look for common sentence endings
+        sample_rate = 24000
+        sentence_endings = ['. ', '! ', '? ', '.\n', '!\n', '?\n']
+        first_sentence_end = float('inf')
+        
+        # Find the earliest sentence ending
+        for ending in sentence_endings:
+            pos = text.find(ending)
+            if pos != -1 and pos < first_sentence_end:
+                first_sentence_end = pos + len(ending) - 1
+        
+        # If no sentence ending found, use half the text
+        if first_sentence_end == float('inf'):
+            first_sentence_end = len(text) // 2
+        
+        # Split the text
+        first_sentence = text[:first_sentence_end].strip()
+        remainder = text[first_sentence_end:].strip()
+        self.logger.info(first_sentence_end)
+        # Generate first sentence
+        if first_sentence:
+            chunk_start = time.perf_counter()
+            audio_chunk, out_ps = generate(self.MODEL, first_sentence, self.VOICEPACK, lang=self.VOICE_NAME[0])
+            chunk_time = time.perf_counter() - chunk_start
+            self.logger.info(f"Generated first sentence ({len(first_sentence)} chars) in {chunk_time:.3f} seconds")
+            
+            if isinstance(audio_chunk, torch.Tensor):
+                audio_chunk = audio_chunk.cpu().numpy()
+            yield audio_chunk, sample_rate
+        
+        # Generate remainder
+        if remainder:
+            chunk_start = time.perf_counter()
+            audio_chunk, out_ps = generate(self.MODEL, remainder, self.VOICEPACK, lang=self.VOICE_NAME[0])
+            chunk_time = time.perf_counter() - chunk_start
+            self.logger.info(f"Generated remainder ({len(remainder)} chars) in {chunk_time:.3f} seconds")
+            
+            if isinstance(audio_chunk, torch.Tensor):
+                audio_chunk = audio_chunk.cpu().numpy()
+            yield audio_chunk, sample_rate
+            
+        await asyncio.sleep(0.01)
+
+    @async_timing_decorator    
+    async def speak_kokoro_stream(self, text: str):
+        """
+        Speak text using streaming generation and playback, with playback overlapping generation.
+        """
+        self.logger.info(f"Starting streaming playback for text: {len(text)} chars")
+        start_time = time.perf_counter()
+        flag = False
+
+        # Create a queue for audio chunks
+        queue = asyncio.Queue()
+        
+        # Create a task for audio playback
+        async def play_audio():
+            while True:
+                try:
+                    chunk, sample_rate = await queue.get()
+                    if chunk is None:  # Sentinel value to stop playback
+                        break
+                    chunk_play_start = time.perf_counter()
+                    sd.play(chunk, sample_rate)
+                    sd.wait()
+                    chunk_play_time = time.perf_counter() - chunk_play_start
+                    self.logger.info(f"Chunk playback completed in {chunk_play_time:.3f} seconds")
+                    queue.task_done()
+                except Exception as e:
+                    self.logger.error(f"Error in playback: {e}")
+                    break
+
+        # Start the playback task
+        playback_task = asyncio.create_task(play_audio())
+        
+        try:
+            # Generate and queue chunks
+            async for chunk, sample_rate in self.generate_stream(text):
+                if not flag:
+                    generation_time = time.perf_counter() - start_time
+                    self.logger.info(f"Time to first generated chunk: {generation_time:.3f} seconds")
+                    flag = True
+                
+                await queue.put((chunk, sample_rate))
+                
+            # Signal playback task to stop
+            await queue.put((None, None))
+            
+            # Wait for playback to complete
+            await playback_task
+            
+        except Exception as e:
+            self.logger.error(f"Error in generation: {e}")
+            # Ensure playback task is cleaned up
+            if not playback_task.done():
+                playback_task.cancel()
+                try:
+                    await playback_task
+                except asyncio.CancelledError:
+                    pass
+
+    def speak_kokoro_stream_wrapper(self, text: str):
+        """
+        Synchronous wrapper for streaming playback.
+        """
+        asyncio.run(self.speak_kokoro_stream(text))
 
 def main():
     logger.info("Starting TTS application")
@@ -132,7 +237,7 @@ def main():
     parser.add_argument('text', help='Text to be spoken')
     parser.add_argument('--engine', choices=['kokoro', 'piper'], default='piper',
                       help='TTS engine to use (default: piper)')
-    parser.add_argument('--mode', choices=['sync', 'async'], default='sync',
+    parser.add_argument('--mode', choices=['sync', 'async', 'stream'], default='sync',
                       help='Execution mode (default: sync)')
     parser.add_argument('--session', action='store_true',
                       help='Use session mode for Kokoro (only applicable with kokoro engine)')
@@ -140,25 +245,14 @@ def main():
     args = parser.parse_args()
     logger.info(f"Parsed arguments: engine={args.engine}, mode={args.mode}, session={args.session}")
     
-    speaker = Speaker()
     start_time = time.perf_counter()
 
     try:
-        if args.engine == 'piper':
-            if args.session:
-                logger.warning("Session mode is only available for Kokoro engine. Ignoring --session flag.")
-            if args.mode == 'async':
-                logger.warning("Async mode is not available for Piper. Using sync mode.")
-            speaker.speak_piper(args.text)
-        
-        elif args.engine == 'kokoro':
-            if args.mode == 'async':
-                speaker.speak_kokoro_async_wrapper(args.text)
-            elif args.session:
-                speaker.speak_kokoro_session(args.text)
-            else:
-                speaker.speak_kokoro_sync(args.text)
-
+        speaker = KokoroPytorchSpeaker()
+        if args.mode == 'stream':
+            speaker.speak_kokoro_stream_wrapper(args.text)
+        else:
+            speaker.speak_kokoro_sync(args.text)
         total_time = time.perf_counter() - start_time
         logger.info(f"Total execution time: {total_time:.3f} seconds")
 

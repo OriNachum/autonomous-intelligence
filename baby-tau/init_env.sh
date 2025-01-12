@@ -47,6 +47,8 @@ wget_if_not_exists https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en
 echo "Downloading kokoro models"
 wget_if_not_exists https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/kokoro-v0_19.onnx
 wget_if_not_exists https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/voices.json
+wget_if_not_exists https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/kokoro-v0_19.pth
+
 
 pip install --upgrade pip
 pip install -r requirements.txt
