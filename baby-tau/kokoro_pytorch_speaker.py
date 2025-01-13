@@ -78,7 +78,7 @@ def async_timing_decorator(func):
     return wrapper
 
 class KokoroPytorchSpeaker:
-    def __init__(self):
+    def __init__(self, initializing_notification=True):
         logger.info("Initializing Speaker class")
         self.logger = logging.getLogger('TTS_System.Speaker')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -94,7 +94,11 @@ class KokoroPytorchSpeaker:
         self.VOICEPACK = torch.load(f'voices/{self.VOICE_NAME}.pt', weights_only=True).to(self.device)
         logger.info(f'Loaded voice: {self.VOICE_NAME}')
         # Warm up the model
-        audio, out_ps = generate(self.MODEL, "ta", self.VOICEPACK, lang=self.VOICE_NAME[0])
+        audio, out_ps = generate(self.MODEL, "Initializing", self.VOICEPACK, lang=self.VOICE_NAME[0])
+        if initializing_notification:
+            sd.play(audio, 24000)
+            sd.wait()
+
         logger.info(f'Initial generation finished')
 
     @timing_decorator
@@ -127,44 +131,38 @@ class KokoroPytorchSpeaker:
         # Look for common sentence endings
         sample_rate = 24000
         sentence_endings = ['. ', '! ', '? ', '.\n', '!\n', '?\n']
-        first_sentence_end = float('inf')
-        
-        # Find the earliest sentence ending
-        for ending in sentence_endings:
-            pos = text.find(ending)
-            if pos != -1 and pos < first_sentence_end:
-                first_sentence_end = pos + len(ending) - 1
-        
-        # If no sentence ending found, use half the text
-        if first_sentence_end == float('inf'):
-            first_sentence_end = len(text) // 2
-        
-        # Split the text
-        first_sentence = text[:first_sentence_end].strip()
-        remainder = text[first_sentence_end:].strip()
-        self.logger.info(first_sentence_end)
-        # Generate first sentence
-        if first_sentence:
-            chunk_start = time.perf_counter()
-            audio_chunk, out_ps = generate(self.MODEL, first_sentence, self.VOICEPACK, lang=self.VOICE_NAME[0])
-            chunk_time = time.perf_counter() - chunk_start
-            self.logger.info(f"Generated first sentence ({len(first_sentence)} chars) in {chunk_time:.3f} seconds")
+        current_pos = 0
+        remaining_text = text.strip()
+
+        while remaining_text:
+            # Find the next sentence ending
+            next_end = float('inf')
+            for ending in sentence_endings:
+                pos = remaining_text.find(ending)
+                if pos != -1 and pos < next_end:
+                    next_end = pos + len(ending) - 1
+
+            # If no sentence ending found, treat remaining text as final sentence
+            if next_end == float('inf'):
+                current_sentence = remaining_text
+                remaining_text = ""
+            else:
+                current_sentence = remaining_text[:next_end].strip()
+                remaining_text = remaining_text[next_end:].strip()
+
+            # Generate audio for current sentence if it's not empty
+            if current_sentence:
+                chunk_start = time.perf_counter()
+                audio_chunk, out_ps = generate(self.MODEL, current_sentence, self.VOICEPACK, lang=self.VOICE_NAME[0])
+                chunk_time = time.perf_counter() - chunk_start
+                self.logger.info(f"Generated sentence ({len(current_sentence)} chars) in {chunk_time:.3f} seconds")
+                self.logger.info(f"Sentence: {current_sentence}")
+                
+                if isinstance(audio_chunk, torch.Tensor):
+                    audio_chunk = audio_chunk.cpu().numpy()
+                yield audio_chunk, sample_rate
             
-            if isinstance(audio_chunk, torch.Tensor):
-                audio_chunk = audio_chunk.cpu().numpy()
-            yield audio_chunk, sample_rate
-        
-        # Generate remainder
-        if remainder:
-            chunk_start = time.perf_counter()
-            audio_chunk, out_ps = generate(self.MODEL, remainder, self.VOICEPACK, lang=self.VOICE_NAME[0])
-            chunk_time = time.perf_counter() - chunk_start
-            self.logger.info(f"Generated remainder ({len(remainder)} chars) in {chunk_time:.3f} seconds")
-            
-            if isinstance(audio_chunk, torch.Tensor):
-                audio_chunk = audio_chunk.cpu().numpy()
-            yield audio_chunk, sample_rate
-            
+            await asyncio.sleep(0.01)  # Give other tasks a chance to run
         await asyncio.sleep(0.01)
 
     @async_timing_decorator    
@@ -186,8 +184,18 @@ class KokoroPytorchSpeaker:
                     chunk, sample_rate = await queue.get()
                     if chunk is None:  # Sentinel value to stop playback
                         break
+
+                    # Check for silence at start and end
+                    audio_start = np.where(np.abs(chunk) > 0.01)[0]
+                    if len(audio_start) > 0:
+                        start_idx = max(0, audio_start[0] - int(0.02 * sample_rate))  # Keep 50ms of silence
+                        end_idx = min(len(chunk), audio_start[-1] + int(0.02 * sample_rate))  # Keep 100ms of silence
+                        chunk = chunk[start_idx:end_idx]
+
                     chunk_play_start = time.perf_counter()
+                    self.logger.info(f"Chunk playback starting")
                     sd.play(chunk, sample_rate)
+                    self.logger.info(f"Chunk playback started")
                     sd.wait()
                     chunk_play_time = time.perf_counter() - chunk_play_start
                     self.logger.info(f"Chunk playback completed in {chunk_play_time:.3f} seconds")
@@ -248,11 +256,12 @@ def main():
     start_time = time.perf_counter()
 
     try:
+        fixed_text = args.text.replace('\!', '!')
         speaker = KokoroPytorchSpeaker()
         if args.mode == 'stream':
-            speaker.speak_kokoro_stream_wrapper(args.text)
+            speaker.speak_kokoro_stream_wrapper(fixed_text)
         else:
-            speaker.speak_kokoro_sync(args.text)
+            speaker.speak_kokoro_sync(fixed_text)
         total_time = time.perf_counter() - start_time
         logger.info(f"Total execution time: {total_time:.3f} seconds")
 
