@@ -35,6 +35,7 @@ If you fork - delete history and facts to reset their knowledge and embark the j
 - [x] Setup Nvidia Jetson Orin Nano Super 8GB
   - [x] Local LLM on Jetson
     - [x] Ollama (Llama 3.2 3:b)
+    - [ ] **Move to use jetson-containers**
     - [ ] TensorRT
     - [ ] Transformers
   - [x] *Local Speech to text (faster-whisper) on Jetson*
