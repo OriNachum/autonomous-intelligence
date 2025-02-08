@@ -9,6 +9,8 @@ import time
 from functools import wraps
 import argparse
 import re
+# Requires scipy==1.15.1 (scipy), misaki==0.7.12, loguru==0.7.3, num2words==0.5.14, spacy (fails) => spacy==3.5.0, phonemizer==3.3.0 (rfc3986-2.0.0 -> rfc3986-1.5.0), IPython==8.32.0
+# Manualy remove espeak dependecy
 from kokoro import KPipeline
 from IPython.display import display, Audio
 
@@ -67,12 +69,12 @@ class KokoroPytorchSpeaker:
         logger.info(f"Running with torch {self.device}")
         pipeline = KPipeline(lang_code='a') # <= make sure lang_code matches voice
 
-        self.MODEL = build_model('kokoro-v0_19.pth', self.device)
+        #self.MODEL = build_model('kokoro-v0_19.pth', self.device)
         self.VOICE_NAME = 'af'  # Default voice
-        self.VOICEPACK = torch.load(f'voices/{self.VOICE_NAME}.pt', weights_only=True).to(self.device)
+        #self.VOICEPACK = torch.load(f'voices/{self.VOICE_NAME}.pt', weights_only=True).to(self.device)
         logger.info(f'Loaded voice: {self.VOICE_NAME}')
         # Warm up
-        _, _ = generate(self.MODEL, "ta", self.VOICEPACK, lang=self.VOICE_NAME[0])
+        #_, _ = generate(self.MODEL, "ta", self.VOICEPACK, lang=self.VOICE_NAME[0])
         logger.info(f'Initial generation finished')
 
     def split_into_chunks(self, text: str) -> List[str]:
