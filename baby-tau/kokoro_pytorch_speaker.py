@@ -67,7 +67,7 @@ class KokoroPytorchSpeaker:
         self.logger = logging.getLogger('TTS_System.Speaker')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         logger.info(f"Running with torch {self.device}")
-        pipeline = KPipeline(lang_code='a') # <= make sure lang_code matches voice
+        self.pipeline = KPipeline(lang_code='a') # <= make sure lang_code matches voice
 
         #self.MODEL = build_model('kokoro-v0_19.pth', self.device)
         self.VOICE_NAME = 'af'  # Default voice
@@ -213,7 +213,7 @@ class KokoroPytorchSpeaker:
             self.logger.info(f"Stream processing completed in {total_time:.3f} seconds")
 
     def speak(self, text: str):
-        generator = pipeline(
+        generator = self.pipeline(
             text, voice='af_heart', # <= change voice here
             speed=1, split_pattern=r'\n+'
         )
