@@ -9,9 +9,8 @@ import time
 from functools import wraps
 import argparse
 import re
-from models import build_model  # Requires pulling kokoro repo
-
-from kokoro import generate, phonemize
+from kokoro import KPipeline
+from IPython.display import display, Audio
 
 # Configure logging
 logging.basicConfig(
@@ -66,6 +65,8 @@ class KokoroPytorchSpeaker:
         self.logger = logging.getLogger('TTS_System.Speaker')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         logger.info(f"Running with torch {self.device}")
+        pipeline = KPipeline(lang_code='a') # <= make sure lang_code matches voice
+
         self.MODEL = build_model('kokoro-v0_19.pth', self.device)
         self.VOICE_NAME = 'af'  # Default voice
         self.VOICEPACK = torch.load(f'voices/{self.VOICE_NAME}.pt', weights_only=True).to(self.device)
@@ -210,6 +211,17 @@ class KokoroPytorchSpeaker:
             self.logger.info(f"Stream processing completed in {total_time:.3f} seconds")
 
     def speak(self, text: str):
+        generator = pipeline(
+            text, voice='af_heart', # <= change voice here
+            speed=1, split_pattern=r'\n+'
+        )
+        for i, (gs, ps, audio) in enumerate(generator):
+            print(i)  # i => index
+            print(gs) # gs => graphemes/text
+            print(ps) # ps => phonemes
+            display(Audio(data=audio, rate=24000, autoplay=i==0))
+
+        return 
         """Synchronous wrapper for streaming playback."""
         asyncio.run(self.speak_async(text))
             
