@@ -1,7 +1,7 @@
 import torch
-import sounddevice as sd
+import torchaudio
 import asyncio
-from typing import AsyncGenerator, Tuple
+from typing import AsyncGenerator, Tuple, List
 import numpy as np
 import logging
 from datetime import datetime
@@ -9,26 +9,9 @@ import time
 from functools import wraps
 import argparse
 import re
-from models import build_model
-import torch
+from models import build_model  # Requires pulling kokoro repo
 
-# import subprocess
-# import threading   
-# import sounddevice as sd
-# import os 
-# import asyncio
-# import logging
-# import time
-# from functools import wraps
-# from datetime import datetime
-# import argparse
 from kokoro import generate, phonemize
-# import asyncio
-# from typing import AsyncGenerator, Tuple
-# import numpy as np
-
-
-
 
 # Configure logging
 logging.basicConfig(
@@ -77,13 +60,6 @@ def async_timing_decorator(func):
             raise
     return wrapper
 
-import torch
-import sounddevice as sd
-import asyncio
-import numpy as np
-import logging
-from typing import AsyncGenerator, Tuple, List
-
 class KokoroPytorchSpeaker:
     def __init__(self):
         logger.info("Initializing Speaker class")
@@ -100,14 +76,9 @@ class KokoroPytorchSpeaker:
 
     def split_into_chunks(self, text: str) -> List[str]:
         """Split text into chunks based on punctuation and natural breaks."""
-        # Define gap indicators (punctuation marks that indicate natural pauses)
-        #gap_markers = r'[;]
         gap_markers = r'[.!?;:\n]'
-        
-        # Split text into chunks at gap markers
         chunks = re.split(f'({gap_markers})', text)
         
-        # Combine each chunk with its punctuation
         processed_chunks = []
         for i in range(0, len(chunks)-1, 2):
             if i+1 < len(chunks):
@@ -117,7 +88,6 @@ class KokoroPytorchSpeaker:
             if chunk.strip():
                 processed_chunks.append(chunk.strip())
                 
-        # Handle any remaining text without punctuation
         if chunks[-1].strip() and len(chunks) % 2 == 1:
             processed_chunks.append(chunks[-1].strip())
             
@@ -129,31 +99,29 @@ class KokoroPytorchSpeaker:
             self.logger.info(f"Starting text chunking and phoneme generation for text: {len(text)} chars")
             start_time = time.perf_counter()
             
-            # Split text into natural chunks
             text_chunks = self.split_into_chunks(text)
             self.logger.info(f"Split into {len(text_chunks)} chunks based on punctuation")
             
             for i, chunk_text in enumerate(text_chunks):
                 chunk_start = time.perf_counter()
                 
-                # Generate phonemes for this chunk
                 phonemes = phonemize(chunk_text, self.VOICE_NAME[0])
                 
                 if not phonemes.strip():
                     continue
                 
-                # Generate audio for the chunk
                 audio, _ = generate(self.MODEL, "", self.VOICEPACK,
                                   lang=self.VOICE_NAME[0], ps=phonemes)
                 
                 if isinstance(audio, torch.Tensor):
-                    audio = audio.cpu().numpy()
+                    audio = audio.cpu()
                 
                 # Check for silence at start and end with 1ms padding
-                audio_start = np.where(np.abs(audio) > 0.01)[0]
+                audio_numpy = audio.numpy() if isinstance(audio, torch.Tensor) else audio
+                audio_start = np.where(np.abs(audio_numpy) > 0.01)[0]
                 if len(audio_start) > 0:
-                    start_idx = 0 #max(0, audio_start[0] - int(0.01 * 24000))  # Keep 1ms of silence
-                    end_idx = min(len(audio), audio_start[-1] + int(0.005 * 24000))  # Keep 1ms of silence
+                    start_idx = 0
+                    end_idx = min(len(audio_numpy), audio_start[-1] + int(0.005 * 24000))
                     audio = audio[start_idx:end_idx]
                 
                 chunk_time = time.perf_counter() - chunk_start
@@ -163,7 +131,6 @@ class KokoroPytorchSpeaker:
                 
                 await queue.put((audio, 24000))
 
-            # Signal end of generation
             await queue.put((None, None))
             
         except Exception as e:
@@ -172,7 +139,7 @@ class KokoroPytorchSpeaker:
             raise
 
     async def play_audio(self, queue: asyncio.Queue):
-        """Play audio chunks from the queue."""
+        """Play audio chunks from the queue using torchaudio."""
         try:
             while True:
                 chunk, sample_rate = await queue.get()
@@ -183,10 +150,22 @@ class KokoroPytorchSpeaker:
                 self.logger.info(f"Playing chunk of {chunk_duration:.3f} seconds")
                 
                 chunk_play_start = time.perf_counter()
-                sd.play(chunk, sample_rate)
-                sd.wait()
-                chunk_play_time = time.perf_counter() - chunk_play_start
                 
+                # Ensure chunk is a torch tensor
+                if not isinstance(chunk, torch.Tensor):
+                    chunk = torch.tensor(chunk)
+                
+                # Reshape if needed (torchaudio expects [channels, samples])
+                if len(chunk.shape) == 1:
+                    chunk = chunk.unsqueeze(0)
+                
+                # Play audio using torchaudio
+                torchaudio.play(chunk, sample_rate)
+                
+                # Wait for playback to complete (approximate)
+                await asyncio.sleep(chunk_duration)
+                
+                chunk_play_time = time.perf_counter() - chunk_play_start
                 self.logger.info(f"Chunk played in {chunk_play_time:.3f} seconds")
                 queue.task_done()
                 
@@ -194,36 +173,30 @@ class KokoroPytorchSpeaker:
             self.logger.error(f"Error in playback: {e}")
 
     @async_timing_decorator    
-    async def speak_kokoro_stream(self, text: str):
+    async def speak_async(self, text: str):
         """Stream audio generation and playback with parallel processing."""
         self.logger.info(f"Starting parallel generation and playback for text: {len(text)} chars")
         start_time = time.perf_counter()
         
-        # Create queue for communication between generator and player
-        queue = asyncio.Queue(maxsize=2)  # Small queue size to prevent too much buffering
+        queue = asyncio.Queue(maxsize=2)
         
-        # Start both tasks immediately and let them run in parallel
         generator_task = asyncio.create_task(self.generate_audio(text, queue))
         player_task = asyncio.create_task(self.play_audio(queue))
         
-        # Don't await immediately - let both tasks run independently
         pending = {generator_task, player_task}
         
         try:
-            # Wait for tasks to complete, but allow them to run independently
             while pending:
                 done, pending = await asyncio.wait(
                     pending,
                     return_when=asyncio.FIRST_COMPLETED
                 )
                 
-                # Check for exceptions in completed tasks
                 for task in done:
                     try:
                         await task
                     except Exception as e:
                         self.logger.error(f"Task failed with error: {e}")
-                        # Cancel remaining tasks
                         for t in pending:
                             t.cancel()
                         raise
@@ -235,11 +208,10 @@ class KokoroPytorchSpeaker:
         finally:
             total_time = time.perf_counter() - start_time
             self.logger.info(f"Stream processing completed in {total_time:.3f} seconds")
-    def speak_kokoro_stream_wrapper(self, text: str):
-        """
-        Synchronous wrapper for streaming playback.
-        """
-        asyncio.run(self.speak_kokoro_stream(text))
+
+    def speak(self, text: str):
+        """Synchronous wrapper for streaming playback."""
+        asyncio.run(self.speak_async(text))
             
 def main():
     logger.info("Starting TTS application")
@@ -260,10 +232,7 @@ def main():
     try:
         fixed_text = args.text.replace('\!', '!')
         speaker = KokoroPytorchSpeaker()
-        if args.mode == 'stream':
-            speaker.speak_kokoro_stream_wrapper(fixed_text)
-        else:
-            speaker.speak_kokoro_sync(fixed_text)
+        speaker.speak(fixed_text)
         total_time = time.perf_counter() - start_time
         logger.info(f"Total execution time: {total_time:.3f} seconds")
 
