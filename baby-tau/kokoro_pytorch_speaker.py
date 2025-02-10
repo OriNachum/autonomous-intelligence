@@ -214,6 +214,8 @@ class KokoroPytorchSpeaker:
             self.logger.info(f"Stream processing completed in {total_time:.3f} seconds")
 
     def speak(self, text: str):
+        start_time = time.perf_counter()
+
         generator = self.pipeline(
             text, voice='af_heart', # <= change voice here
             speed=1, split_pattern=r'\n+'
@@ -227,6 +229,8 @@ class KokoroPytorchSpeaker:
             print(gs) # gs => graphemes/text
             print(ps) # ps => phonemes
             display(Audio(data=audio, rate=24000, autoplay=i==0))
+        total_time = time.perf_counter() - start_time
+        self.logger.info(f"Speak processing completed in {total_time:.3f} seconds")
 
         return 
         """Synchronous wrapper for streaming playback."""
