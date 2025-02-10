@@ -223,7 +223,7 @@ class KokoroPytorchSpeaker:
         for i, (gs, ps, audio) in enumerate(generator):
 
             # Save directly from GPU using torchaudio
-            torchaudio.save(f'output_{i}.wav', audio.unsqueeze(0), 24000)
+            #torchaudio.save(f'output_{i}.wav', audio.unsqueeze(0), 24000)
 
             print(i)  # i => index
             print(gs) # gs => graphemes/text
