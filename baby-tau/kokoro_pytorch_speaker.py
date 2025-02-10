@@ -218,6 +218,11 @@ class KokoroPytorchSpeaker:
             speed=1, split_pattern=r'\n+'
         )
         for i, (gs, ps, audio) in enumerate(generator):
+
+            # Save the audio to a WAV file
+            import scipy.io.wavfile as wav
+            wav.write(f'output_{i}.wav', 24000, audio)
+
             print(i)  # i => index
             print(gs) # gs => graphemes/text
             print(ps) # ps => phonemes
