@@ -74,6 +74,7 @@ class KokoroPytorchSpeaker:
         #self.VOICEPACK = torch.load(f'voices/{self.VOICE_NAME}.pt', weights_only=True).to(self.device)
         logger.info(f'Loaded voice: {self.VOICE_NAME}')
         # Warm up
+        self.speak("a")
         #_, _ = generate(self.MODEL, "ta", self.VOICEPACK, lang=self.VOICE_NAME[0])
         logger.info(f'Initial generation finished')
 
