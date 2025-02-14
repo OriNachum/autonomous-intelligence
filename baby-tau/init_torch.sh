@@ -43,8 +43,8 @@ echo ""
 
 # Add grep pip list | ctranslate2
 echo " Installing ctranslate2 from https://pypi.jetson-ai-lab.dev/jp6/cu126" 
-wget_if_not_exists  /+f/6d2/9d09ec4904d72/ctranslate2-4.4.0-cp310-cp310-linux_aarch64.whl#sha256=6d29d09ec4904d721aa3e65fe6d52177e6644b55f64524cb72fe6867e8727bf7
-pip install ctranslate2-4.4.0-cp310-cp310-linux_aarch64.whl 
+wget_if_not_exists  https://pypi.jetson-ai-lab.dev/jp6/cu126/+f/6d2/9d09ec4904d72/ctranslate2-4.5.0-cp310-cp310-linux_aarch64.whl
+pip install ctranslate2-4.5.0-cp310-cp310-linux_aarch64.whl 
 
 # Add grep pip list | torchaudio
 echo ""
