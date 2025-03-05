@@ -1,0 +1,4 @@
+[submodule "baby-tau/jetson-containers"]
+	path = baby-tau/jetson-containers
+	url = https://github.com/dusty-nv/jetson-containers.git
+	branch = dev
