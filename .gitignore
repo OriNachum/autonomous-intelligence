@@ -14,3 +14,5 @@ baby-tau/*.wav
 ***/*.deb
 ***/*.onnx.json
 ***/*.whl
+***/.aider*
+***/.env

@@ -41,3 +41,9 @@ sudo pip3 install -U jetson-stats
 sudo reboot
 ```
 
+
+
+# New instructions
+## Initialize and update the submodule
+git submodule update --init --recursive
+

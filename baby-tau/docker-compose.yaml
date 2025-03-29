@@ -1,0 +1,78 @@
+x-shared-properties: &shared-properties
+  runtime: nvidia                 # Use NVIDIA runtime
+  init: false                     # Do not use init process
+  restart: unless-stopped         # Restart policy
+  network_mode: host              # Use host network mode, to auto-detect devices in network
+  devices:
+    - /dev/snd:/dev/snd           # to share audio devices
+    - /dev/bus/usb                # to share usb devices
+
+name: baby-tau
+services:
+  speaches:
+    image: dustynv/speaches:${SPEACHES_TAG}
+    <<: *shared-properties
+    environment:
+      # Pass the desired internal port (which becomes the host port due to network_mode: host)
+      - PORT=${SPEACHES_HOST_PORT:-8001}
+      # Standard NVIDIA environment variables for container GPU access
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    # No 'ports' section needed due to network_mode: host
+    ports:
+      - "${SPEACHES_HOST_PORT:-8001}:${SPEACHES_HOST_PORT:-8001}"
+
+  vllm:
+    image: dustynv/vllm:${VLLM_TAG}
+    <<: *shared-properties
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      # Pass Hugging Face token for gated models
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+      # Environment variables to configure the vLLM server command
+      - VLLM_MODEL=${VLLM_MODEL:-facebook/opt-125m}
+      - VLLM_PORT=${VLLM_PORT:-8000}
+      - VLLM_GPU_MEMORY_UTILIZATION=${VLLM_GPU_MEMORY_UTILIZATION:-0.90}
+    # Command to start the vLLM OpenAI-compatible API server
+    # Uses environment variables defined above for configuration
+    command: >
+      vllm serve ${VLLM_MODEL} --host 0.0.0.0 --port ${VLLM_PORT} --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION}
+    # Add other vLLM args here if needed, e.g.:
+    # --tensor-parallel-size 1
+    # --max-num-seqs 256
+    # echo "vllm serve ${VLLM_MODEL} --host 0.0.0.0 --port ${VLLM_PORT} --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION}"
+    ports:
+      - "${VLLM_PORT:-8000}:${VLLM_PORT:-8000}"
+
+  kokoro-tts:
+    # Using the same base image as 'speaches' as per your specification
+    image: dustynv/kokoro-tts:${KOKORO_TTS_TAG}
+    <<: *shared-properties
+    environment:
+      # Pass the desired internal port (becomes host port)
+      - PORT=${KOKORO_TTS_HOST_PORT:-8880}
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    ports:
+      - "${KOKORO_TTS_HOST_PORT:-8880}:${KOKORO_TTS_HOST_PORT:-8880}"
+  python:
+    image: ${PYTHON_IMAGE}
+    <<: *shared-properties
+    # No GPU access needed for the client script itself unless doing local processing
+    # runtime: nvidia # Uncomment if your python script in my_app_code needs direct GPU access
+    working_dir: /app
+    volumes:
+      # Mount your local application code into the container
+      - ./jetson:/app
+    # Keep the container running so you can exec into it or run scripts
+    # Alternatively, replace with `python main.py` if that's your entrypoint
+    command: >
+      bash -c "pip install --no-cache-dir -r requirements.txt &&
+               python main.py"
+    tty: true # Keep stdin open & allocate a tty
+    stdin_open: true
+    # environment: # Add any specific env vars your Python app needs
+    #   - MY_APP_VAR=some_value
+    ports:
+      - "${PYTHON_HOST_PORT:-5000}:${PYTHON_HOST_PORT:-5000}"
