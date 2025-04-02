@@ -1,198 +1,333 @@
-# my_app_code/main.py
-
-import os
+import sounddevice as sd
+import numpy as np
 import requests
-import json
+import openai
+import torch
+# import torchaudio # Not directly needed now, but silero_vad might use it internally
+import scipy.io.wavfile as wavfile
+import io
 import time
+import os
+import tempfile
+from playsound import playsound # Simple playback library
+import soundfile as sf # For fallback playback loading
+from dotenv import load_dotenv
 
-# --- Configuration (Read from Environment Variables set by Docker Compose) ---
-# Use localhost as services are accessible via host network
-VLLM_HOST = os.getenv("VLLM_HOST", "localhost")
-VLLM_PORT = os.getenv("VLLM_HOST_PORT", "8000") # Get port from .env via compose
-VLLM_MODEL_NAME = os.getenv("VLLM_MODEL", "facebook/opt-125m") # Get model used by vLLM service
+# Load environment variables from .env file
+load_dotenv()
+TTS_VOICE = os.getenv("TTS_VOICE", "af_alloy")  # Default to 'af_alloy' if not set
 
-SPEACHES_HOST = os.getenv("SPEACHES_HOST", "localhost")
-SPEACHES_PORT = os.getenv("SPEACHES_HOST_PORT", "8001") # Get port from .env via compose
-
-KOKORO_TTS_HOST = os.getenv("KOKORO_TTS_HOST", "localhost")
-KOKORO_TTS_PORT = os.getenv("KOKORO_TTS_HOST_PORT", "8880") # Get port from .env via compose
-
-VLLM_API_URL = f"http://{VLLM_HOST}:{VLLM_PORT}/v1/chat/completions"
-
-# !!! IMPORTANT: Verify the exact API endpoint for kokoro-tts-fastapi !!!
-# Assuming '/synthesize' based on common patterns. Check jetson-containers documentation if this fails.
-SPEACHES_API_URL = f"http://{SPEACHES_HOST}:{SPEACHES_PORT}/synthesize"
-KOKORO_TTS_API_URL = f"http://{KOKORO_TTS_HOST}:{KOKORO_TTS_PORT}/synthesize"
-
-# Output directory within the container (maps to host's ./my_app_code/output)
-OUTPUT_DIR = "/app/output"
-
-# --- Helper Functions ---
-
-def ensure_output_dir():
-    """Creates the output directory if it doesn't exist."""
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    print(f"[Setup] Ensured output directory exists: {OUTPUT_DIR}")
-
-def wait_for_service(url: str, service_name: str, timeout: int = 60):
-    """Waits for a service to become available by pinging its root or health endpoint."""
-    print(f"[Check] Waiting for {service_name} at {url}...")
-    start_time = time.time()
-    # Try base URL first, then common health endpoints
-    check_urls = [url.replace('/synthesize','').replace('/v1/chat/completions',''), f"{url.split('/')[0]}//{url.split('/')[2]}/health", url]
-
-    connected = False
-    while time.time() - start_time < timeout:
-        for check_url in check_urls:
-             # Skip specific API endpoints if they are likely to 404 on GET
-             if '/synthesize' in check_url or '/completions' in check_url:
-                 continue
-             try:
-                # Use a simple GET request, often works for root or health checks
-                response = requests.get(check_url, timeout=5)
-                 # Consider status codes other than 200 OK if needed (e.g., 404 on root might still mean server is up)
-                if response.status_code < 500: # Any non-server-error response
-                    print(f"[Check] {service_name} is up! (Checked {check_url})")
-                    connected = True
-                    break
-             except requests.exceptions.ConnectionError:
-                pass # Service not yet reachable
-             except requests.exceptions.Timeout:
-                 print(f"[Check] Timeout connecting to {check_url}")
-             except Exception as e:
-                 print(f"[Check] Error checking {check_url}: {e}") # Log other errors
-
-        if connected:
-            return True
-
-        print(f"[Check] {service_name} not responding yet, retrying...")
-        time.sleep(5)
-
-    print(f"[Check] Error: {service_name} did not become available within {timeout} seconds.")
-    return False
+# --- Import Silero VAD ---
+try:
+    from silero_vad import load_silero_vad
+except ImportError:
+    print("Error: 'silero_vad' package not found.")
+    print("Please install it: pip install -U silero-vad")
+    exit(1)
+except Exception as e:
+    print(f"Error importing Silero VAD: {e}")
+    print("Ensure PyTorch is installed correctly.")
+    exit(1)
 
 
-def get_llm_response(prompt: str) -> str | None:
-    """Sends prompt to VLLM service and returns the text response."""
-    print(f"\n[LLM] Sending prompt to VLLM ({VLLM_API_URL}). Model: '{VLLM_MODEL_NAME}' Prompt: '{prompt}'")
-    headers = {"Content-Type": "application/json"}
-    payload = {
-        "model": VLLM_MODEL_NAME, # vLLM uses this to route if multiple models were loaded
-        "messages": [
-            {"role": "system", "content": "You are a helpful assistant providing concise answers."},
-            {"role": "user", "content": prompt}
-        ],
-        "max_tokens": 100, # Limit response length
-        "temperature": 0.7,
-    }
-    try:
-        response = requests.post(VLLM_API_URL, headers=headers, json=payload, timeout=90) # Increased timeout for generation
-        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+# --- Configuration ---
+# API Endpoints
+STT_URL = "http://localhost:8001/v1/audio/transcriptions"
+LLM_URL = "http://localhost:8000/v1" # Base URL for OpenAI compatible API
+LLM_MODEL = "google/gemma-3-1b-it" # Or your specific local model
+TTS_URL = "http://localhost:8880/v1/audio/speech" # Or your TTS endpoint
 
-        result = response.json()
-        generated_text = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+# Audio Settings
+SAMPLE_RATE = 16000 # Sample rate expected by Silero VAD
+CHANNELS = 1
+BLOCK_SIZE = 512   # Process smaller chunks for faster VAD response (adjust as needed)
+DTYPE = 'int16'     # Data type for recording
 
-        if generated_text:
-            print(f"[LLM] Received response: '{generated_text}'")
-            return generated_text
-        else:
-            print("[LLM] Error: Received empty text in response.")
-            print(f"[LLM] Full response: {result}")
-            return None
+# VAD Settings
+MIN_SILENCE_DURATION_MS = 1000 # How long silence indicates end of speech
+VAD_THRESHOLD = 0.5  # VAD confidence threshold (adjust as needed)
+SPEECH_PAD_MS = 300    # Add slight padding around detected speech
 
-    except requests.exceptions.RequestException as e:
-        print(f"[LLM] Error connecting to VLLM service: {e}")
-        return None
-    except json.JSONDecodeError:
-        print(f"[LLM] Error decoding JSON response: {response.text}")
-        return None
-    except Exception as e:
-        print(f"[LLM] An unexpected error occurred: {e}")
-        return None
+# Calculate VAD related timing in terms of chunks
+ms_per_chunk = (BLOCK_SIZE / SAMPLE_RATE) * 1000
+num_padding_chunks = int(SPEECH_PAD_MS / ms_per_chunk)
+num_silent_chunks_needed = int(MIN_SILENCE_DURATION_MS / ms_per_chunk)
+
+# --- Initialize VAD ---
+print("Loading Silero VAD model...")
+try:
+    # Use the direct function from the silero_vad package
+    vad_model = load_silero_vad() # Set force_reload=True if download issues
+    print("Silero VAD model loaded successfully.")
+except Exception as e:
+    print(f"Error initializing Silero VAD: {e}")
+    print("Please ensure you have torch installed correctly.")
+    print("Check network connection if model download fails.")
+    exit(1)
 
 
-def synthesize_speech(text: str, service_name: str, api_url: str) -> bytes | None:
-    """Sends text to a TTS service and returns audio bytes."""
-    print(f"\n[{service_name}] Synthesizing speech ({api_url}) for: '{text[:60]}...'")
-    headers = {"Content-Type": "application/json", "Accept": "audio/wav"} # Request WAV audio
-    # Check kokoro-tts docs for exact payload. Common is {"text": "..."}. Voice selection might be possible.
-    payload = {"text": text}
-    try:
-        response = requests.post(api_url, headers=headers, json=payload, timeout=45) # Timeout for synthesis
-        response.raise_for_status()
+# --- Initialize OpenAI Client ---
+# Point the OpenAI client to your local LLM endpoint
+try:
+    client = openai.OpenAI(base_url=LLM_URL, api_key="not-needed-for-local")
+except Exception as e:
+    print(f"Error initializing OpenAI client: {e}")
+    exit(1)
 
-        content_type = response.headers.get("Content-Type", "").lower()
-        if "audio" in content_type:
-            print(f"[{service_name}] Received audio data ({len(response.content)} bytes, type: {content_type}).")
-            return response.content
-        else:
-            print(f"[{service_name}] Error: Expected audio response, but got Content-Type: {content_type}")
-            print(f"Response text: {response.text[:200]}")
-            return None
+# --- Main Loop ---
+def main_loop():
+    print("\nStarting voice assistant loop (using sounddevice and silero_vad). Press Ctrl+C to exit.")
+    # Optional: Specify device index or name if default isn't correct
+    # sd.query_devices() # Uncomment to see available devices
+    # input_device = None # Use default device
 
-    except requests.exceptions.RequestException as e:
-        print(f"[{service_name}] Error connecting to TTS service: {e}")
-        return None
-    except Exception as e:
-        print(f"[{service_name}] An unexpected error occurred: {e}")
-        return None
-
-def save_audio(audio_data: bytes, filename: str):
-    """Saves audio bytes to a file in the output directory."""
-    filepath = os.path.join(OUTPUT_DIR, filename)
-    try:
-        with open(filepath, 'wb') as f:
-            f.write(audio_data)
-        print(f"[File] Saved audio to: {filepath} (Host path: ./my_app_code/output/{filename})")
-    except IOError as e:
-        print(f"[File] Error saving audio to {filepath}: {e}")
-
-
-# --- Main Application Logic ---
-if __name__ == "__main__":
-    ensure_output_dir()
-    print("\n--- LLM + TTS Demo Application ---")
-    print(f"VLLM Endpoint: {VLLM_API_URL} (Model: {VLLM_MODEL_NAME})")
-    print(f"Speaches TTS Endpoint: {SPEACHES_API_URL}")
-    print(f"Kokoro TTS Endpoint: {KOKORO_TTS_API_URL}")
-    print("-" * 30)
-
-    # Wait for services to be potentially ready
-    services_ready = True
-    if not wait_for_service(VLLM_API_URL, "VLLM"): services_ready = False
-    if not wait_for_service(SPEACHES_API_URL, "Speaches TTS"): services_ready = False
-    if not wait_for_service(KOKORO_TTS_API_URL, "Kokoro TTS"): services_ready = False
-
-    if not services_ready:
-        print("\nOne or more services failed to start. Please check 'docker compose logs'. Exiting.")
-        exit(1)
-
-    print("-" * 30)
+    # State variables for VAD processing
+    audio_buffer = []
+    triggered = False
+    silent_chunks = 0
+    leading_chunks_buffer = [] # Store recent chunks for leading padding
 
     try:
-        # 1. Get user input
-        user_prompt = input("\nEnter a prompt for the LLM (e.g., 'Why is the sky blue?'):\n> ")
-        if not user_prompt:
-            print("No prompt entered. Exiting.")
-            exit()
+        with sd.RawInputStream(samplerate=SAMPLE_RATE,
+                               blocksize=BLOCK_SIZE,
+                               channels=CHANNELS,
+                               dtype=DTYPE,
+                               # device=input_device # Specify device if needed
+                               ) as stream:
 
-        # 2. Get response from LLM
-        llm_text = get_llm_response(user_prompt)
+            print(f"\nSounddevice stream opened: SR={SAMPLE_RATE}, Block={BLOCK_SIZE}, Format={DTYPE}")
+            print(f"VAD Settings: Threshold={VAD_THRESHOLD}, Min Silence={MIN_SILENCE_DURATION_MS}ms, Padding={SPEECH_PAD_MS}ms")
+            print("Listening...")
 
-        if llm_text:
-            # 3. Synthesize speech using Speaches service
-            speaches_audio = synthesize_speech(llm_text, "Speaches", SPEACHES_API_URL)
-            if speaches_audio:
-                save_audio(speaches_audio, "output_speaches.wav")
+            while True: # Outer loop: Continues after processing an utterance
+                # Reset state for the next utterance
+                audio_buffer = []
+                triggered = False
+                silent_chunks = 0
+                leading_chunks_buffer = []
 
-            # 4. Synthesize speech using Kokoro TTS service
-            kokoro_audio = synthesize_speech(llm_text, "KokoroTTS", KOKORO_TTS_API_URL)
-            if kokoro_audio:
-                save_audio(kokoro_audio, "output_kokoro.wav")
-        else:
-            print("\nCould not get a response from the LLM. Cannot proceed with TTS.")
+                while True: # Inner loop to capture one full utterance
+                    # Read audio chunk from sounddevice stream
+                    audio_chunk_raw, overflowed = stream.read(BLOCK_SIZE)
+                    if overflowed:
+                        print("Warning: Input overflowed! Processing might be too slow.")
+
+                    # Convert raw bytes (int16) to float32 tensor for VAD
+                    audio_chunk_np = np.frombuffer(audio_chunk_raw, dtype=np.int16)
+                    if audio_chunk_np.size == 0:
+                        # print("Warning: Read empty chunk.") # Can happen, usually ignorable
+                        continue
+
+                    # Normalize to [-1.0, 1.0] - VAD expects float tensor
+                    audio_chunk_tensor = torch.from_numpy(audio_chunk_np).float() / 32768.0
+
+                    # --- Simple VAD Logic using silero_vad model ---
+                    try:
+                        # The model requires the sample rate on each call with this direct method
+                        speech_prob = vad_model(audio_chunk_tensor, SAMPLE_RATE).item()
+                    except Exception as e:
+                        print(f"Error during VAD processing chunk: {e}")
+                        # Decide how to handle - skip chunk? Reset? For now, continue.
+                        continue
+
+                    # Append to leading buffer (used for padding before speech starts)
+                    leading_chunks_buffer.append(audio_chunk_np)
+                    if len(leading_chunks_buffer) > num_padding_chunks:
+                        leading_chunks_buffer.pop(0) # Keep buffer size limited
+
+                    if speech_prob >= VAD_THRESHOLD:
+                        silent_chunks = 0 # Reset silence counter
+                        if not triggered:
+                            print("Speech started...")
+                            triggered = True
+                            # Add leading padding from buffer
+                            audio_buffer.extend(leading_chunks_buffer)
+                            leading_chunks_buffer.clear() # Clear once used
+                        else:
+                            # Already triggered, just append the current chunk
+                            audio_buffer.append(audio_chunk_np)
+
+                    elif triggered: # Speech was active, now potentially silence
+                        audio_buffer.append(audio_chunk_np) # Append the chunk anyway (part of trailing sound or padding)
+                        silent_chunks += 1
+                        # print(f"Silent chunk {silent_chunks}/{num_silent_chunks_needed}") # Debugging
+
+                        if silent_chunks >= num_silent_chunks_needed:
+                            print(f"Speech ended detected after ~{silent_chunks * ms_per_chunk:.0f}ms silence.")
+                            # Add padding implicitly by having recorded these silent chunks
+                            # Trim excess silence/padding if necessary (optional refinement)
+                            # For now, break after enough silence
+                            break # Exit inner loop, process the recording
+                    else:
+                        # Still silent, and not triggered yet. Do nothing except maintain leading buffer.
+                        pass
+                        # print(".", end="", flush=True) # Optional: Indicate listening
+
+                # --- End of Inner Loop (Utterance detected) ---
+
+                if not audio_buffer:
+                    # This should ideally not happen if logic is correct, but as a safeguard
+                    print("No audio captured despite VAD trigger/end logic.")
+                    continue # Go back to listening
+
+                # --- Process Recorded Audio ---
+                print("Processing captured audio...")
+                full_audio = np.concatenate(audio_buffer)
+                # audio_buffer = [] # Already cleared at the start of the outer loop
+
+                print(f"Captured audio duration: {len(full_audio)/SAMPLE_RATE:.2f} seconds")
+
+                # Save to a temporary WAV file
+                tmp_wav_path = None # Define outside try block for finally
+                tts_audio_path = None # Define outside try block for finally
+                try:
+                    # Use a context manager for safer temp file handling
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
+                        wavfile.write(tmp_wav.name, SAMPLE_RATE, full_audio)
+                        tmp_wav_path = tmp_wav.name
+                    # print(f"Audio saved to temporary file: {tmp_wav_path}") # Debugging
+
+                    # --- STT / LLM / TTS Steps (Identical logic to original) ---
+                    transcription = None
+                    llm_response_text = None
+
+                    # 1. Send to STT
+                    print("Sending audio to STT...")
+                    try:
+                        with open(tmp_wav_path, 'rb') as f:
+                            files = {'file': (os.path.basename(tmp_wav_path), f, 'audio/wav')}
+                            # Adjust payload as needed for your STT service
+                            stt_payload = { "model": "whisper-1", "language": "en" } # Example for OpenAI compatible STT
+                            print(f"STT Payload: {stt_payload}") # Debugging
+                            response = requests.post(STT_URL, files=files, data=stt_payload)
+                            response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+                            stt_result = response.json()
+                            print(stt_result) # Debugging
+                            # Try common keys for transcription text
+                            transcription = stt_result.get('text') or \
+                                            stt_result.get('transcript') or \
+                                            (stt_result.get('results', [{}])[0].get('transcript') if stt_result.get('results') else None)
+
+                            if transcription:
+                                print(f"STT Result: {transcription}")
+                            else:
+                                print(f"Could not find transcription text in STT response: {stt_result}")
+
+                    except requests.exceptions.RequestException as e:
+                        response_text = ""
+                        if hasattr(e, 'response') and e.response is not None:
+                            try: response_text = f" Response: {e.response.text}"
+                            except: pass # Avoid errors reading response
+                        print(f"STT request failed: {e}{response_text}")
+                    except Exception as e:
+                        print(f"Error processing STT response: {e}")
+
+
+                    # 2. Send Transcription to LLM
+                    if transcription:
+                        print("Sending transcription to LLM...")
+                        try:
+                            # Use ChatCompletion for conversational models
+                            completion = client.chat.completions.create(
+                                model=LLM_MODEL,
+                                messages=[
+                                    {"role": "system", "content": "You are a helpful voice assistant."},
+                                    {"role": "user", "content": transcription}
+                                ],
+                                temperature=0.7 # Adjust creativity/randomness
+                                # max_tokens=150 # Optionally limit response length
+                            )
+                            llm_response_text = completion.choices[0].message.content
+                            print(f"LLM Response: {llm_response_text}")
+                        except openai.APIConnectionError as e: print(f"LLM connection error: {e}")
+                        except openai.RateLimitError as e: print(f"LLM rate limit exceeded: {e}")
+                        except openai.APIStatusError as e: print(f"LLM API error (status {e.status_code}): {e.response}")
+                        except Exception as e: print(f"LLM request failed: {e}")
+
+                    # 3. Send LLM Response to TTS
+                    if llm_response_text:
+                        print("Sending LLM response to TTS...")
+                        # Adjust payload for your TTS service (e.g., Piper, Coqui, OpenAI TTS)
+                        tts_payload = {
+                            "input": llm_response_text,
+                            "voice": TTS_VOICE,  # Use the configurable voice
+                            "response_format": "wav",  # Request WAV for wider compatibility
+                            # Add other TTS specific parameters here
+                         }
+                        tts_format = tts_payload.get('response_format', 'wav') # Default to wav
+
+                        try:
+                            response = requests.post(TTS_URL, json=tts_payload, stream=True) # Use stream=True if large response
+                            response.raise_for_status()
+
+                            with tempfile.NamedTemporaryFile(suffix=f".{tts_format}", delete=False) as tmp_tts:
+                                for chunk in response.iter_content(chunk_size=8192):
+                                    tmp_tts.write(chunk)
+                                tts_audio_path = tmp_tts.name
+                            print(f"TTS audio saved to: {tts_audio_path}")
+
+                        except requests.exceptions.RequestException as e:
+                            response_text = ""
+                            if hasattr(e, 'response') and e.response is not None:
+                                try: response_text = f" Response: {e.response.text}"
+                                except: pass
+                            print(f"TTS request failed: {e}{response_text}")
+                        except Exception as e:
+                            print(f"Error processing TTS response or saving audio: {e}")
+
+                    # 4. Play TTS Audio
+                    if tts_audio_path:
+                        print("Playing TTS response...")
+                        try:
+                            # Try playsound first (simple, might need GStreamer/other backend)
+                            playsound(tts_audio_path)
+                            print("Playback finished (playsound).")
+                        except Exception as e_ps:
+                            print(f"Error playing audio with playsound: {e_ps}")
+                            print("Trying playback with soundfile/sounddevice as fallback...")
+                            try:
+                                # Use soundfile to read various formats (like WAV)
+                                data, fs = sf.read(tts_audio_path, dtype='float32')
+                                print(f"Attempting sounddevice playback: SR={fs}, Channels={data.ndim}")
+                                sd.play(data, fs, blocking=True) # Use blocking=True to wait
+                                # sd.wait() # Not needed if blocking=True
+                                print("Playback finished (sounddevice).")
+                            except Exception as fallback_e:
+                                print(f"Fallback playback with soundfile/sounddevice also failed: {fallback_e}")
+                                print("Ensure you have 'libsndfile' installed if using soundfile (sudo apt-get install libsndfile1)")
+                    elif llm_response_text:
+                        print("TTS failed, cannot play response.")
+                    else:
+                         print("Nothing to say (No LLM response).")
+
+
+                finally:
+                     # Clean up temporary files
+                    if tmp_wav_path and os.path.exists(tmp_wav_path):
+                        try: os.remove(tmp_wav_path)
+                        except OSError as e: print(f"Error removing temp WAV file {tmp_wav_path}: {e}")
+                    if tts_audio_path and os.path.exists(tts_audio_path):
+                         try: os.remove(tts_audio_path)
+                         except OSError as e: print(f"Error removing temp TTS file {tts_audio_path}: {e}")
+
+                # Ready for next utterance
+                print("\nListening...")
+
 
     except KeyboardInterrupt:
-        print("\nExiting application.")
+        print("\nExiting loop.")
+    except sd.PortAudioError as e:
+        print(f"\nSounddevice PortAudioError: {e}")
+        print("Please check your audio device configuration and permissions.")
+        # Add more specific troubleshooting tips if needed
+    except Exception as e:
+        # Catch other potential errors
+        print(f"\nAn unexpected error occurred in the main loop: {e}")
+        import traceback
+        traceback.print_exc() # Print detailed traceback for debugging
     finally:
-        print("\n--- Demo Finished ---")
+        print("Cleanup complete. Exiting.")
+
+
+if __name__ == "__main__":
+    main_loop()

@@ -1,1 +1,18 @@
+# General Python libraries
+numpy
 requests
+openai
+scipy
+playsound
+# --- IMPORTANT NOTE for Jetson Users ---
+# The following libraries often require specific versions or builds for NVIDIA Jetson (ARM64).
+# It is strongly recommended to install PyTorch and Torchaudio following NVIDIA's official documentation
+# or the PyTorch website's instructions for Jetson platforms, rather than relying on pip with just these lines.
+# Including them here might lead pip to download incompatible versions.
+#
+# torch
+# torchaudio
+
+# --- sounddevice Dependencies ---
+# Remember to install PortAudio development libraries *before* installing sounddevice:
+# On Debian/Ubuntu: sudo apt-get install libportaudio2 libportaudiocpp0 portaudio19-dev libasound2-dev

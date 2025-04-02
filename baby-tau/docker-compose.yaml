@@ -43,7 +43,7 @@ services:
     # --max-num-seqs 256
     # echo "vllm serve ${VLLM_MODEL} --host 0.0.0.0 --port ${VLLM_PORT} --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION}"
     ports:
-      - "${VLLM_PORT:-8000}:${VLLM_PORT:-8000}"
+      - "8000-8010:${VLLM_PORT:-8000}-${VLLM_PORT:-8000}"
 
   kokoro-tts:
     # Using the same base image as 'speaches' as per your specification
@@ -57,10 +57,10 @@ services:
     ports:
       - "${KOKORO_TTS_HOST_PORT:-8880}:${KOKORO_TTS_HOST_PORT:-8880}"
   python:
-    image: ${PYTHON_IMAGE}
+    image: silerovad:r36.4.3
     <<: *shared-properties
     # No GPU access needed for the client script itself unless doing local processing
-    # runtime: nvidia # Uncomment if your python script in my_app_code needs direct GPU access
+    runtime: nvidia # Uncomment if your python script in my_app_code needs direct GPU access
     working_dir: /app
     volumes:
       # Mount your local application code into the container
@@ -68,8 +68,7 @@ services:
     # Keep the container running so you can exec into it or run scripts
     # Alternatively, replace with `python main.py` if that's your entrypoint
     command: >
-      bash -c "pip install --no-cache-dir -r requirements.txt &&
-               python main.py"
+      bash -c "pip install --no-cache-dir -r requirements.txt && python3 main.py"
     tty: true # Keep stdin open & allocate a tty
     stdin_open: true
     # environment: # Add any specific env vars your Python app needs
