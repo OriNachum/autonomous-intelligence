@@ -4,6 +4,7 @@ requests
 openai
 scipy
 playsound
+python-dotenv
 # --- IMPORTANT NOTE for Jetson Users ---
 # The following libraries often require specific versions or builds for NVIDIA Jetson (ARM64).
 # It is strongly recommended to install PyTorch and Torchaudio following NVIDIA's official documentation
