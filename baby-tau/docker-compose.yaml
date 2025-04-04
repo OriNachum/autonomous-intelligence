@@ -10,7 +10,7 @@ x-shared-properties: &shared-properties
 name: baby-tau
 services:
   speaches:
-    image: dustynv/speaches:${SPEACHES_TAG}
+    image: ${SPEACHES_TAG}
     <<: *shared-properties
     environment:
       # Pass the desired internal port (which becomes the host port due to network_mode: host)
@@ -21,9 +21,12 @@ services:
     # No 'ports' section needed due to network_mode: host
     ports:
       - "${SPEACHES_HOST_PORT:-8001}:${SPEACHES_HOST_PORT:-8001}"
+    # On startup copy file /opt/speaches/src/speaches/configs/model_aliases.json to /
+    command: >
+      bash -c "cp /opt/speaches/model_aliases.json /"
 
   vllm:
-    image: dustynv/vllm:${VLLM_TAG}
+    image: ${VLLM_TAG}
     <<: *shared-properties
     environment:
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
@@ -47,7 +50,7 @@ services:
 
   kokoro-tts:
     # Using the same base image as 'speaches' as per your specification
-    image: dustynv/kokoro-tts:${KOKORO_TTS_TAG}
+    image: ${KOKORO_TTS_TAG}
     <<: *shared-properties
     environment:
       # Pass the desired internal port (becomes host port)
@@ -57,7 +60,7 @@ services:
     ports:
       - "${KOKORO_TTS_HOST_PORT:-8880}:${KOKORO_TTS_HOST_PORT:-8880}"
   python:
-    image: silerovad:r36.4.3
+    image: ${PYTHON_TAG}
     <<: *shared-properties
     # No GPU access needed for the client script itself unless doing local processing
     runtime: nvidia # Uncomment if your python script in my_app_code needs direct GPU access
