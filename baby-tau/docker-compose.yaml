@@ -23,7 +23,7 @@ services:
       - "${SPEACHES_HOST_PORT:-8001}:${SPEACHES_HOST_PORT:-8001}"
     # On startup copy file /opt/speaches/src/speaches/configs/model_aliases.json to /
     command: >
-      bash -c "cp /opt/speaches/model_aliases.json /"
+      bash -c "[ ! -f /model_aliases.json ] && cp /opt/speaches/model_aliases.json / && ls /model_aliases.json || echo 'File already exists'; tail -f /dev/null"
 
   vllm:
     image: ${VLLM_TAG}
