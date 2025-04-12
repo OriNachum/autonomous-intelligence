@@ -14,7 +14,7 @@ git -C packages checkout silerovad-library
 ### 2. Build the container
 ```bash
 # Build the container with CUDA 12.8
-jetson-containers build --cuda 12.8 all --name silerovad silerovad
+CUDA_VERSION=128 jetson-containers build --name sound-utils sound-utils
 # Or alternatively skip tests
 # jetson-containers build --skip-tests all --name silerovad silerovad
 ```
