@@ -8,7 +8,7 @@ Its purpose is testing libraries on Jetson and POCing the setup.
 ### 1. Initialize and update the git submodule
 ```bash
 git submodule update --init --recursive
-git -C packages checkout silerovad-library
+git -C jetson-containers checkout dev
 ```
 
 ### 2. Build the container
@@ -16,7 +16,7 @@ git -C packages checkout silerovad-library
 # Build the container with CUDA 12.8
 CUDA_VERSION=128 jetson-containers build --name sound-utils sound-utils
 # Or alternatively skip tests
-# jetson-containers build --skip-tests all --name silerovad silerovad
+# jetson-containers build --skip-tests all --name sound-utils sound-utils
 ```
 
 ### 3. Set the container tag
