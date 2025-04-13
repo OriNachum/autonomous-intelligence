@@ -12,9 +12,10 @@ git -C jetson-containers checkout dev
 ```
 
 ### 2. Build the container
+Ensure you are in baby-tau folder
 ```bash
 # Build the container with CUDA 12.8
-CUDA_VERSION=128 jetson-containers build --name sound-utils sound-utils
+CUDA_VERSION=128 ./jetson-containers/jetson-containers build --name sound-utils sound-utils
 # Or alternatively skip tests
 # jetson-containers build --skip-tests all --name sound-utils sound-utils
 ```
