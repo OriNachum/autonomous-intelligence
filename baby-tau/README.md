@@ -22,7 +22,7 @@ Ensure you are in baby-tau folder
 
 ### 3. Set the container tag
 ```bash
-export CONTAINER_TAG=$(autotag silerovad)
+export PYTHON_TAG=$(autotag sound-utils)
 ```
 
 ### 4. Configure and validate
