@@ -22,7 +22,7 @@ Ensure you are in baby-tau folder
 
 ### 3. Set the container tag
 ```bash
-export PYTHON_TAG=$(autotag sound-utils) # Should be sound-utils:r36.4.3
+export PYTHON_TAG=$(autotag sound-utils) # Should be r36.4.3-sound-utils, can find by docker images | grep sound
 ```
 
 ### 4. Configure and validate
