@@ -25,28 +25,43 @@ services:
     command: >
       bash -c "[ ! -f /model_aliases.json ] && cp /opt/speaches/model_aliases.json / && ls /model_aliases.json || echo 'File already exists'; tail -f /dev/null"
 
-  vllm:
-    image: ${VLLM_TAG}
+  ollama:
+    image: ${OLLAMA_TAG}
     <<: *shared-properties
     environment:
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
       - NVIDIA_DRIVER_CAPABILITIES=all
-      # Pass Hugging Face token for gated models
-      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
-      # Environment variables to configure the vLLM server command
-      - VLLM_MODEL=${VLLM_MODEL:-facebook/opt-125m}
-      - VLLM_PORT=${VLLM_PORT:-8000}
-      - VLLM_GPU_MEMORY_UTILIZATION=${VLLM_GPU_MEMORY_UTILIZATION:-0.90}
-    # Command to start the vLLM OpenAI-compatible API server
-    # Uses environment variables defined above for configuration
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_PORT=${VLLM_PORT:-8000}
+      - OLLAMA_MODELS=${OLLAMA_MODEL:-mistral}
+    volumes:
+      - ./ollama:/root/.ollama
     command: >
-      vllm serve ${VLLM_MODEL} --host 0.0.0.0 --port ${VLLM_PORT} --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION}
-    # Add other vLLM args here if needed, e.g.:
-    # --tensor-parallel-size 1
-    # --max-num-seqs 256
-    # echo "vllm serve ${VLLM_MODEL} --host 0.0.0.0 --port ${VLLM_PORT} --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION}"
+      ollama serve
     ports:
       - "8000-8010:${VLLM_PORT:-8000}-${VLLM_PORT:-8000}"
+  # vllm:
+  #   image: ${VLLM_TAG}
+  #   <<: *shared-properties
+  #   environment:
+  #     - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+  #     - NVIDIA_DRIVER_CAPABILITIES=all
+  #     # Pass Hugging Face token for gated models
+  #     - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+  #     # Environment variables to configure the vLLM server command
+  #     - VLLM_MODEL=${VLLM_MODEL:-facebook/opt-125m}
+  #     - VLLM_PORT=${VLLM_PORT:-8000}
+  #     - VLLM_GPU_MEMORY_UTILIZATION=${VLLM_GPU_MEMORY_UTILIZATION:-0.90}
+  #   # Command to start the vLLM OpenAI-compatible API server
+  #   # Uses environment variables defined above for configuration
+  #   command: >
+  #     vllm serve ${VLLM_MODEL} --host 0.0.0.0 --port ${VLLM_PORT} --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION}
+  #   # Add other vLLM args here if needed, e.g.:
+  #   # --tensor-parallel-size 1
+  #   # --max-num-seqs 256
+  #   # echo "vllm serve ${VLLM_MODEL} --host 0.0.0.0 --port ${VLLM_PORT} --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION}"
+  #   ports:
+  #     - "8000-8010:${VLLM_PORT:-8000}-${VLLM_PORT:-8000}"
 
   kokoro-tts:
     # Using the same base image as 'speaches' as per your specification
