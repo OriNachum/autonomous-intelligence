@@ -30,6 +30,20 @@ export PYTHON_TAG=$(autotag sound-utils) # Should be r36.4.3-sound-utils, can fi
 - Validate the configuration
   
 ### 5. Start the services
+
+#### Free up memory
+A browser takes about 1GB, and GUI takes about 1.5GB.
+To reduce both:
+
+```bash
+sudo init 3
+```
+
+To revert:
+```bash
+sudo init 5
+```
+#### spinning up everything:
 ```bash
 docker compose up
 ```
