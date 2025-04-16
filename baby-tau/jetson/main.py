@@ -35,7 +35,7 @@ except Exception as e:
 # API Endpoints
 STT_URL = "http://localhost:8001/v1/audio/transcriptions"
 LLM_URL = "http://localhost:8000/v1" # Base URL for OpenAI compatible API
-LLM_MODEL = "google/gemma-3-1b-it" # Or your specific local model
+LLM_MODEL = os.getenv("LLM_MODEL") # Or your specific local model
 TTS_URL = "http://localhost:8880/v1/audio/speech" # Or your TTS endpoint
 
 # Audio Settings
@@ -275,7 +275,7 @@ def main_loop():
                             print(f"LLM Response: {llm_response_text}")
                         except openai.APIConnectionError as e: print(f"LLM connection error: {e}")
                         except openai.RateLimitError as e: print(f"LLM rate limit exceeded: {e}")
-                        except openai.APIStatusError as e: print(f"LLM API error (status {e.status_code}): {e.response}")
+                        except openai.APIStatusError as e: print(f"LLM API error ({LLM_MODEL}) (status {e.status_code}): {e.response}")
                         except Exception as e: print(f"LLM request failed: {e}")
 
                     # 3. Send LLM Response to TTS

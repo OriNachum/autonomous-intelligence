@@ -36,7 +36,17 @@ services:
     volumes:
       - ./ollama:/root/.ollama
     command: >
-      ollama serve
+      sh -c "
+      echo '>>> Starting Ollama server in background...' &&
+      ollama serve &
+      SERVER_PID=$$! &&
+      echo '>>> Server started (PID $${SERVER_PID}). Waiting 10 seconds for it to initialize...' &&
+      sleep 10 &&
+      echo \">>> Triggering model pull for [$${OLLAMA_MODELS}] via internal API call...\" &&
+      curl http://$${OLLAMA_HOST}/api/pull -X POST -H \"Content-Type: application/json\" -d \"{\\\"name\\\": \\\"$${OLLAMA_MODELS}\\\"}\" &&
+      echo '>>> API call to pull model sent. Bringing server process to foreground...' &&
+      wait $${SERVER_PID}
+      "
     ports:
       - "8000-8010:${VLLM_PORT:-8000}-${VLLM_PORT:-8000}"
   # vllm:
@@ -76,6 +86,8 @@ services:
   python:
     image: ${PYTHON_TAG}
     <<: *shared-properties
+    environment:
+      - LLM_MODEL=${OLLAMA_MODEL}
     # No GPU access needed for the client script itself unless doing local processing
     runtime: nvidia # Uncomment if your python script in my_app_code needs direct GPU access
     working_dir: /app
