@@ -231,7 +231,7 @@ def main_loop():
                         with open(tmp_wav_path, 'rb') as f:
                             files = {'file': (os.path.basename(tmp_wav_path), f, 'audio/wav')}
                             # Adjust payload as needed for your STT service
-                            stt_payload = { "model": "whisper-1", "language": "en" } # Example for OpenAI compatible STT
+                            stt_payload = { "model": "Systran/faster-whisper-tiny", "language": "en" } # Example for OpenAI compatible STT
                             print(f"STT Payload: {stt_payload}") # Debugging
                             response = requests.post(STT_URL, files=files, data=stt_payload)
                             response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
