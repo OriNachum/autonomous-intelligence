@@ -15,6 +15,11 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import uvicorn
 from pydantic import BaseModel, Field
+import json
+import time
+from collections import deque
+from datetime import datetime
+from fastapi.responses import JSONResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +49,20 @@ logger.info(f"Extracted API Adapter Host: {API_ADAPTER_HOST}, Port: {API_ADAPTER
 OPENAI_BASE_URL_STRIPPED = OPENAI_BASE_URL_INTERNAL
 
 logger.info(f"Using LLM API base URL: {OPENAI_BASE_URL_STRIPPED}")
+
+# In-memory log storage for recent requests and responses
+MAX_LOG_ENTRIES = 50
+request_logs = deque(maxlen=MAX_LOG_ENTRIES)
+
+def log_request_response(request_id, details):
+    """Add a request/response pair to the logs with timestamp"""
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "request_id": request_id,
+        **details
+    }
+    request_logs.appendleft(entry)
+    return entry
 
 # Chat Completions models
 class ChatCompletionMessage(BaseModel):
@@ -92,7 +111,9 @@ async def chat_completions(request: ChatCompletionRequest):
     Handle Chat Completions API requests by converting to Responses format
     and forwarding to the actual LLM API.
     """
-    logger.info(f"Received Chat Completions request for model: {request.model}")
+    request_id = uuid.uuid4().hex[:8]
+    logger.info(f"[{request_id}] Received Chat Completions request for model: {request.model}")
+    logger.info(f"[{request_id}] Request data: {request.dict()}")
     
     # Convert Chat Completions format to Responses format
     responses_request = {
@@ -110,13 +131,18 @@ async def chat_completions(request: ChatCompletionRequest):
     try:
         # Forward to the actual API
         async with httpx.AsyncClient() as client:
+            logger.info(f"[{request_id}] Forwarding to {OPENAI_BASE_URL}/responses: {responses_request}")
+            start_time = time.time()
             response = await client.post(
                 f"{OPENAI_BASE_URL}/responses",
                 json=responses_request,
                 timeout=120.0
             )
+            end_time = time.time()
+            logger.info(f"[{request_id}] Request completed in {end_time - start_time:.2f}s with status {response.status_code}")
             
             response_data = response.json()
+            logger.info(f"[{request_id}] Raw response data: {response_data}")
             
             # Convert Responses format back to Chat Completions format
             if request.stream:
@@ -132,7 +158,7 @@ async def chat_completions(request: ChatCompletionRequest):
                             output_text = content_item.get("text", "")
                             break
                 
-                return {
+                return_data = {
                     "id": f"chatcmpl-{uuid.uuid4().hex}",
                     "object": "chat.completion",
                     "created": response_data.get("created", int(uuid.uuid1().time // 10**6)),
@@ -154,8 +180,20 @@ async def chat_completions(request: ChatCompletionRequest):
                     })
                 }
                 
+                # Log full request/response cycle for debugging
+                log_entry = log_request_response(request_id, {
+                    "type": "chat_completions_api",
+                    "original_request": request.dict(),
+                    "converted_request": responses_request,
+                    "llm_response": response_data,
+                    "final_response": return_data
+                })
+                
+                logger.info(f"[{request_id}] Returning Chat Completions response: {str(return_data)[:500]}...")
+                return return_data
+                
     except Exception as e:
-        logger.error(f"Error forwarding request: {str(e)}")
+        logger.error(f"[{request_id}] Error forwarding request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error forwarding request: {str(e)}")
 
 # Add a duplicate route for /chat/completions (without the v1 prefix)
@@ -173,13 +211,70 @@ async def responses(request: ResponseRequest):
     Handle Responses API requests by converting to Chat Completions format
     and forwarding to the actual LLM API.
     """
-    logger.info(f"Received Responses request for model: {request.model}")
+    request_id = uuid.uuid4().hex[:8]
+    logger.info(f"[{request_id}] Received Responses request for model: {request.model}")
+    
+    # Log input in detailed format for debugging
+    if isinstance(request.input, str):
+        logger.info(f"[{request_id}] Raw input (string): {request.input}")
+    else:
+        logger.info(f"[{request_id}] Raw input (list): {json.dumps(request.input, default=str)}")
     
     # Convert input format if it's a string
     if isinstance(request.input, str):
         messages = [{"role": "user", "content": request.input}]
     else:
-        messages = request.input
+        # Process the input messages more carefully to ensure valid format
+        messages = []
+        for msg in request.input:
+            logger.info(f"Processing message: {msg}")
+            if isinstance(msg, dict):
+                # Make sure message has both role and content
+                if "role" in msg:
+                    # Handle different content formats
+                    content = ""
+                    if "content" in msg:
+                        # If content is a list (OpenAI Responses format)
+                        if isinstance(msg["content"], list):
+                            logger.info(f"Content is a list: {msg['content']}")
+                            # Extract text from the list of content items
+                            text_parts = []
+                            for content_item in msg["content"]:
+                                if isinstance(content_item, dict):
+                                    # Handle known content types
+                                    if content_item.get("type") == "input_text" or content_item.get("type") == "output_text":
+                                        if "text" in content_item:
+                                            text_parts.append(content_item["text"])
+                                    elif "text" in content_item:
+                                        text_parts.append(content_item["text"])
+                            # Join all text parts
+                            content = " ".join(text_parts)
+                            logger.info(f"Extracted content: '{content}'")
+                        # If content is a string
+                        elif isinstance(msg["content"], str):
+                            content = msg["content"]
+                        # If content is something else
+                        else:
+                            logger.warning(f"Unexpected content type: {type(msg['content'])}, trying to convert to string")
+                            try:
+                                content = str(msg["content"])
+                            except:
+                                content = ""
+                    
+                    # Create properly formatted message
+                    message = {
+                        "role": msg["role"],
+                        "content": content
+                    }
+                    
+                    # Add name if it exists
+                    if "name" in msg and msg["name"]:
+                        message["name"] = msg["name"]
+                        
+                    messages.append(message)
+    
+    # Debug log to see what's being sent
+    logger.info(f"[{request_id}] Converted messages format: {json.dumps(messages, default=str)}")
     
     # Convert Responses format to Chat Completions format
     chat_request = {
@@ -194,56 +289,142 @@ async def responses(request: ResponseRequest):
     # Filter out None values
     chat_request = {k: v for k, v in chat_request.items() if v is not None}
     
+    logger.info(f"[{request_id}] Final chat request: {json.dumps(chat_request, default=str)}")
+    
     try:
         # Forward to the chat completions API endpoint
         async with httpx.AsyncClient() as client:
+            logger.info(f"[{request_id}] Sending request to {OPENAI_BASE_URL_STRIPPED}/v1/chat/completions")
+            start_time = time.time()
             response = await client.post(
                 f"{OPENAI_BASE_URL_STRIPPED}/v1/chat/completions",
                 json=chat_request,
                 timeout=120.0
             )
+            end_time = time.time()
+            logger.info(f"[{request_id}] API request completed in {end_time - start_time:.2f}s with status {response.status_code}")
             
+            # Check for errors
             if response.status_code != 200:
                 logger.error(f"API returned status {response.status_code}: {response.text}")
+                # Additional debugging for error cases
+                logger.error(f"Request that caused error: {chat_request}")
                 raise HTTPException(status_code=response.status_code, detail=response.text)
-                
-            chat_data = response.json()
             
-            # Convert Chat Completions format back to Responses format
+            # Handle streaming responses
             if request.stream:
-                # Streaming response handling would go here
-                return chat_data
-            else:
+                logger.info(f"[{request_id}] Handling streaming response")
+                # For streaming, we need to return the response directly
+                # Create a streaming response adapter that converts the chat completions format to responses format
+                from fastapi.responses import StreamingResponse
+                
+                async def stream_adapter():
+                    async for chunk in response.aiter_bytes():
+                        # Pass through the streaming chunks directly
+                        yield chunk
+                
+                return StreamingResponse(
+                    stream_adapter(),
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    media_type=response.headers.get("content-type", "text/event-stream")
+                )
+            
+            # Handle non-streaming responses
+            try:
+                # Log raw response for debugging
+                logger.info(f"[{request_id}] Raw response from API: {response.text}")
+                chat_data = response.json()
+                logger.info(f"[{request_id}] Parsed response JSON: {json.dumps(chat_data, default=str)}")
+                
                 # Get the content from the first choice
                 content = ""
                 if chat_data.get("choices") and len(chat_data["choices"]) > 0:
                     content = chat_data["choices"][0].get("message", {}).get("content", "")
                 
                 # Create a response in Responses format
-                return {
-                    "id": f"resp_{uuid.uuid4().hex}",
-                    "created_at": chat_data.get("created", int(uuid.uuid1().time // 10**6)),
+                response_id = f"resp_{uuid.uuid4().hex}"
+                created_at = chat_data.get("created", int(uuid.uuid1().time // 10**6))
+                
+                # Format according to OpenAI Responses API format
+                response_data = {
+                    "id": response_id,
+                    "object": "response",  # Changed from "thread.message" to "response" based on example
+                    "created_at": created_at,
+                    "status": "completed",
+                    "thread_id": f"thread_{uuid.uuid4().hex}",
                     "model": request.model,
-                    "content": [
+                    "output": [
                         {
-                            "type": "output_text",
-                            "text": content,
-                            "annotations": []
+                            "type": "message",
+                            "id": f"msg_{uuid.uuid4().hex}",
+                            "status": "completed",
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": content,
+                                    "annotations": []
+                                }
+                            ]
                         }
                     ],
-                    "output_text": content,
+                    "parallel_tool_calls": True,
+                    "previous_response_id": None,
+                    "reasoning": {
+                        "effort": None,
+                        "summary": None
+                    },
+                    "store": request.store,
+                    "temperature": request.temperature or 1.0,
+                    "text": {
+                        "format": {
+                            "type": "text"
+                        }
+                    },
+                    "tool_choice": "auto",
+                    "tools": [],
+                    "top_p": request.top_p or 1.0,
+                    "truncation": "disabled",
                     "usage": chat_data.get("usage", {
-                        "prompt_tokens": 0,
-                        "completion_tokens": 0,
+                        "input_tokens": 0,
+                        "input_tokens_details": {
+                            "cached_tokens": 0
+                        },
+                        "output_tokens": 0,
+                        "output_tokens_details": {
+                            "reasoning_tokens": 0
+                        },
                         "total_tokens": 0
-                    })
+                    }),
+                    "user": None,
+                    "metadata": {}
                 }
                 
+                # Log full request/response cycle for debugging
+                log_entry = log_request_response(request_id, {
+                    "type": "responses_api",
+                    "original_request": request.dict(),
+                    "converted_request": chat_request,
+                    "llm_response": chat_data,
+                    "final_response": response_data
+                })
+                
+                logger.info(f"[{request_id}] Formatted response data: {json.dumps(response_data, default=str)}")
+                logger.info(f"[{request_id}] Request handling complete, returning response")
+                return response_data
+            except json.JSONDecodeError as e:
+                logger.error(f"[{request_id}] Error decoding JSON response: {str(e)}")
+                logger.error(f"[{request_id}] Response text: {response.text}")
+                # Return the raw response text as fallback
+                return {"error": "Error parsing response", "raw_response": response.text}
+                
     except httpx.HTTPError as e:
-        logger.error(f"HTTP error forwarding request: {str(e)}")
+        logger.error(f"[{request_id}] HTTP error forwarding request: {str(e)}")
         raise HTTPException(status_code=502, detail=f"Error communicating with API: {str(e)}")
     except Exception as e:
-        logger.error(f"Error forwarding request: {str(e)}")
+        logger.error(f"[{request_id}] Error forwarding request: {str(e)}")
+        logger.exception(f"[{request_id}] Full exception details:")
         raise HTTPException(status_code=500, detail=f"Error forwarding request: {str(e)}")
 
 # Add a duplicate route for /responses (without the v1 prefix)
@@ -252,7 +433,8 @@ async def responses_without_prefix(request: ResponseRequest):
     """
     Handle Responses API requests without the /v1/ prefix
     """
-    logger.info(f"Received Responses request (without v1 prefix) for model: {request.model}")
+    request_id = uuid.uuid4().hex[:8]
+    logger.info(f"[{request_id}] Received Responses request (without v1 prefix) for model: {request.model}")
     return await responses(request)
 
 # Proxy all other requests unchanged
@@ -261,7 +443,15 @@ async def proxy(request: Request, path: str):
     """
     Proxy all other requests to the actual API unchanged.
     """
+    request_id = uuid.uuid4().hex[:8]
+    logger.info(f"[{request_id}] Proxying request to path: {path}")
+    
     try:
+        # Get request details
+        method = request.method
+        headers = dict(request.headers)
+        params = dict(request.query_params)
+        
         # Fix path to always have v1 prefix when sending to backend
         if not path.startswith('v1/') and not path.startswith('/v1/'):
             target_url = f"{OPENAI_BASE_URL_STRIPPED}/v1/{path}"
@@ -270,12 +460,7 @@ async def proxy(request: Request, path: str):
             cleaned_path = path.replace('v1/v1', 'v1').lstrip('v1/')
             target_url = f"{OPENAI_BASE_URL_STRIPPED}/v1/{cleaned_path}"
             
-        logger.info(f"Proxying request to: {target_url}")
-        
-        # Get request details
-        method = request.method
-        headers = dict(request.headers)
-        params = dict(request.query_params)
+        logger.info(f"[{request_id}] Proxying to: {target_url} (method: {method})")
         
         # Remove headers that might cause issues
         headers.pop("host", None)
@@ -283,8 +468,23 @@ async def proxy(request: Request, path: str):
         # Get the request body
         body = await request.body()
         
+        # Log request body for debugging if not too large
+        if len(body) < 10000:  # Only log if body is smaller than 10KB
+            try:
+                body_str = body.decode('utf-8')
+                try:
+                    body_json = json.loads(body_str)
+                    logger.info(f"[{request_id}] Request body (JSON): {json.dumps(body_json, default=str)}")
+                except:
+                    logger.info(f"[{request_id}] Request body (text): {body_str}")
+            except:
+                logger.info(f"[{request_id}] Request body: (binary data, {len(body)} bytes)")
+        else:
+            logger.info(f"[{request_id}] Request body: (large data, {len(body)} bytes)")
+        
         async with httpx.AsyncClient() as client:
             # Forward the request
+            start_time = time.time()
             response = await client.request(
                 method=method,
                 url=target_url,
@@ -293,11 +493,19 @@ async def proxy(request: Request, path: str):
                 content=body,
                 timeout=120.0
             )
+            end_time = time.time()
+            logger.info(f"[{request_id}] Proxy request completed in {end_time - start_time:.2f}s with status {response.status_code}")
             
             # Check for errors
             if response.status_code >= 400:
-                logger.warning(f"API returned error status {response.status_code}: {response.text}")
+                logger.warning(f"[{request_id}] API returned error status {response.status_code}: {response.text}")
                 return response.json() if response.headers.get("content-type") == "application/json" else response.text
+            
+            # Log response for debugging if not too large
+            if len(response.content) < 10000:
+                logger.info(f"[{request_id}] Response content: {response.text}")
+            else:
+                logger.info(f"[{request_id}] Response content: (large data, {len(response.content)} bytes)")
             
             # Return the response
             try:
@@ -306,11 +514,39 @@ async def proxy(request: Request, path: str):
                 # If it's not JSON, return the raw content
                 return response.text
     except httpx.HTTPError as e:
-        logger.error(f"HTTP error proxying request to path '{path}': {str(e)}")
+        logger.error(f"[{request_id}] HTTP error proxying request to path '{path}': {str(e)}")
         raise HTTPException(status_code=502, detail=f"Error communicating with API: {str(e)}")
     except Exception as e:
-        logger.error(f"Error proxying request to path '{path}': {str(e)}")
+        logger.error(f"[{request_id}] Error proxying request to path '{path}': {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error proxying request: {str(e)}")
+
+# Add a debugging endpoint to view recent logs
+@app.get("/debug/logs")
+async def get_logs(limit: int = 10, request_id: str = None):
+    """
+    Endpoint to view recent request/response logs for debugging
+    """
+    if limit > MAX_LOG_ENTRIES:
+        limit = MAX_LOG_ENTRIES
+        
+    if request_id:
+        # Filter logs by request_id
+        filtered_logs = [log for log in request_logs if log["request_id"] == request_id]
+        return JSONResponse(content={"logs": filtered_logs})
+    else:
+        # Return most recent logs up to limit
+        return JSONResponse(content={"logs": list(request_logs)[:limit]})
+
+@app.get("/debug/request/{request_id}")
+async def get_request_detail(request_id: str):
+    """
+    Get detailed information about a specific request by ID
+    """
+    for log in request_logs:
+        if log["request_id"] == request_id:
+            return JSONResponse(content=log)
+    
+    raise HTTPException(status_code=404, detail="Request ID not found in logs")
 
 if __name__ == "__main__":
     logger.info(f"Starting API adapter server on {API_ADAPTER_HOST}:{API_ADAPTER_PORT}")
