@@ -33,9 +33,17 @@ app.add_middleware(
 )
 
 # Define environment variables
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
-API_ADAPTER_PORT = int(os.getenv("API_ADAPTER_PORT", "8080"))
-API_ADAPTER_HOST = os.getenv("API_ADAPTER_HOST", "0.0.0.0")
+OPENAI_BASE_URL_INTERNAL = os.getenv("OPENAI_BASE_URL_INTERNAL", "http://localhost:8000")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "http://localhost:8080")
+# split OPENAI_BASE_URL into host and port
+API_ADAPTER_PORT = int(OPENAI_BASE_URL.split(":")[-1])
+API_ADAPTER_HOST = OPENAI_BASE_URL.split(":")[1].replace("//", "")
+
+logger.info(f"Extracted API Adapter Host: {API_ADAPTER_HOST}, Port: {API_ADAPTER_PORT}")
+
+OPENAI_BASE_URL_STRIPPED = OPENAI_BASE_URL_INTERNAL
+
+logger.info(f"Using LLM API base URL: {OPENAI_BASE_URL_STRIPPED}")
 
 # Chat Completions models
 class ChatCompletionMessage(BaseModel):
@@ -229,8 +237,19 @@ async def proxy(request: Request, path: str):
     Proxy all other requests to the actual API unchanged.
     """
     try:
-        # Get the target URL
-        target_url = f"{OPENAI_BASE_URL}/{path}"
+        # Prevent recursive calls by checking for repeated v1 patterns
+        if path.startswith('v1/') or path.count('v1/v1') > 0:
+            path = path.replace('v1/v1', 'v1').lstrip('v1/')
+            logger.warning(f"Fixed recursive path: {path}")
+        
+        # Get the target URL - use the base URL (without /v1) and then add the path
+        # This ensures we don't get nested /v1/v1/v1... paths
+        if path.startswith('v1/'):
+            target_url = f"{OPENAI_BASE_URL_STRIPPED}/{path}"
+        else:
+            target_url = f"{OPENAI_BASE_URL_STRIPPED}/v1/{path}"
+            
+        logger.info(f"Proxying request to: {target_url}")
         
         # Get request details
         method = request.method
@@ -257,7 +276,7 @@ async def proxy(request: Request, path: str):
             # Return the response
             return response.json()
     except Exception as e:
-        logger.error(f"Error proxying request: {str(e)}")
+        logger.error(f"Error proxying request to path '{path}': {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error proxying request: {str(e)}")
 
 if __name__ == "__main__":

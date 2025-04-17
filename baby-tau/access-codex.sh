@@ -6,6 +6,8 @@ CONTAINER_NAME="codex-assistant-codex-1"
 ADAPTER_PORT="${API_ADAPTER_PORT:-8080}"
 
 function show_help {
+  echo "Codex CLI Container Access Script"
+  echo ""
   echo "Usage: $0 [command]"
   echo ""
   echo "Commands:"
@@ -15,13 +17,20 @@ function show_help {
   echo "  --restart-adapter, -r   Restart the API adapter"
   echo "  --test-adapter, -t      Test the API adapter endpoints"
   echo "  --codex [args]          Run codex with the given arguments"
+  echo "  --auto [prompt]         Run codex in full-auto mode with the given prompt"
+  echo "  --edit [prompt]         Run codex in auto-edit mode with the given prompt"
   echo "  [command]               Run arbitrary command in container"
   echo ""
+  echo "Approval Modes:"
+  echo "  suggest (default)       Agent can only read files"
+  echo "  auto-edit               Agent can read and write files but not run commands"
+  echo "  full-auto               Agent can read/write files and run commands"
+  echo ""
   echo "Examples:"
-  echo "  $0                      # Connect to container with bash"
-  echo "  $0 --test-adapter       # Test the API adapter"
-  echo "  $0 --codex --help       # Show codex help"
-  echo "  $0 --codex \"Write a function to calculate fibonacci\""
+  echo "  $0                                      # Connect to container with bash"
+  echo "  $0 --codex \"explain this codebase to me\"   # Basic codex prompt"
+  echo "  $0 --auto \"create a todo API in Express\"  # Run in full-auto mode" 
+  echo "  $0 --edit \"fix lint errors\"              # Run in auto-edit mode"
 }
 
 # Check if container is running
@@ -70,6 +79,18 @@ case "$1" in
     ensure_container_running
     echo "Running codex command: $@"
     docker exec -it ${CONTAINER_NAME} bash -c "export OPENAI_BASE_URL=http://localhost:${ADAPTER_PORT}/v1 && export OPENAI_API_KEY=dummy-key && codex $*"
+    ;;
+  --auto)
+    shift
+    ensure_container_running
+    echo "Running codex in full-auto mode: $@"
+    docker exec -it ${CONTAINER_NAME} bash -c "export OPENAI_BASE_URL=http://localhost:${ADAPTER_PORT}/v1 && export OPENAI_API_KEY=dummy-key && codex --approval-mode full-auto $*"
+    ;;
+  --edit)
+    shift
+    ensure_container_running
+    echo "Running codex in auto-edit mode: $@"
+    docker exec -it ${CONTAINER_NAME} bash -c "export OPENAI_BASE_URL=http://localhost:${ADAPTER_PORT}/v1 && export OPENAI_API_KEY=dummy-key && codex --approval-mode auto-edit $*"
     ;;
   "")
     ensure_container_running

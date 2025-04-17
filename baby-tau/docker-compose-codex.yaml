@@ -17,7 +17,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
       - NVIDIA_DRIVER_CAPABILITIES=all
       - OLLAMA_HOST=0.0.0.0:${VLLM_PORT:-8000}
-      - OLLAMA_MODELS=${OLLAMA_MODEL:-mistral}
+      - OLLAMA_MODELS=mistral:latest
     volumes:
       - ./ollama:/root/.ollama
     command: >
@@ -44,9 +44,10 @@ services:
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
       - NVIDIA_DRIVER_CAPABILITIES=all
       # Connect to ollama as OpenAI-compatible API
-      - OPENAI_BASE_URL=http://localhost:${OLLAMA_PORT:-8000}/v1
+      - OPENAI_BASE_URL_INTERNAL=http://localhost:${OLLAMA_PORT:-8000}
+      - OPENAI_BASE_URL=http://localhost:8080 #http://localhost:${OLLAMA_PORT:-8000}/v1
       - OPENAI_API_KEY=dummy-key
-      - CODEX_MODEL=${OLLAMA_MODEL:-mistral}
+      - CODEX_MODEL=mistral:latest
       # API adapter settings
       - API_ADAPTER_PORT=8080
       - API_ADAPTER_HOST=0.0.0.0
@@ -55,13 +56,14 @@ services:
       - ${WORKSPACE_DIR:-./workspace}:/workspace
       # Mount the API adapter code
       - ./api-adapter:/app/api-adapter
+      # Mount codex configuration 
+      - ./codex-config:/root/.codex
     working_dir: /workspace
-    # Install Node.js, npm, the Codex CLI, and run the API adapter
+    # Install Codex and the API adapter
     command: >
       sh -c "
-      echo '>>> Installing Node.js and npm...' &&
-      apt-get update &&
-      apt-get install -y nodejs npm python3 python3-pip &&
+      echo '>>> Checking Node.js version...' &&
+      node --version &&
       echo '>>> Installing Codex...' &&
       npm install -g @openai/codex &&
       echo '>>> Installing API adapter dependencies...' &&
@@ -69,7 +71,8 @@ services:
       echo '>>> Starting API adapter server...' &&
       python3 /app/api-adapter/server.py &
       echo '>>> Codex installed successfully!' &&
-      echo '>>> You can now use the codex command. Example: codex --help' &&
+      echo '>>> You can now use the codex command with either API format.' &&
+      echo '>>> Example: codex --help' &&
       echo '>>> API adapter running on port ${API_ADAPTER_PORT:-8080}' &&
       echo '>>> Starting interactive shell...' &&
       exec bash
