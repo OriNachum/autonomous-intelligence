@@ -146,9 +146,84 @@ async def chat_completions(request: ChatCompletionRequest):
             
             # Convert Responses format back to Chat Completions format
             if request.stream:
-                # Streaming response handling would go here
-                # This is more complex and would need to convert streaming events
-                return response_data
+                # For streaming requests, we need to directly stream the response
+                # back to the client rather than trying to parse it
+                from fastapi.responses import StreamingResponse
+                
+                async def stream_generator():
+                    # Create a unique response ID for this streaming session
+                    response_id = f"resp_{uuid.uuid4().hex}"
+                    thread_id = f"thread_{uuid.uuid4().hex}"
+                    created_at = int(time.time())
+                    
+                    # Initialize buffer for accumulating content from chunks
+                    content_buffer = ""
+                    
+                    async for line in response.aiter_lines():
+                        # Keep the original debug logging
+                        logger.info(f"[{request_id}] Streaming chunk: {line}")
+                        
+                        if line.startswith("data: "):
+                            try:
+                                # Parse the SSE data line
+                                data = line[6:]  # Remove "data: " prefix
+                                if data.strip() == "[DONE]":
+                                    # End of stream marker
+                                    yield f"data: [DONE]\n\n"
+                                    continue
+                                    
+                                # Parse the JSON data from the chunk
+                                chunk = json.loads(data)
+                                
+                                # Extract content from the delta
+                                if "choices" in chunk and len(chunk["choices"]) > 0:
+                                    choice = chunk["choices"][0]
+                                    if "delta" in choice and "content" in choice["delta"]:
+                                        content = choice["delta"]["content"]
+                                        content_buffer += content
+                                        
+                                        # Create a response in Responses API format
+                                        response_data = {
+                                            "id": response_id,
+                                            "object": "thread.message.delta",
+                                            "created_at": created_at,
+                                            "thread_id": thread_id,
+                                            "delta": {
+                                                "content": [
+                                                    {
+                                                        "type": "output_text",
+                                                        "text": content,
+                                                        "annotations": []
+                                                    }
+                                                ],
+                                                "output_text": content
+                                            },
+                                            "model": request.model
+                                        }
+                                        
+                                        # Format as SSE and yield
+                                        yield f"data: {json.dumps(response_data)}\n\n"
+                            except json.JSONDecodeError:
+                                logger.warning(f"[{request_id}] Could not parse streaming JSON: {line}")
+                                # Just pass through the line as-is if we can't parse it
+                                yield f"{line}\n\n"
+                            except Exception as e:
+                                logger.error(f"[{request_id}] Error processing stream chunk: {str(e)}")
+                                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                        elif line.strip():
+                            # Pass through any non-empty lines that don't start with "data: "
+                            yield f"{line}\n\n"
+                
+                logger.info(f"[{request_id}] Streaming response back to client")
+                return StreamingResponse(
+                    content=stream_generator(),
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "Content-Type": "text/event-stream",
+                    }
+                )
             else:
                 # Simple conversion for non-streaming
                 output_text = response_data.get("output_text", "")
@@ -321,8 +396,199 @@ async def responses(request: ResponseRequest):
                 from fastapi.responses import StreamingResponse
                 
                 async def stream_generator():
-                    # Simply pass through the streaming content directly
-                    yield response.content
+                    # Create a unique response ID for this streaming session
+                    response_id = f"resp_{uuid.uuid4().hex}"
+                    message_id = f"msg_{uuid.uuid4().hex}"
+                    thread_id = f"thread_{uuid.uuid4().hex}"
+                    created_at = int(time.time())
+                    
+                    # Initialize buffer for accumulating content from chunks
+                    content_buffer = ""
+                    
+                    # First send a response.created event
+                    response_created = {
+                        "type": "response.created",
+                        "response": {
+                            "id": response_id,
+                            "object": "response",
+                            "created_at": created_at,
+                            "status": "in_progress",
+                            "error": None,
+                            "incomplete_details": None,
+                            "instructions": None,
+                            "max_output_tokens": None,
+                            "model": request.model,
+                            "output": [],
+                            "parallel_tool_calls": True,
+                            "previous_response_id": None,
+                            "reasoning": {
+                                "effort": None,
+                                "summary": None
+                            },
+                            "store": request.store,
+                            "temperature": request.temperature,
+                            "text": {
+                                "format": {
+                                    "type": "text"
+                                }
+                            },
+                            "tool_choice": "auto",
+                            "tools": [],
+                            "top_p": request.top_p,
+                            "truncation": "disabled",
+                            "usage": None,
+                            "user": None,
+                            "metadata": {}
+                        }
+                    }
+                    
+                    yield f"data: {json.dumps(response_created)}\n\n"
+                    
+                    # Then send an in_progress event 
+                    response_in_progress = {
+                        "type": "response.in_progress",
+                        "response": {
+                            "id": response_id,
+                            "object": "response",
+                            "created_at": created_at,
+                            "status": "in_progress",
+                            "error": None,
+                            "incomplete_details": None,
+                            "instructions": None,
+                            "max_output_tokens": None,
+                            "model": request.model,
+                            "output": [],
+                            "parallel_tool_calls": True,
+                            "previous_response_id": None,
+                            "reasoning": {
+                                "effort": None,
+                                "summary": None
+                            },
+                            "store": request.store,
+                            "temperature": request.temperature,
+                            "text": {
+                                "format": {
+                                    "type": "text"
+                                }
+                            },
+                            "tool_choice": "auto",
+                            "tools": [],
+                            "top_p": request.top_p,
+                            "truncation": "disabled",
+                            "usage": None,
+                            "user": None,
+                            "metadata": {}
+                        }
+                    }
+                    
+                    yield f"data: {json.dumps(response_in_progress)}\n\n"
+                    
+                    # Keep the original lines for debugging
+                    async for line in response.aiter_lines():
+                        # Keep the original debug logging
+                        logger.info(f"[{request_id}] Streaming chunk: {line}")
+                        
+                        if line.startswith("data: "):
+                            try:
+                                # Parse the SSE data line
+                                data = line[6:]  # Remove "data: " prefix
+                                if data.strip() == "[DONE]":
+                                    # End of stream marker - send completed response
+                                    response_completed = {
+                                        "type": "response.completed",
+                                        "response": {
+                                            "id": response_id,
+                                            "object": "response",
+                                            "created_at": created_at,
+                                            "status": "completed",
+                                            "error": None,
+                                            "incomplete_details": None,
+                                            "input": [],
+                                            "instructions": None,
+                                            "max_output_tokens": None,
+                                            "model": request.model,
+                                            "output": [
+                                                {
+                                                    "id": message_id,
+                                                    "type": "message",
+                                                    "role": "assistant",
+                                                    "content": [
+                                                        {
+                                                            "type": "output_text",
+                                                            "text": content_buffer,
+                                                            "annotations": []
+                                                        }
+                                                    ]
+                                                }
+                                            ],
+                                            "previous_response_id": None,
+                                            "reasoning_effort": None,
+                                            "store": request.store,
+                                            "temperature": request.temperature,
+                                            "text": {
+                                                "format": {
+                                                    "type": "text"
+                                                }
+                                            },
+                                            "tool_choice": "auto",
+                                            "tools": [],
+                                            "top_p": request.top_p,
+                                            "truncation": "disabled",
+                                            "usage": {
+                                                "input_tokens": 0,
+                                                "output_tokens": 0,
+                                                "output_tokens_details": {
+                                                    "reasoning_tokens": 0
+                                                },
+                                                "total_tokens": 0
+                                            },
+                                            "user": None,
+                                            "metadata": {}
+                                        }
+                                    }
+                                    yield f"data: {json.dumps(response_completed)}\n\n"
+                                    yield "data: [DONE]\n\n"
+                                    continue
+                                    
+                                # Parse the JSON data from the chunk
+                                chunk = json.loads(data)
+                                
+                                # Extract content from the delta
+                                if "choices" in chunk and len(chunk["choices"]) > 0:
+                                    choice = chunk["choices"][0]
+                                    if "delta" in choice and "content" in choice["delta"]:
+                                        content = choice["delta"]["content"]
+                                        content_buffer += content
+                                        
+                                        # For intermediate chunks, use delta format
+                                        delta_event = {
+                                            "type": "message.delta",
+                                            "delta": {
+                                                "message_id": message_id,
+                                                "type": "message",
+                                                "content": [
+                                                    {
+                                                        "type": "output_text",
+                                                        "text": content,
+                                                        "annotations": []
+                                                    }
+                                                ]
+                                            },
+                                            "response_id": response_id
+                                        }
+                                        
+                                        # Format as SSE and yield
+                                        yield f"data: {json.dumps(delta_event)}\n\n"
+                            except json.JSONDecodeError:
+                                logger.warning(f"[{request_id}] Could not parse streaming JSON: {line}")
+                                # Just pass through the line as-is if we can't parse it
+                                yield f"{line}\n\n"
+                            except Exception as e:
+                                logger.error(f"[{request_id}] Error processing stream chunk: {str(e)}")
+                                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                        elif line.strip():
+                            # Pass through any non-empty lines that don't start with "data: "
+                            yield f"{line}\n\n"
                 
                 logger.info(f"[{request_id}] Streaming response back to client")
                 return StreamingResponse(
