@@ -313,14 +313,32 @@ async def responses(request: ResponseRequest):
                 
             # Log raw response for debugging
             logger.info(f"[{request_id}] Raw response from API: {response.text}")
-            chat_data = response.json()
-            logger.info(f"[{request_id}] Parsed response JSON: {json.dumps(chat_data, default=str)}")
             
             # Convert Chat Completions format back to Responses format
             if request.stream:
-                # Streaming response handling would go here
-                return chat_data
+                # For streaming requests, we need to directly stream the response
+                # back to the client rather than trying to parse it
+                from fastapi.responses import StreamingResponse
+                
+                async def stream_generator():
+                    # Simply pass through the streaming content directly
+                    yield response.content
+                
+                logger.info(f"[{request_id}] Streaming response back to client")
+                return StreamingResponse(
+                    content=stream_generator(),
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "Content-Type": "text/event-stream",
+                    }
+                )
             else:
+                # For non-streaming requests, parse the JSON
+                chat_data = response.json()
+                logger.info(f"[{request_id}] Parsed response JSON: {json.dumps(chat_data, default=str)}")
+                
                 # Get the content from the first choice
                 content = ""
                 if chat_data.get("choices") and len(chat_data["choices"]) > 0:
