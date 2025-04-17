@@ -11,6 +11,23 @@ git submodule update --init --recursive
 git -C jetson-containers checkout dev
 ```
 
+I also recommend moving to console mode:
+```bash
+sudo systemctl set-default multi-user.target
+sudo reboot
+```
+A browser takes about 1GB, and GUI takes about 1.5GB.  
+To switch console and gui modes:
+
+```bash
+sudo init 3
+```
+
+To revert:
+```bash
+sudo init 5
+```
+
 ### 2. Build the container
 Ensure you are in baby-tau folder
 ```bash
@@ -31,19 +48,6 @@ export PYTHON_TAG=$(autotag sound-utils) # Should be r36.4.3-sound-utils, can fi
   
 ### 5. Start the services
 
-#### Free up memory
-A browser takes about 1GB, and GUI takes about 1.5GB.
-To reduce both:
-
-```bash
-sudo init 3
-```
-
-To revert:
-```bash
-sudo init 5
-```
-#### spinning up everything:
 ```bash
 docker compose up
 ```
