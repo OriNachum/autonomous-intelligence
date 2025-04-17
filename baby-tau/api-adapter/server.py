@@ -158,6 +158,15 @@ async def chat_completions(request: ChatCompletionRequest):
         logger.error(f"Error forwarding request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error forwarding request: {str(e)}")
 
+# Add a duplicate route for /chat/completions (without the v1 prefix)
+@app.post("/chat/completions")
+async def chat_completions_without_prefix(request: ChatCompletionRequest):
+    """
+    Handle Chat Completions API requests without the /v1/ prefix
+    """
+    logger.info(f"Received Chat Completions request (without v1 prefix) for model: {request.model}")
+    return await chat_completions(request)
+
 @app.post("/v1/responses")
 async def responses(request: ResponseRequest):
     """
@@ -186,14 +195,18 @@ async def responses(request: ResponseRequest):
     chat_request = {k: v for k, v in chat_request.items() if v is not None}
     
     try:
-        # Forward to the actual API
+        # Forward to the chat completions API endpoint
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{OPENAI_BASE_URL}/chat/completions",
+                f"{OPENAI_BASE_URL_STRIPPED}/v1/chat/completions",
                 json=chat_request,
                 timeout=120.0
             )
             
+            if response.status_code != 200:
+                logger.error(f"API returned status {response.status_code}: {response.text}")
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+                
             chat_data = response.json()
             
             # Convert Chat Completions format back to Responses format
@@ -226,9 +239,21 @@ async def responses(request: ResponseRequest):
                     })
                 }
                 
+    except httpx.HTTPError as e:
+        logger.error(f"HTTP error forwarding request: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Error communicating with API: {str(e)}")
     except Exception as e:
         logger.error(f"Error forwarding request: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error forwarding request: {str(e)}")
+
+# Add a duplicate route for /responses (without the v1 prefix)
+@app.post("/responses")
+async def responses_without_prefix(request: ResponseRequest):
+    """
+    Handle Responses API requests without the /v1/ prefix
+    """
+    logger.info(f"Received Responses request (without v1 prefix) for model: {request.model}")
+    return await responses(request)
 
 # Proxy all other requests unchanged
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
@@ -237,17 +262,13 @@ async def proxy(request: Request, path: str):
     Proxy all other requests to the actual API unchanged.
     """
     try:
-        # Prevent recursive calls by checking for repeated v1 patterns
-        if path.startswith('v1/') or path.count('v1/v1') > 0:
-            path = path.replace('v1/v1', 'v1').lstrip('v1/')
-            logger.warning(f"Fixed recursive path: {path}")
-        
-        # Get the target URL - use the base URL (without /v1) and then add the path
-        # This ensures we don't get nested /v1/v1/v1... paths
-        if path.startswith('v1/'):
-            target_url = f"{OPENAI_BASE_URL_STRIPPED}/{path}"
-        else:
+        # Fix path to always have v1 prefix when sending to backend
+        if not path.startswith('v1/') and not path.startswith('/v1/'):
             target_url = f"{OPENAI_BASE_URL_STRIPPED}/v1/{path}"
+        else:
+            # If path already has v1, don't add another one
+            cleaned_path = path.replace('v1/v1', 'v1').lstrip('v1/')
+            target_url = f"{OPENAI_BASE_URL_STRIPPED}/v1/{cleaned_path}"
             
         logger.info(f"Proxying request to: {target_url}")
         
@@ -273,8 +294,20 @@ async def proxy(request: Request, path: str):
                 timeout=120.0
             )
             
+            # Check for errors
+            if response.status_code >= 400:
+                logger.warning(f"API returned error status {response.status_code}: {response.text}")
+                return response.json() if response.headers.get("content-type") == "application/json" else response.text
+            
             # Return the response
-            return response.json()
+            try:
+                return response.json()
+            except ValueError:
+                # If it's not JSON, return the raw content
+                return response.text
+    except httpx.HTTPError as e:
+        logger.error(f"HTTP error proxying request to path '{path}': {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Error communicating with API: {str(e)}")
     except Exception as e:
         logger.error(f"Error proxying request to path '{path}': {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error proxying request: {str(e)}")
