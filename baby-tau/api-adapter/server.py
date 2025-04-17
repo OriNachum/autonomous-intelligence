@@ -310,33 +310,17 @@ async def responses(request: ResponseRequest):
                 # Additional debugging for error cases
                 logger.error(f"Request that caused error: {chat_request}")
                 raise HTTPException(status_code=response.status_code, detail=response.text)
+                
+            # Log raw response for debugging
+            logger.info(f"[{request_id}] Raw response from API: {response.text}")
+            chat_data = response.json()
+            logger.info(f"[{request_id}] Parsed response JSON: {json.dumps(chat_data, default=str)}")
             
-            # Handle streaming responses
+            # Convert Chat Completions format back to Responses format
             if request.stream:
-                logger.info(f"[{request_id}] Handling streaming response")
-                # For streaming, we need to return the response directly
-                # Create a streaming response adapter that converts the chat completions format to responses format
-                from fastapi.responses import StreamingResponse
-                
-                async def stream_adapter():
-                    async for chunk in response.aiter_bytes():
-                        # Pass through the streaming chunks directly
-                        yield chunk
-                
-                return StreamingResponse(
-                    stream_adapter(),
-                    status_code=response.status_code,
-                    headers=dict(response.headers),
-                    media_type=response.headers.get("content-type", "text/event-stream")
-                )
-            
-            # Handle non-streaming responses
-            try:
-                # Log raw response for debugging
-                logger.info(f"[{request_id}] Raw response from API: {response.text}")
-                chat_data = response.json()
-                logger.info(f"[{request_id}] Parsed response JSON: {json.dumps(chat_data, default=str)}")
-                
+                # Streaming response handling would go here
+                return chat_data
+            else:
                 # Get the content from the first choice
                 content = ""
                 if chat_data.get("choices") and len(chat_data["choices"]) > 0:
@@ -349,56 +333,25 @@ async def responses(request: ResponseRequest):
                 # Format according to OpenAI Responses API format
                 response_data = {
                     "id": response_id,
-                    "object": "response",  # Changed from "thread.message" to "response" based on example
+                    "object": "thread.message",
                     "created_at": created_at,
-                    "status": "completed",
                     "thread_id": f"thread_{uuid.uuid4().hex}",
                     "model": request.model,
-                    "output": [
+                    "role": "assistant",
+                    "content": [
                         {
-                            "type": "message",
-                            "id": f"msg_{uuid.uuid4().hex}",
-                            "status": "completed",
-                            "role": "assistant",
-                            "content": [
-                                {
-                                    "type": "output_text",
-                                    "text": content,
-                                    "annotations": []
-                                }
-                            ]
+                            "type": "output_text",
+                            "text": content,
+                            "annotations": []
                         }
                     ],
-                    "parallel_tool_calls": True,
-                    "previous_response_id": None,
-                    "reasoning": {
-                        "effort": None,
-                        "summary": None
-                    },
-                    "store": request.store,
-                    "temperature": request.temperature or 1.0,
-                    "text": {
-                        "format": {
-                            "type": "text"
-                        }
-                    },
-                    "tool_choice": "auto",
-                    "tools": [],
-                    "top_p": request.top_p or 1.0,
-                    "truncation": "disabled",
+                    "output_text": content,
+                    "metadata": {},
                     "usage": chat_data.get("usage", {
-                        "input_tokens": 0,
-                        "input_tokens_details": {
-                            "cached_tokens": 0
-                        },
-                        "output_tokens": 0,
-                        "output_tokens_details": {
-                            "reasoning_tokens": 0
-                        },
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
                         "total_tokens": 0
-                    }),
-                    "user": None,
-                    "metadata": {}
+                    })
                 }
                 
                 # Log full request/response cycle for debugging
@@ -413,11 +366,6 @@ async def responses(request: ResponseRequest):
                 logger.info(f"[{request_id}] Formatted response data: {json.dumps(response_data, default=str)}")
                 logger.info(f"[{request_id}] Request handling complete, returning response")
                 return response_data
-            except json.JSONDecodeError as e:
-                logger.error(f"[{request_id}] Error decoding JSON response: {str(e)}")
-                logger.error(f"[{request_id}] Response text: {response.text}")
-                # Return the raw response text as fallback
-                return {"error": "Error parsing response", "raw_response": response.text}
                 
     except httpx.HTTPError as e:
         logger.error(f"[{request_id}] HTTP error forwarding request: {str(e)}")
