@@ -54,6 +54,21 @@ export OPENAI_BASE_URL=http://<host-ip>:8080/v1
 export OPENAI_API_KEY=dummy-key
 ```
 
+## Running with Docker Compose
+
+You can run the adapter using a specific `docker-compose` file, such as `docker-compose-codex.yaml`:
+
+```bash
+docker compose -f docker-compose-codex.yaml up
+```
+
+```powershell
+docker-compose -f docker-compose-codex.yaml up
+```
+
+
+This will start the adapter and any required services defined in the `docker-compose-codex.yaml` file.
+
 ## Configuration
 
 The adapter can be configured with these environment variables:
