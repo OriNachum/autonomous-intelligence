@@ -48,6 +48,21 @@ The function handles the different streaming formats:
 2. **Responses Format**: Converting to the Responses streaming format
 3. **Special Event Types**: Handling special event types like completion and error events
 
+### Function Call Handling
+
+The function has specialized handling for function/tool calls:
+
+1. **Multiple Tool Call Formats**: Supports both traditional `function_call` and newer `tool_calls` formats
+2. **Argument Streaming**: Properly handles streaming of function arguments as they arrive
+3. **Completion Detection**: Uses finish_reason to detect when tool calls are complete
+4. **Error Handling**: Special handling for invalid arguments and error cases
+5. **Reliable Done Events**: Ensures done events are always emitted for every function call
+
+Function call events follow this sequence:
+1. `response.function_call` - Indicates a function call with a name
+2. `response.function_call_arguments.delta` - Streams function arguments as they arrive
+3. `response.function_call_arguments.done` - Signals function arguments are complete
+
 ### Event Types
 
 The function processes several types of streaming events:
@@ -56,6 +71,10 @@ The function processes several types of streaming events:
 - `response.in_progress`: Ongoing event with partial content
 - `response.completed`: Final event indicating completion
 - `response.error`: Error event if something goes wrong
+- `response.content_block_delta`: Event with partial content
+- `response.function_call`: Event indicating a function call
+- `response.function_call_arguments.delta`: Event with partial function arguments
+- `response.function_call_arguments.done`: Event indicating function arguments are complete
 
 ### SSE Formatting
 
@@ -71,7 +90,7 @@ data: {"type": "response.completed", ... }
 
 ## Integration Points
 
-- Called by the `handle_responses` function in `response_handler.py`
+- Called by the `handle_responses` function in `handlers/responses_handler.py`
 - Uses utilities from the `utils` directory for format conversion
 - Uses configuration from `config.py`
 
@@ -84,6 +103,7 @@ Modify this file when:
 3. Improving error handling in streaming responses
 4. Optimizing streaming performance
 5. Adding additional event types or fields to streaming responses
+6. Fixing issues with function call handling
 
 ## Best Practices
 
@@ -94,3 +114,5 @@ When working with streaming responses:
 3. Ensure proper encoding of special characters in JSON
 4. Properly close the stream when complete
 5. Include appropriate headers for SSE compatibility
+6. Always emit `done` events for function calls, even in error cases
+7. Handle both standard and tool-based function call formats
