@@ -2,9 +2,13 @@
 Stream processing utilities for handling API response streams.
 """
 import json
+import uuid
 import traceback
-from utils import generate_uuid
 from config import logger
+
+
+def generate_uuid():
+    return str(uuid.uuid4())
 
 async def stream_generator(response, model, request_id, store=False, temperature=0, top_p=0):
     """

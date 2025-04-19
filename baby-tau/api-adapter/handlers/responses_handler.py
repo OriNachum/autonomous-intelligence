@@ -15,9 +15,9 @@ from utils import (
     log_request_details,
     process_input_messages,
     convert_to_chat_request,
-    create_basic_response,
-    stream_generator
+    create_basic_response
 )
+from stream_processor import stream_generator
 from config import OPENAI_BASE_URL_STRIPPED, REQUEST_TIMEOUT, logger
 
 async def handle_responses(request: ResponseRequest, raw_request: Request):

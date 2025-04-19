@@ -7,6 +7,10 @@ import uuid
 from typing import Dict, Any, List, Union
 from config import logger
 
+
+def generate_uuid():
+    return str(uuid.uuid4())
+
 def process_input_messages(input_data: Union[List[Dict[str, Any]], str], request_id: str) -> List[Dict[str, Any]]:
     """
     Process input messages from the Responses API format to Chat Completions format
