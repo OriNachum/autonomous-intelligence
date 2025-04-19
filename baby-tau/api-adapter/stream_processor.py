@@ -21,6 +21,7 @@ async def stream_generator(response, model, request_id, store=False, temperature
     output_index = 0
     content_buffer = ""  # Buffer to accumulate content for potential JSON function call detection
     has_emitted_content_start = False
+    tool_calls_complete = False  # Track when tool_calls have been marked as complete
     
     try:
         async for line in response.aiter_lines():
@@ -80,7 +81,12 @@ async def stream_generator(response, model, request_id, store=False, temperature
                             # Check for tool_calls finish_reason
                             if choice.get('finish_reason') == 'tool_calls':
                                 logger.info(f"[{request_id}] Detected tool_calls finish_reason, sending done events")
-                                # No additional processing needed at this point, done events sent at [DONE]
+                                tool_calls_complete = True
+                                
+                                # Send done events for all active tool calls immediately
+                                for call_id in active_tool_call_ids:
+                                    if call_id in function_args_buffer:
+                                        yield f'data: {json.dumps({"type": "response.function_call_arguments.done", "item_id": item_id, "output_index": output_index, "arguments": function_args_buffer[call_id]})}\n\n'
 
                             # Handle tool_calls (newer OpenAI format)
                             if 'delta' in choice and 'tool_calls' in choice['delta']:
@@ -110,6 +116,11 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                             
                                             # Send the delta event
                                             yield f'data: {json.dumps({"type": "response.function_call_arguments.delta", "item_id": item_id, "output_index": output_index, "delta": args_delta})}\n\n'
+                                            
+                                            # If this is the last chunk based on our tool_calls_complete flag, 
+                                            # also send the done event immediately
+                                            if tool_calls_complete:
+                                                yield f'data: {json.dumps({"type": "response.function_call_arguments.done", "item_id": item_id, "output_index": output_index, "arguments": function_args_buffer[call_id]})}\n\n'
                             
                             # Handle traditional function_call (older OpenAI format)
                             elif 'delta' in choice and 'function_call' in choice['delta']:
@@ -148,8 +159,8 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                 yield f'data: {json.dumps(content_event)}\n\n'
                                 
                             # Check for finish reason to see if we have a complete message
-                            if choice.get('finish_reason') == 'stop':
-                                if content_buffer:
+                            if choice.get('finish_reason') == 'stop' or choice.get('finish_reason') == 'tool_calls':
+                                if content_buffer and choice.get('finish_reason') == 'stop':
                                     # Try to parse the full content buffer as JSON function call
                                     try:
                                         json_content = json.loads(content_buffer)
@@ -166,6 +177,13 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                     except json.JSONDecodeError:
                                         # Not a valid JSON, just continue
                                         pass
+                                # Make sure tool_calls finish_reason emits done events for all active tool calls
+                                elif choice.get('finish_reason') == 'tool_calls':
+                                    logger.info(f"[{request_id}] Got tool_calls finish_reason, emitting done events for all active tool calls")
+                                    # Send done events for any active tool call that doesn't have a done event yet
+                                    for call_id in active_tool_call_ids:
+                                        if call_id in function_args_buffer:
+                                            yield f'data: {json.dumps({"type": "response.function_call_arguments.done", "item_id": item_id, "output_index": output_index, "arguments": function_args_buffer[call_id]})}\n\n'
                                 # If we get finish_reason=stop with empty content and no other events emitted, emit an empty content block
                                 elif not has_emitted_content_start and not function_call_active and not tool_calls_active:
                                     has_emitted_content_start = True
@@ -173,6 +191,9 @@ async def stream_generator(response, model, request_id, store=False, temperature
                             
                     except json.JSONDecodeError:
                         logger.error(f"[{request_id}] Error parsing JSON chunk: {data}")
+                        # If we get an invalid JSON in the stream, try to pass it through as raw SSE
+                        if data.strip() != '[DONE]':  # Avoid duplicating [DONE] events
+                            yield f'data: {data}\n\n'
     
     except Exception as e:
         logger.error(f"[{request_id}] Error in stream_generator: {str(e)}")

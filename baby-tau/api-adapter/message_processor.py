@@ -29,6 +29,13 @@ def process_input_messages(input_list, request_id):
                 function_name = 'unknown_function'
                 logger.warning(f"[{request_id}] Function name missing, using default: {function_name}")
             
+            # Handle case where output is 'invalid arguments: undefined'
+            if output and 'invalid arguments' in output:
+                logger.warning(f"[{request_id}] Detected invalid arguments in function output: {output}")
+                
+                # Add a more descriptive error message as function output
+                output = f"Error: {output}. The function call failed due to invalid arguments."
+            
             # Package as a function call message
             logger.info(f"[{request_id}] Adding function output message for {function_name}: {output}")
             
