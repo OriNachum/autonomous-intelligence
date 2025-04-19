@@ -1,13 +1,10 @@
 """
 Handler for the Responses API endpoints.
 """
-import json
 import time
 import httpx
-import uuid
 from fastapi import Request, HTTPException
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any
 
 from models.requests import ResponseRequest
 from utils import (
@@ -17,13 +14,13 @@ from utils import (
     convert_to_chat_request,
     create_basic_response
 )
-from response_handler import process_input_messages
+from message_processor import process_input_messages
 from stream_processor import stream_generator
 from config import OPENAI_BASE_URL_STRIPPED, REQUEST_TIMEOUT, logger
 
 async def handle_responses(request: ResponseRequest, raw_request: Request):
     """
-    Handle Responses API requests by converting to Chat Completions formSat
+    Handle Responses API requests by converting to Chat Completions format
     and forwarding to the actual LLM API.
     """
     request_id = generate_request_id()
@@ -121,6 +118,3 @@ async def handle_responses(request: ResponseRequest, raw_request: Request):
         logger.error(f"[{request_id}] Error handling request: {str(e)}")
         logger.exception(f"[{request_id}] Full exception details:")
         raise HTTPException(status_code=500, detail=f"Error handling request: {str(e)}")
-
-def generate_uuid():
-    return str(uuid.uuid4())
