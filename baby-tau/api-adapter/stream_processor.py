@@ -51,13 +51,22 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                 if isinstance(json_content, dict) and "name" in json_content and "parameters" in json_content:
                                     function_name = json_content["name"]
                                     arguments = json.dumps(json_content["parameters"])
+                                    call_id = f"tool_call_{generate_uuid()}"
                                     
                                     logger.info(f"[{request_id}] Content appears to be a function call: {function_name} with args: {arguments}")
                                     
-                                    # Emit function call events
-                                    yield f'data: {json.dumps({"type": "response.function_call", "item_id": item_id, "output_index": output_index, "name": function_name})}\n\n'
-                                    yield f'data: {json.dumps({"type": "response.function_call_arguments.delta", "item_id": item_id, "output_index": output_index, "delta": arguments})}\n\n'
-                                    yield f'data: {json.dumps({"type": "response.function_call_arguments.done", "item_id": item_id, "output_index": output_index, "arguments": arguments})}\n\n'
+                                    # Emit tool calls events
+                                    tool_call = {
+                                        "id": call_id,
+                                        "type": "function",
+                                        "function": {
+                                            "name": function_name,
+                                            "arguments": ""
+                                        }
+                                    }
+                                    yield f'data: {json.dumps({"type": "response.tool_calls.created", "item_id": call_id, "output_index": output_index, "tool_call": tool_call})}\n\n'
+                                    yield f'data: {json.dumps({"type": "response.tool_calls.arguments.delta", "item_id": call_id, "output_index": output_index, "delta": arguments})}\n\n'
+                                    yield f'data: {json.dumps({"type": "response.tool_calls.arguments.done", "item_id": call_id, "output_index": output_index, "arguments": arguments})}\n\n'
                                     
                                     # We've handled this content as a function call, so don't emit it as content
                                     content_buffer = ""
@@ -71,7 +80,7 @@ async def stream_generator(response, model, request_id, store=False, temperature
                         # If we were in an explicit function call, send the final done event
                         if function_call_active:
                             logger.info(f"[{request_id}] Emitting final done event for function_call with args: {function_args_buffer.get('default', '')}")
-                            yield f'data: {json.dumps({"type": "response.function_call_arguments.done", "item_id": item_id, "output_index": output_index, "arguments": function_args_buffer.get("default", "")})}\n\n'
+                            yield f'data: {json.dumps({"type": "response.tool_calls.arguments.done", "item_id": item_id, "output_index": output_index, "arguments": function_args_buffer.get("default", "")})}\n\n'
                         
                         # Send done events for any active tool calls
                         if tool_calls_active:
@@ -79,7 +88,7 @@ async def stream_generator(response, model, request_id, store=False, temperature
                             for call_id in active_tool_call_ids:
                                 if call_id in function_args_buffer:
                                     logger.info(f"[{request_id}] Emitting done event for tool call {call_id} with args: {function_args_buffer[call_id]}")
-                                    yield f'data: {json.dumps({"type": "response.function_call_arguments.done", "item_id": item_id, "output_index": output_index, "arguments": function_args_buffer[call_id]})}\n\n'
+                                    yield f'data: {json.dumps({"type": "response.tool_calls.arguments.done", "item_id": call_id, "output_index": output_index, "arguments": function_args_buffer[call_id]})}\n\n'
                                 else:
                                     logger.warning(f"[{request_id}] Tool call ID {call_id} not found in args buffer")
                         
@@ -110,7 +119,7 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                 for call_id in active_tool_call_ids:
                                     if call_id in function_args_buffer:
                                         logger.info(f"[{request_id}] Emitting done event for tool call {call_id} on finish_reason")
-                                        yield f'data: {json.dumps({"type": "response.function_call_arguments.done", "item_id": call_id, "output_index": output_index, "arguments": function_args_buffer[call_id]})}\n\n'
+                                        yield f'data: {json.dumps({"type": "response.tool_calls.arguments.done", "item_id": call_id, "output_index": output_index, "arguments": function_args_buffer[call_id]})}\n\n'
                                     else:
                                         logger.warning(f"[{request_id}] Tool call ID {call_id} not found in args buffer on finish_reason")
 
@@ -129,11 +138,22 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                     
                                     # Check for function type tool calls
                                     if tool_call.get('type') == 'function' and 'function' in tool_call:
-                                        # Emit function call event with name
+                                        # Emit tool call created event with name
                                         if 'name' in tool_call['function']:
                                             function_name = tool_call['function']['name']
                                             logger.info(f"[{request_id}] Found function name in tool_call: {function_name}")
-                                            yield f'data: {json.dumps({"type": "response.function_call", "item_id": call_id, "output_index": output_index, "name": function_name})}\n\n'
+                                            
+                                            # Create a tool call object
+                                            tool_call_obj = {
+                                                "id": call_id,
+                                                "type": "function",
+                                                "function": {
+                                                    "name": function_name,
+                                                    "arguments": ""
+                                                }
+                                            }
+                                            
+                                            yield f'data: {json.dumps({"type": "response.tool_calls.created", "item_id": call_id, "output_index": output_index, "tool_call": tool_call_obj})}\n\n'
                                         
                                         # Handle arguments 
                                         if 'arguments' in tool_call['function']:
@@ -150,24 +170,46 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                             
                                             # Send the delta event
                                             logger.info(f"[{request_id}] Emitting delta event for tool call {call_id}")
-                                            yield f'data: {json.dumps({"type": "response.function_call_arguments.delta", "item_id": call_id, "output_index": output_index, "delta": args_delta})}\n\n'
+                                            yield f'data: {json.dumps({"type": "response.tool_calls.arguments.delta", "item_id": call_id, "output_index": output_index, "delta": args_delta})}\n\n'
                                             
                                             # If this is the last chunk based on our tool_calls_complete flag, 
                                             # also send the done event immediately
                                             if tool_calls_complete:
                                                 logger.info(f"[{request_id}] Tool calls complete, emitting done event for {call_id}")
-                                                yield f'data: {json.dumps({"type": "response.function_call_arguments.done", "item_id": call_id, "output_index": output_index, "arguments": function_args_buffer[call_id]})}\n\n'
+                                                yield f'data: {json.dumps({"type": "response.tool_calls.arguments.done", "item_id": call_id, "output_index": output_index, "arguments": function_args_buffer[call_id]})}\n\n'
+                                                
+                                                # Also emit the tool_use.submitted event
+                                                tool_use = {
+                                                    "id": call_id,
+                                                    "type": "function",
+                                                    "function": {
+                                                        "name": function_name,
+                                                        "arguments": function_args_buffer[call_id]
+                                                    }
+                                                }
+                                                yield f'data: {json.dumps({"type": "response.tool_use.submitted", "item_id": call_id, "output_index": output_index, "tool_use": tool_use})}\n\n'
                             
                             # Handle traditional function_call (older OpenAI format)
                             elif 'delta' in choice and 'function_call' in choice['delta']:
                                 function_call_active = True
                                 logger.info(f"[{request_id}] Processing function_call in delta: {choice['delta']['function_call']}")
                                 
-                                # Capture the function name and emit the function call event
+                                # Capture the function name and emit the tool call created event
                                 if 'name' in choice['delta']['function_call']:
                                     function_name = choice['delta']['function_call']['name']
                                     logger.info(f"[{request_id}] Found function name: {function_name}")
-                                    yield f'data: {json.dumps({"type": "response.function_call", "item_id": item_id, "output_index": output_index, "name": function_name})}\n\n'
+                                    
+                                    # Create a tool call object
+                                    tool_call_obj = {
+                                        "id": item_id,
+                                        "type": "function",
+                                        "function": {
+                                            "name": function_name,
+                                            "arguments": ""
+                                        }
+                                    }
+                                    
+                                    yield f'data: {json.dumps({"type": "response.tool_calls.created", "item_id": item_id, "output_index": output_index, "tool_call": tool_call_obj})}\n\n'
                                 
                                 # Stream function arguments as they arrive
                                 if 'arguments' in choice['delta']['function_call']:
@@ -183,7 +225,7 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                     
                                     # Send the delta event
                                     logger.info(f"[{request_id}] Emitting delta event for function_call")
-                                    yield f'data: {json.dumps({"type": "response.function_call_arguments.delta", "item_id": item_id, "output_index": output_index, "delta": args_delta})}\n\n'
+                                    yield f'data: {json.dumps({"type": "response.tool_calls.arguments.delta", "item_id": item_id, "output_index": output_index, "delta": args_delta})}\n\n'
                             
                             # Handle normal content delta - including empty content
                             elif 'delta' in choice and 'content' in choice['delta']:
@@ -212,12 +254,35 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                             
                                             # This is a function call, don't emit as content
                                             function_call_active = True
+                                            call_id = f"tool_call_{generate_uuid()}"
                                             
-                                            # Emit function call events
+                                            # Emit tool calls events
                                             logger.info(f"[{request_id}] Detected function call in content: {function_name} with args: {arguments}")
-                                            yield f'data: {json.dumps({"type": "response.function_call", "item_id": item_id, "output_index": output_index, "name": function_name})}\n\n'
-                                            yield f'data: {json.dumps({"type": "response.function_call_arguments.delta", "item_id": item_id, "output_index": output_index, "delta": arguments})}\n\n'
-                                            yield f'data: {json.dumps({"type": "response.function_call_arguments.done", "item_id": item_id, "output_index": output_index, "arguments": arguments})}\n\n'
+                                            
+                                            # Create a tool call object
+                                            tool_call_obj = {
+                                                "id": call_id,
+                                                "type": "function",
+                                                "function": {
+                                                    "name": function_name,
+                                                    "arguments": ""
+                                                }
+                                            }
+                                            
+                                            yield f'data: {json.dumps({"type": "response.tool_calls.created", "item_id": call_id, "output_index": output_index, "tool_call": tool_call_obj})}\n\n'
+                                            yield f'data: {json.dumps({"type": "response.tool_calls.arguments.delta", "item_id": call_id, "output_index": output_index, "delta": arguments})}\n\n'
+                                            yield f'data: {json.dumps({"type": "response.tool_calls.arguments.done", "item_id": call_id, "output_index": output_index, "arguments": arguments})}\n\n'
+                                            
+                                            # Also emit the tool_use.submitted event
+                                            tool_use = {
+                                                "id": call_id,
+                                                "type": "function",
+                                                "function": {
+                                                    "name": function_name,
+                                                    "arguments": arguments
+                                                }
+                                            }
+                                            yield f'data: {json.dumps({"type": "response.tool_use.submitted", "item_id": call_id, "output_index": output_index, "tool_use": tool_use})}\n\n'
                                             
                                             # Skip emitting as content
                                             continue
@@ -252,12 +317,34 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                         if isinstance(json_content, dict) and "name" in json_content and "parameters" in json_content:
                                             function_name = json_content["name"]
                                             arguments = json.dumps(json_content["parameters"])
+                                            call_id = f"tool_call_{generate_uuid()}"
                                             logger.info(f"[{request_id}] Detected function call on finish: {function_name} with args: {arguments}")
                                             
-                                            # Emit function call events
-                                            yield f'data: {json.dumps({"type": "response.function_call", "item_id": item_id, "output_index": output_index, "name": function_name})}\n\n'
-                                            yield f'data: {json.dumps({"type": "response.function_call_arguments.delta", "item_id": item_id, "output_index": output_index, "delta": arguments})}\n\n'
-                                            yield f'data: {json.dumps({"type": "response.function_call_arguments.done", "item_id": item_id, "output_index": output_index, "arguments": arguments})}\n\n'
+                                            # Create a tool call object
+                                            tool_call_obj = {
+                                                "id": call_id,
+                                                "type": "function",
+                                                "function": {
+                                                    "name": function_name,
+                                                    "arguments": ""
+                                                }
+                                            }
+                                            
+                                            # Emit tool calls events
+                                            yield f'data: {json.dumps({"type": "response.tool_calls.created", "item_id": call_id, "output_index": output_index, "tool_call": tool_call_obj})}\n\n'
+                                            yield f'data: {json.dumps({"type": "response.tool_calls.arguments.delta", "item_id": call_id, "output_index": output_index, "delta": arguments})}\n\n'
+                                            yield f'data: {json.dumps({"type": "response.tool_calls.arguments.done", "item_id": call_id, "output_index": output_index, "arguments": arguments})}\n\n'
+                                            
+                                            # Also emit the tool_use.submitted event
+                                            tool_use = {
+                                                "id": call_id,
+                                                "type": "function",
+                                                "function": {
+                                                    "name": function_name,
+                                                    "arguments": arguments
+                                                }
+                                            }
+                                            yield f'data: {json.dumps({"type": "response.tool_use.submitted", "item_id": call_id, "output_index": output_index, "tool_use": tool_use})}\n\n'
                                         else:
                                             logger.info(f"[{request_id}] Content is JSON but not a function call: {json_content}")
                                     except json.JSONDecodeError as e:
@@ -271,7 +358,24 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                     for call_id in active_tool_call_ids:
                                         if call_id in function_args_buffer:
                                             logger.info(f"[{request_id}] Emitting done event for tool call {call_id} on finish_reason=tool_calls")
-                                            yield f'data: {json.dumps({"type": "response.function_call_arguments.done", "item_id": call_id, "output_index": output_index, "arguments": function_args_buffer[call_id]})}\n\n'
+                                            yield f'data: {json.dumps({"type": "response.tool_calls.arguments.done", "item_id": call_id, "output_index": output_index, "arguments": function_args_buffer[call_id]})}\n\n'
+                                            
+                                            # Also emit the tool_use.submitted event
+                                            function_name_for_call = "unknown_function"  # Default name if we don't have it
+                                            for tc in choice.get('delta', {}).get('tool_calls', []):
+                                                if tc.get('id') == call_id and 'function' in tc and 'name' in tc['function']:
+                                                    function_name_for_call = tc['function']['name']
+                                                    break
+                                            
+                                            tool_use = {
+                                                "id": call_id,
+                                                "type": "function",
+                                                "function": {
+                                                    "name": function_name_for_call,
+                                                    "arguments": function_args_buffer[call_id]
+                                                }
+                                            }
+                                            yield f'data: {json.dumps({"type": "response.tool_use.submitted", "item_id": call_id, "output_index": output_index, "tool_use": tool_use})}\n\n'
                                         else:
                                             logger.warning(f"[{request_id}] Tool call ID {call_id} not found in args buffer")
                                 # If we get finish_reason=stop with empty content and no other events emitted, emit an empty content block
