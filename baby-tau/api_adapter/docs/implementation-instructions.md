@@ -9,3 +9,8 @@ The server will act as an adapter between the codex client (which expects the Re
 7. The Ollama service runs on port 8000
 
 8. Note this is not a one-to-one conversion. There is a major difference between how responses api trusts events, and chat.completions is polling for them.
+
+Logs:
+- Request given and response back.
+- Tools related messages
+- The summary output collected from the streamed events (The total message)s

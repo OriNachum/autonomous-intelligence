@@ -13,25 +13,27 @@ import uvicorn
 import httpx
 from pydantic import BaseModel, Field
 import time
+import traceback
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Configure logging
+# Configure logging with more focused format
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.INFO,  # Keep at INFO level for important logs only
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("api_adapter")
 
 # Configuration from environment variables
 OPENAI_BASE_URL_INTERNAL = os.environ.get("OPENAI_BASE_URL_INTERNAL", "http://localhost:8000")
-# Don't add /v1 here, we'll include it in the request paths
 OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "http://localhost:8080")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "dummy-key")
 API_ADAPTER_HOST = os.environ.get("API_ADAPTER_HOST", "0.0.0.0")
 API_ADAPTER_PORT = int(os.environ.get("API_ADAPTER_PORT", "8080"))
+
+logger.info(f"Configuration: OPENAI_BASE_URL_INTERNAL={OPENAI_BASE_URL_INTERNAL}, API_PORT={API_ADAPTER_PORT}")
 
 app = FastAPI(title="API Adapter", description="Adapter for Responses API to chat.completions API")
 
@@ -48,7 +50,7 @@ app.add_middleware(
 http_client = httpx.AsyncClient(
     base_url=OPENAI_BASE_URL_INTERNAL,  # Fixed: using the actual variable
     headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-    timeout=httpx.Timeout(60.0)
+    timeout=httpx.Timeout(120.0)  # Increased timeout
 )
 
 # Pydantic models for requests and responses
@@ -161,7 +163,10 @@ def convert_responses_to_chat_completions(request_data: dict) -> dict:
     """
     Convert a request in Responses API format to chat.completions API format.
     """
-    logger.info(f"Converting Responses API request to chat completions format")
+    # Log only essential info - model, tools count, if instructions present
+    logger.info(f"Request: model={request_data.get('model')}, " +
+                f"tools={len(request_data.get('tools', []))}, " +
+                f"has_instructions={'instructions' in request_data}")
     
     chat_request = {
         "model": request_data.get("model"),
@@ -169,120 +174,103 @@ def convert_responses_to_chat_completions(request_data: dict) -> dict:
         "top_p": request_data.get("top_p", 1.0),
         "stream": request_data.get("stream", False),
     }
-    logger.info(f"Base chat request: {chat_request}")
 
     # Handle instructions (specific to Codex)
     if "instructions" in request_data:
-        logger.info(f"Found instructions, adding as system message")
         chat_request["system"] = request_data["instructions"]
 
     # Convert any max_output_tokens to max_tokens
     if "max_output_tokens" in request_data:
-        logger.info(f"Converting max_output_tokens to max_tokens: {request_data['max_output_tokens']}")
         chat_request["max_tokens"] = request_data["max_output_tokens"]
 
     # Convert input to messages
     messages = []
-    logger.info(f"Starting message conversion")
     
     # Check for system message first if we have instructions
     if "instructions" in request_data:
-        logger.info(f"Adding system message from instructions")
         messages.append({"role": "system", "content": request_data["instructions"]})
     
     # Check for previous tool responses in the input
     if "input" in request_data and request_data["input"]:
-        logger.info(f"Processing input items: {len(request_data['input'])} items found")
         user_message = {"role": "user", "content": ""}
-        
+        logger.info(f"Processing input messages {request_data['input']}")
         for i, item in enumerate(request_data["input"]):
-            logger.info(f"Processing input item {i}: {type(item)}")
-            
             if isinstance(item, dict):
-                logger.info(f"Item {i} is a dict with keys: {item.keys()}")
-                
                 if item.get("type") == "message" and item.get("role") == "user":
                     # Add user message
-                    logger.info(f"Found user message")
                     content = ""
                     if "content" in item:
-                        logger.info(f"User message has content: {item['content']}")
                         for j, content_item in enumerate(item["content"]):
-                            logger.info(f"Processing content item {j}: {type(content_item)}")
-                            if isinstance(content_item, dict) and content_item.get("type") == "text":
+                            if isinstance(content_item, dict) and content_item.get("type") == "input_text":
                                 content = content_item.get("text", "")
-                                logger.info(f"Extracted text content: {content[:50]}...")
                     user_message = {"role": "user", "content": content}
                     messages.append(user_message)
-                    logger.info(f"Added user message to messages")
+                    # Log user message content for context
+                    logger.info(f"User message: {content[:100]}...")
                     
                 elif item.get("type") == "function_call_output":
-                    # Add tool output
-                    logger.info(f"Found function_call_output: {item.get('call_id')}")
+                    # Add tool output - log tool usage
+                    logger.info(f"Tool response: call_id={item.get('call_id')}, output={item.get('output', '')[:50]}...")
                     tool_message = {
                         "role": "tool",
                         "tool_call_id": item.get("call_id"),
                         "content": item.get("output", "")
                     }
                     messages.append(tool_message)
-                    logger.info(f"Added tool message to messages: {tool_message}")
             elif isinstance(item, str):
                 # Simple string input
-                logger.info(f"Found string input: {item[:50]}...")
                 messages.append({"role": "user", "content": item})
-                logger.info(f"Added simple string user message to messages")
-    else:
-        logger.info(f"No input items found in request")
+                logger.info(f"User message (string): {item[:100]}...")
     
     # If we only have a system message or no messages at all, add an empty user message
     if not messages or (len(messages) == 1 and messages[0]["role"] == "system"):
-        logger.info(f"Adding empty user message since no user messages were found")
         messages.append({"role": "user", "content": ""})
     
     chat_request["messages"] = messages
-    logger.info(f"Final message list contains {len(messages)} messages")
 
-    # Convert tools
+    # Convert tools - log each tool being processed
     if "tools" in request_data and request_data["tools"]:
-        logger.info(f"Processing tools: {len(request_data['tools'])} found")
         chat_request["tools"] = []
+        
         for i, tool in enumerate(request_data["tools"]):
-            logger.info(f"Processing tool {i}: {tool.get('type') if isinstance(tool, dict) else type(tool)}")
-            
-            if isinstance(tool, dict) and tool.get("type") == "function":
-                function_data = {
-                    "name": tool["function"]["name"],
-                }
-                logger.info(f"Found function tool: {function_data['name']}")
-                
-                if "description" in tool["function"]:
-                    function_data["description"] = tool["function"]["description"]
-                    logger.info(f"Added function description: {function_data['description'][:50]}...")
+            try:
+                if not isinstance(tool, dict) or "type" not in tool or tool.get("type") != "function" or "function" not in tool:
+                    continue
                     
-                if "parameters" in tool["function"]:
-                    function_data["parameters"] = tool["function"]["parameters"]
-                    logger.info(f"Added function parameters: {list(function_data['parameters'].keys()) if isinstance(function_data['parameters'], dict) else type(function_data['parameters'])}")
+                function_obj = tool["function"]
+                if not isinstance(function_obj, dict) or "name" not in function_obj:
+                    continue
+                
+                function_data = {
+                    "name": function_obj["name"],
+                }
+                
+                # Log tool information
+                logger.info(f"Tool {i}: {function_data['name']}")
+                
+                if "description" in function_obj:
+                    function_data["description"] = function_obj["description"]
+                    
+                if "parameters" in function_obj:
+                    function_data["parameters"] = function_obj["parameters"]
                 
                 chat_request["tools"].append({
                     "type": "function",
                     "function": function_data
                 })
-                logger.info(f"Added function tool to tools list")
-    else:
-        logger.info(f"No tools found in request")
+            except Exception as e:
+                logger.error(f"Error processing tool {i}: {str(e)}")
     
     # Handle tool_choice
     if "tool_choice" in request_data:
-        logger.info(f"Setting tool_choice: {request_data['tool_choice']}")
         chat_request["tool_choice"] = request_data["tool_choice"]
     
     # Add optional parameters if they exist
     for key in ["user", "metadata"]:
         if key in request_data and request_data[key] is not None:
-            logger.info(f"Adding optional parameter {key}")
             chat_request[key] = request_data[key]
     
-    logger.info(f"Conversion complete. Chat completions request has {len(chat_request)} keys")
+    logger.info(f"Converted to chat completions: {len(messages)} messages, {len(chat_request.get('tools', []))} tools")
     return chat_request
 
 async def process_chat_completions_stream(response):
@@ -294,6 +282,7 @@ async def process_chat_completions_stream(response):
     response_id = f"resp_{uuid.uuid4().hex}"
     tool_call_counter = 0
     message_id = f"msg_{uuid.uuid4().hex}"
+    output_text_content = ""  # Track the full text content for logging
     
     # Create and yield the initial response.created event
     response_obj = ResponseModel(
@@ -318,9 +307,35 @@ async def process_chat_completions_stream(response):
     
     yield f"data: {json.dumps(in_progress_event.dict())}\n\n"
     
+    chunk_counter = 0
     try:
         async for chunk in response.aiter_lines():
+            chunk_counter += 1
             if not chunk.strip():
+                continue
+                
+            # Handle [DONE] message
+            if chunk.strip() == "data: [DONE]" or chunk.strip() == "[DONE]":
+                logger.info(f"Received [DONE] message after {chunk_counter} chunks")
+                
+                # If we haven't already completed the response, do it now
+                if response_obj.status != "completed":
+                    # If no output, add empty message
+                    if not response_obj.output:
+                        response_obj.output.append({
+                            "id": message_id,
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": output_text_content or ""}]
+                        })
+                    
+                    response_obj.status = "completed"
+                    completed_event = ResponseCompleted(
+                        type="response.completed",
+                        response=response_obj
+                    )
+                    
+                    yield f"data: {json.dumps(completed_event.dict())}\n\n"
                 continue
                 
             # Skip prefix if present
@@ -364,6 +379,8 @@ async def process_chat_completions_stream(response):
                                     if "function" in tool_delta and "name" in tool_delta["function"]:
                                         tool_call = tool_calls[index]
                                         tool_call["function"]["name"] = tool_delta["function"]["name"]
+                                        # Log tool call creation
+                                        logger.info(f"Tool call created: {tool_call['function']['name']}")
                                         
                                         created_event = ToolCallsCreated(
                                             type="response.tool_calls.created",
@@ -400,6 +417,7 @@ async def process_chat_completions_stream(response):
                         # Handle content (text)
                         elif "content" in delta and delta["content"] is not None:
                             content_delta = delta["content"]
+                            output_text_content += content_delta
                             
                             # Create a new message if it doesn't exist
                             if not response_obj.output:
@@ -422,9 +440,14 @@ async def process_chat_completions_stream(response):
                     
                     # Check for finish_reason
                     if "finish_reason" in choice and choice["finish_reason"] is not None:
+                        logger.info(f"Received finish_reason: {choice['finish_reason']}")
+                        
                         # If the finish reason is "tool_calls", emit the arguments.done events
                         if choice["finish_reason"] == "tool_calls":
                             for index, tool_call in tool_calls.items():
+                                # Log the complete tool call arguments
+                                logger.info(f"Tool call completed: {tool_call['function']['name']} with arguments: {tool_call['function']['arguments']}")
+                                
                                 done_event = ToolCallArgumentsDone(
                                     type="response.tool_calls.arguments.done",
                                     item_id=tool_call["item_id"],
@@ -452,9 +475,12 @@ async def process_chat_completions_stream(response):
                                     "id": message_id,
                                     "type": "message",
                                     "role": "assistant",
-                                    "content": [{"type": "output_text", "text": ""}]
+                                    "content": [{"type": "output_text", "text": output_text_content or ""}]
                                 })
                             
+                            # Log complete output text
+                            logger.info(f"Response completed with text: {output_text_content[:100]}...")
+                                
                             response_obj.status = "completed"
                             completed_event = ResponseCompleted(
                                 type="response.completed",
@@ -488,26 +514,60 @@ async def create_response(request: Request):
     Create a response in Responses API format, translating to/from chat.completions API.
     """
     try:
+        logger = logging.getLogger("api_adapter_responses")
+        logger.info("Received request to /responses")
         request_data = await request.json()
-        logger.info(f"Received /responses request: {json.dumps(request_data)[:200]}...")
+        
+        # Log basic request information
+        logger.info(f"Received request: model={request_data.get('model')}, stream={request_data.get('stream')}")
+        
+        # Log input content for better visibility
+        if "input" in request_data and request_data["input"]:
+            logger.info("==== REQUEST CONTENT ====")
+            #     "input": [{"role": "user", "content": [{"type": "input_text", "text": "save a file with \"demo2\" text called \"demo2.md\""}], "type": "message"}],
+            for i, item in enumerate(request_data["input"]):
+                if isinstance(item, dict):
+                    if item.get("type") == "message" and item.get("role") == "user":
+                        if "content" in item and isinstance(item["content"], list):
+                            for index, content_item in enumerate(item["content"]):
+                                if isinstance(content_item, dict):
+                                    # Handle nested content structure like {"type": "input_text", "text": "actual message"}
+                                    if content_item.get("type") == "input_text" and "text" in content_item:
+                                        user_text = content_item.get("text", "")
+                                        logger.info(f"USER INPUT: {user_text}")
+                                    elif content_item.get("type") == "text" and "text" in content_item:
+                                        user_text = content_item.get("text", "")
+                                        logger.info(f"USER INPUT: {user_text}")
+                                    # Handle other content types
+                                    elif "type" in content_item:
+                                        logger.info(f"USER INPUT ({content_item.get('type')}): {str(content_item)[:100]}...")
+                                elif isinstance(content_item, str):
+                                    logger.info(f"USER INPUT: {content_item}")
+                    elif item.get("type") == "function_call_output":
+                        logger.info(f"FUNCTION RESULT: call_id={item.get('call_id')}, output={str(item.get('output', ''))[:100]}...")
+                elif isinstance(item, str):
+                    logger.info(f"USER INPUT: {item}")
+            logger.info("=======================")
         
         # Convert request to chat.completions format
         chat_request = convert_responses_to_chat_completions(request_data)
-        logger.info(f"Converted to chat completions: {json.dumps(chat_request)[:200]}...")
         
         # Check for streaming mode
         stream = request_data.get("stream", False)
         
         if stream:
+            logger.info("Handling streaming response")
             # Handle streaming response
             async def stream_response():
                 try:
                     async with http_client.stream(
                         "POST",
-                        "/v1/chat/completions",  # Keep the /v1 path here
+                        "/v1/chat/completions",
                         json=chat_request,
-                        timeout=60.0
+                        timeout=120.0
                     ) as response:
+                        logger.info(f"Stream request status: {response.status_code}")
+                        
                         if response.status_code != 200:
                             error_content = await response.aread()
                             logger.error(f"Error from LLM API: {error_content}")
@@ -526,82 +586,7 @@ async def create_response(request: Request):
             )
         
         else:
-            # Handle non-streaming response
-            response = await http_client.post(
-                "/v1/chat/completions",  # Keep the /v1 path here
-                json=chat_request,
-                timeout=60.0
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Error from LLM API: {response.text}")
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Error from LLM API: {response.text}"
-                )
-                
-            chat_response = response.json()
-            
-            # Convert chat.completions response to Responses API format
-            response_id = f"resp_{uuid.uuid4().hex}"
-            message_id = f"msg_{uuid.uuid4().hex}"
-            
-            output = []
-            
-            # Handle potential tool calls
-            tool_calls = []
-            if "choices" in chat_response and chat_response["choices"]:
-                choice = chat_response["choices"][0]
-                
-                if "message" in choice:
-                    message = choice["message"]
-                    
-                    # Check for tool_calls
-                    if "tool_calls" in message and message["tool_calls"]:
-                        for i, tool_call in enumerate(message["tool_calls"]):
-                            tool_call_id = f"tool_call_{uuid.uuid4().hex}"
-                            tool_call_obj = {
-                                "id": tool_call_id,
-                                "type": "tool_call",
-                                "function": {
-                                    "name": tool_call["function"]["name"],
-                                    "arguments": tool_call["function"]["arguments"]
-                                }
-                            }
-                            output.append(tool_call_obj)
-                    
-                    # Check for content
-                    if "content" in message and message["content"]:
-                        output.append({
-                            "id": message_id,
-                            "type": "message",
-                            "role": "assistant",
-                            "content": [{
-                                "type": "output_text",
-                                "text": message["content"]
-                            }]
-                        })
-            
-            responses_response = {
-                "id": response_id,
-                "object": "response",
-                "created_at": current_timestamp(),
-                "status": "completed",
-                "model": chat_response.get("model", request_data.get("model", "")),
-                "output": output,
-                "parallel_tool_calls": True,
-                "temperature": request_data.get("temperature", 1.0),
-                "tool_choice": request_data.get("tool_choice", "auto"),
-                "tools": request_data.get("tools", []),
-                "top_p": request_data.get("top_p", 1.0),
-                "usage": chat_response.get("usage", None)
-            }
-            
-            # Copy any instructions
-            if "instructions" in request_data:
-                responses_response["instructions"] = request_data["instructions"]
-            
-            return responses_response
+            logger.info("Non-streaming response unsupported")
             
     except Exception as e:
         logger.error(f"Error in create_response: {str(e)}")
