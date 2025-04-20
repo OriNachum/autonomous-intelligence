@@ -1,3 +1,4 @@
 from handlers.responses_handler import handle_responses
 from handlers.proxy_handler import handle_proxy
 from handlers.debug_handler import get_logs, get_request_detail
+from handlers.tool_handler import handle_tool_call

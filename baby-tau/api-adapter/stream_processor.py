@@ -5,6 +5,7 @@ import json
 import uuid
 import traceback
 from config import logger
+from handlers.tool_handler import handle_tool_call
 
 
 def generate_uuid():
@@ -192,6 +193,20 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                                     }
                                                 }
                                                 yield f'data: {json.dumps({"type": "response.tool_use.submitted", "item_id": call_id, "output_index": output_index, "tool_use": tool_use})}\n\n'
+                                                
+                                                # Execute the tool call
+                                                try:
+                                                    result = handle_tool_call(function_name, function_args_buffer[call_id], request_id)
+                                                    logger.info(f"[{request_id}] Tool execution result: {result}")
+                                                    # Emit the tool_use.done event with the result
+                                                    result_content = json.dumps(result)
+                                                    yield f'data: {json.dumps({"type": "response.tool_use.done", "item_id": call_id, "output_index": output_index, "content": result_content})}\n\n'
+                                                except Exception as e:
+                                                    logger.error(f"[{request_id}] Error executing tool: {str(e)}")
+                                                    logger.error(f"[{request_id}] Exception traceback: {traceback.format_exc()}")
+                                                    # Emit error in tool_use.done
+                                                    error_content = json.dumps({"error": str(e)})
+                                                    yield f'data: {json.dumps({"type": "response.tool_use.done", "item_id": call_id, "output_index": output_index, "content": error_content})}\n\n'
                             
                             # Handle traditional function_call (older OpenAI format)
                             elif 'delta' in choice and 'function_call' in choice['delta']:
@@ -288,6 +303,20 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                             }
                                             yield f'data: {json.dumps({"type": "response.tool_use.submitted", "item_id": call_id, "output_index": output_index, "tool_use": tool_use})}\n\n'
                                             
+                                            # Execute the tool call
+                                            try:
+                                                result = handle_tool_call(function_name, arguments, request_id)
+                                                logger.info(f"[{request_id}] Tool execution result: {result}")
+                                                # Emit the tool_use.done event with the result
+                                                result_content = json.dumps(result)
+                                                yield f'data: {json.dumps({"type": "response.tool_use.done", "item_id": call_id, "output_index": output_index, "content": result_content})}\n\n'
+                                            except Exception as e:
+                                                logger.error(f"[{request_id}] Error executing tool: {str(e)}")
+                                                logger.error(f"[{request_id}] Exception traceback: {traceback.format_exc()}")
+                                                # Emit error in tool_use.done
+                                                error_content = json.dumps({"error": str(e)})
+                                                yield f'data: {json.dumps({"type": "response.tool_use.done", "item_id": call_id, "output_index": output_index, "content": error_content})}\n\n'
+                                            
                                             # Skip emitting as content
                                             continue
                                         else:
@@ -349,6 +378,20 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                                 }
                                             }
                                             yield f'data: {json.dumps({"type": "response.tool_use.submitted", "item_id": call_id, "output_index": output_index, "tool_use": tool_use})}\n\n'
+                                            
+                                            # Execute the tool call
+                                            try:
+                                                result = handle_tool_call(function_name, arguments, request_id)
+                                                logger.info(f"[{request_id}] Tool execution result: {result}")
+                                                # Emit the tool_use.done event with the result
+                                                result_content = json.dumps(result)
+                                                yield f'data: {json.dumps({"type": "response.tool_use.done", "item_id": call_id, "output_index": output_index, "content": result_content})}\n\n'
+                                            except Exception as e:
+                                                logger.error(f"[{request_id}] Error executing tool: {str(e)}")
+                                                logger.error(f"[{request_id}] Exception traceback: {traceback.format_exc()}")
+                                                # Emit error in tool_use.done
+                                                error_content = json.dumps({"error": str(e)})
+                                                yield f'data: {json.dumps({"type": "response.tool_use.done", "item_id": call_id, "output_index": output_index, "content": error_content})}\n\n'
                                         else:
                                             logger.info(f"[{request_id}] Content is JSON but not a function call: {json_content}")
                                     except json.JSONDecodeError as e:
@@ -380,6 +423,20 @@ async def stream_generator(response, model, request_id, store=False, temperature
                                                 }
                                             }
                                             yield f'data: {json.dumps({"type": "response.tool_use.submitted", "item_id": call_id, "output_index": output_index, "tool_use": tool_use})}\n\n'
+                                            
+                                            # Execute the tool call
+                                            try:
+                                                result = handle_tool_call(function_name_for_call, function_args_buffer[call_id], request_id)
+                                                logger.info(f"[{request_id}] Tool execution result: {result}")
+                                                # Emit the tool_use.done event with the result
+                                                result_content = json.dumps(result)
+                                                yield f'data: {json.dumps({"type": "response.tool_use.done", "item_id": call_id, "output_index": output_index, "content": result_content})}\n\n'
+                                            except Exception as e:
+                                                logger.error(f"[{request_id}] Error executing tool: {str(e)}")
+                                                logger.error(f"[{request_id}] Exception traceback: {traceback.format_exc()}")
+                                                # Emit error in tool_use.done
+                                                error_content = json.dumps({"error": str(e)})
+                                                yield f'data: {json.dumps({"type": "response.tool_use.done", "item_id": call_id, "output_index": output_index, "content": error_content})}\n\n'
                                         else:
                                             logger.warning(f"[{request_id}] Tool call ID {call_id} not found in args buffer")
                                 # If we get finish_reason=stop with empty content and no other events emitted, emit an empty content block
