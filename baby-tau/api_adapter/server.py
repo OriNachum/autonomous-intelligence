@@ -27,7 +27,7 @@ logger = logging.getLogger("api_adapter")
 
 # Configuration from environment variables
 OPENAI_BASE_URL_INTERNAL = os.environ.get("OPENAI_BASE_URL_INTERNAL", "http://localhost:8000")
-OPENAI_BASE_URL_INTERNAL = f"{OPENAI_BASE_URL_INTERNAL}/v1"
+# Don't add /v1 here, we'll include it in the request paths
 OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "http://localhost:8080")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "dummy-key")
 API_ADAPTER_HOST = os.environ.get("API_ADAPTER_HOST", "0.0.0.0")
@@ -46,7 +46,7 @@ app.add_middleware(
 
 # HTTP client for making requests to the LLM API
 http_client = httpx.AsyncClient(
-    base_url=f"OPENAI_BASE_URL_INTERNAL",
+    base_url=OPENAI_BASE_URL_INTERNAL,  # Fixed: using the actual variable
     headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
     timeout=httpx.Timeout(60.0)
 )
@@ -161,76 +161,128 @@ def convert_responses_to_chat_completions(request_data: dict) -> dict:
     """
     Convert a request in Responses API format to chat.completions API format.
     """
+    logger.info(f"Converting Responses API request to chat completions format")
+    
     chat_request = {
         "model": request_data.get("model"),
         "temperature": request_data.get("temperature", 1.0),
         "top_p": request_data.get("top_p", 1.0),
         "stream": request_data.get("stream", False),
     }
+    logger.info(f"Base chat request: {chat_request}")
+
+    # Handle instructions (specific to Codex)
+    if "instructions" in request_data:
+        logger.info(f"Found instructions, adding as system message")
+        chat_request["system"] = request_data["instructions"]
 
     # Convert any max_output_tokens to max_tokens
     if "max_output_tokens" in request_data:
+        logger.info(f"Converting max_output_tokens to max_tokens: {request_data['max_output_tokens']}")
         chat_request["max_tokens"] = request_data["max_output_tokens"]
 
     # Convert input to messages
     messages = []
+    logger.info(f"Starting message conversion")
+    
+    # Check for system message first if we have instructions
+    if "instructions" in request_data:
+        logger.info(f"Adding system message from instructions")
+        messages.append({"role": "system", "content": request_data["instructions"]})
     
     # Check for previous tool responses in the input
     if "input" in request_data and request_data["input"]:
+        logger.info(f"Processing input items: {len(request_data['input'])} items found")
         user_message = {"role": "user", "content": ""}
         
-        for item in request_data["input"]:
+        for i, item in enumerate(request_data["input"]):
+            logger.info(f"Processing input item {i}: {type(item)}")
+            
             if isinstance(item, dict):
+                logger.info(f"Item {i} is a dict with keys: {item.keys()}")
+                
                 if item.get("type") == "message" and item.get("role") == "user":
                     # Add user message
+                    logger.info(f"Found user message")
                     content = ""
                     if "content" in item:
-                        for content_item in item["content"]:
-                            if content_item.get("type") == "text":
+                        logger.info(f"User message has content: {item['content']}")
+                        for j, content_item in enumerate(item["content"]):
+                            logger.info(f"Processing content item {j}: {type(content_item)}")
+                            if isinstance(content_item, dict) and content_item.get("type") == "text":
                                 content = content_item.get("text", "")
+                                logger.info(f"Extracted text content: {content[:50]}...")
                     user_message = {"role": "user", "content": content}
                     messages.append(user_message)
+                    logger.info(f"Added user message to messages")
                     
                 elif item.get("type") == "function_call_output":
                     # Add tool output
-                    messages.append({
+                    logger.info(f"Found function_call_output: {item.get('call_id')}")
+                    tool_message = {
                         "role": "tool",
                         "tool_call_id": item.get("call_id"),
                         "content": item.get("output", "")
-                    })
+                    }
+                    messages.append(tool_message)
+                    logger.info(f"Added tool message to messages: {tool_message}")
             elif isinstance(item, str):
                 # Simple string input
+                logger.info(f"Found string input: {item[:50]}...")
                 messages.append({"role": "user", "content": item})
+                logger.info(f"Added simple string user message to messages")
+    else:
+        logger.info(f"No input items found in request")
     
-    # If no messages were created, add an empty user message
-    if not messages:
+    # If we only have a system message or no messages at all, add an empty user message
+    if not messages or (len(messages) == 1 and messages[0]["role"] == "system"):
+        logger.info(f"Adding empty user message since no user messages were found")
         messages.append({"role": "user", "content": ""})
     
     chat_request["messages"] = messages
+    logger.info(f"Final message list contains {len(messages)} messages")
 
     # Convert tools
     if "tools" in request_data and request_data["tools"]:
+        logger.info(f"Processing tools: {len(request_data['tools'])} found")
         chat_request["tools"] = []
-        for tool in request_data["tools"]:
-            if tool.get("type") == "function":
+        for i, tool in enumerate(request_data["tools"]):
+            logger.info(f"Processing tool {i}: {tool.get('type') if isinstance(tool, dict) else type(tool)}")
+            
+            if isinstance(tool, dict) and tool.get("type") == "function":
+                function_data = {
+                    "name": tool["function"]["name"],
+                }
+                logger.info(f"Found function tool: {function_data['name']}")
+                
+                if "description" in tool["function"]:
+                    function_data["description"] = tool["function"]["description"]
+                    logger.info(f"Added function description: {function_data['description'][:50]}...")
+                    
+                if "parameters" in tool["function"]:
+                    function_data["parameters"] = tool["function"]["parameters"]
+                    logger.info(f"Added function parameters: {list(function_data['parameters'].keys()) if isinstance(function_data['parameters'], dict) else type(function_data['parameters'])}")
+                
                 chat_request["tools"].append({
                     "type": "function",
-                    "function": {
-                        "name": tool["function"]["name"],
-                        "description": tool["function"].get("description", ""),
-                        "parameters": tool["function"].get("parameters", {})
-                    }
+                    "function": function_data
                 })
+                logger.info(f"Added function tool to tools list")
+    else:
+        logger.info(f"No tools found in request")
     
     # Handle tool_choice
     if "tool_choice" in request_data:
+        logger.info(f"Setting tool_choice: {request_data['tool_choice']}")
         chat_request["tool_choice"] = request_data["tool_choice"]
     
     # Add optional parameters if they exist
     for key in ["user", "metadata"]:
         if key in request_data and request_data[key] is not None:
+            logger.info(f"Adding optional parameter {key}")
             chat_request[key] = request_data[key]
     
+    logger.info(f"Conversion complete. Chat completions request has {len(chat_request)} keys")
     return chat_request
 
 async def process_chat_completions_stream(response):
@@ -452,7 +504,7 @@ async def create_response(request: Request):
                 try:
                     async with http_client.stream(
                         "POST",
-                        "/v1/chat/completions",
+                        "/v1/chat/completions",  # Keep the /v1 path here
                         json=chat_request,
                         timeout=60.0
                     ) as response:
@@ -476,7 +528,7 @@ async def create_response(request: Request):
         else:
             # Handle non-streaming response
             response = await http_client.post(
-                "/v1/chat/completions",
+                "/v1/chat/completions",  # Keep the /v1 path here
                 json=chat_request,
                 timeout=60.0
             )
@@ -508,14 +560,15 @@ async def create_response(request: Request):
                     if "tool_calls" in message and message["tool_calls"]:
                         for i, tool_call in enumerate(message["tool_calls"]):
                             tool_call_id = f"tool_call_{uuid.uuid4().hex}"
-                            output.append({
+                            tool_call_obj = {
                                 "id": tool_call_id,
                                 "type": "tool_call",
                                 "function": {
                                     "name": tool_call["function"]["name"],
                                     "arguments": tool_call["function"]["arguments"]
                                 }
-                            })
+                            }
+                            output.append(tool_call_obj)
                     
                     # Check for content
                     if "content" in message and message["content"]:
@@ -543,6 +596,10 @@ async def create_response(request: Request):
                 "top_p": request_data.get("top_p", 1.0),
                 "usage": chat_response.get("usage", None)
             }
+            
+            # Copy any instructions
+            if "instructions" in request_data:
+                responses_response["instructions"] = request_data["instructions"]
             
             return responses_response
             
@@ -599,7 +656,7 @@ async def proxy_endpoint(request: Request, path_name: str):
                     async with httpx.AsyncClient(timeout=60.0) as client:
                         async with client.stream(
                             request.method,
-                            f"{OPENAI_BASE_URL_INTERNAL}/{path_name}",
+                            f"{OPENAI_BASE_URL_INTERNAL}/v1/{path_name}",  # Add /v1 here
                             headers=headers,
                             content=body,
                             timeout=60.0
@@ -627,7 +684,7 @@ async def proxy_endpoint(request: Request, path_name: str):
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.request(
                     request.method,
-                    f"{OPENAI_BASE_URL_INTERNAL}/{path_name}",
+                    f"{OPENAI_BASE_URL_INTERNAL}/v1/{path_name}",  # Add /v1 here
                     headers=headers,
                     content=body,
                     timeout=60.0
