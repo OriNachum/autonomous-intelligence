@@ -339,7 +339,7 @@ async def process_chat_completions_stream(response):
                             "id": message_id,
                             "type": "message",
                             "role": "assistant",
-                            "content": [{"type": "output_text", "text": output_text_content or ""}]
+                            "content": [{"type": "output_text", "text": f"{output_text_content}\n\n" or "Done"}]
                         })
                     
                     response_obj.status = "completed"
@@ -416,21 +416,21 @@ async def process_chat_completions_stream(response):
                                         yield f"data: {json.dumps(in_progress_event.dict())}\n\n"
 
 
-                                        created_event = ToolCallsCreated(
-                                            type="response.tool_calls.created",
-                                            item_id=tool_call["item_id"],
-                                            output_index=tool_call["output_index"],
-                                            tool_call={
-                                                "id": tool_call["id"],
-                                                "type": tool_call["type"],
-                                                "function": {
-                                                    "name": tool_call["function"]["name"],
-                                                    "arguments": ""
-                                                }
-                                            }
-                                        )
+                                        # created_event = ToolCallsCreated(
+                                        #     type="response.tool_calls.created",
+                                        #     item_id=tool_call["item_id"],
+                                        #     output_index=tool_call["output_index"],
+                                        #     tool_call={
+                                        #         "id": tool_call["id"],
+                                        #         "type": tool_call["type"],
+                                        #         "function": {
+                                        #             "name": tool_call["function"]["name"],
+                                        #             "arguments": ""
+                                        #         }
+                                        #     }
+                                        # )
                                         
-                                        yield f"data: {json.dumps(created_event.dict())}\n\n"
+                                        # yield f"data: {json.dumps(created_event.dict())}\n\n"
                                         tool_call_counter += 1
                                 
                                 # Process function arguments if present
@@ -459,7 +459,7 @@ async def process_chat_completions_stream(response):
                                     "id": message_id,
                                     "type": "message",
                                     "role": "assistant",
-                                    "content": []
+                                    "content": [{"type": "output_text", "text": output_text_content or "(No update)"}]  # Updated to use [{}] instead of []
                                 })
                             
                             # Emit text delta event
@@ -510,11 +510,11 @@ async def process_chat_completions_stream(response):
                                     "id": message_id,
                                     "type": "message",
                                     "role": "assistant",
-                                    "content": [{"type": "output_text", "text": output_text_content or ""}]
+                                    "content": [{"type": "output_text", "text": f"{output_text_content}\n\n" or "Done"}]
                                 })
                             
                             # Log complete output text
-                            logger.info(f"Response completed with text: {output_text_content[:100]}...")
+                            logger.info(f"Response completed with text: {output_text_content[:100]}...\n\n")
                                 
                             response_obj.status = "completed"
                             completed_event = ResponseCompleted(
