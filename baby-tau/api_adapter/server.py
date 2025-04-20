@@ -126,14 +126,14 @@ class ResponseCreateRequest(BaseModel):
     metadata: Optional[Dict] = None
 
 class ToolCallArgumentsDelta(BaseModel):
-    type: str = "response.tool_calls.arguments.delta"
+    type: str = "response.function_call_arguments.delta"
     item_id: str
     output_index: int
     delta: str
 
 class ToolCallArgumentsDone(BaseModel):
-    type: str = "response.tool_calls.arguments.done"
-    item_id: str
+    type: str = "response.function_call_arguments.done"
+    id: str
     output_index: int
     arguments: str
 
@@ -174,7 +174,7 @@ def convert_responses_to_chat_completions(request_data: dict) -> dict:
     logger.info(f"Request: model={request_data.get('model')}, " +
                 f"tools={len(request_data.get('tools', []))}, " +
                 f"has_instructions={'instructions' in request_data}")
-    logger.info(f"tools={request_data.get('tools', [])}")
+    logger.info(f"Tools in request={request_data.get('tools', [])}")
     
     chat_request = {
         "model": request_data.get("model"),
@@ -242,6 +242,7 @@ def convert_responses_to_chat_completions(request_data: dict) -> dict:
         
         for i, tool in enumerate(request_data["tools"]):
             try:
+                logger.info(f"Trying to convert tool {i}: {tool}")
                 if not isinstance(tool, dict) or "type" not in tool or tool.get("type") != "function":
                     continue
                     
@@ -254,7 +255,7 @@ def convert_responses_to_chat_completions(request_data: dict) -> dict:
                 }
                 
                 # Log tool information
-                logger.info(f"Tool {i}: {function_data['name']}")
+                logger.info(f"Converting Tool {i}: {function_data['name']}")
                 
                 if "description" in function_obj:
                     function_data["description"] = function_obj["description"]
@@ -324,6 +325,7 @@ async def process_chat_completions_stream(response):
             chunk_counter += 1
             if not chunk.strip():
                 continue
+            logger.info(chunk)
                 
             # Handle [DONE] message
             if chunk.strip() == "data: [DONE]" or chunk.strip() == "[DONE]":
@@ -382,7 +384,7 @@ async def process_chat_completions_stream(response):
                                         "type": tool_delta.get("type", "function"),
                                         "function": {
                                             "name": tool_delta.get("function", {}).get("name", ""),
-                                            "arguments": "",
+                                            "arguments": tool_delta.get("function", {}).get("arguments", ""),
                                         },
                                         "item_id": f"tool_call_{uuid.uuid4().hex}",
                                         "output_index": tool_call_counter
@@ -394,7 +396,26 @@ async def process_chat_completions_stream(response):
                                         tool_call["function"]["name"] = tool_delta["function"]["name"]
                                         # Log tool call creation
                                         logger.info(f"Tool call created: {tool_call['function']['name']}")
+                                        # {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'call_ceizcjxw', 'index': 0, 'type': 'function', 'function': {'name': 'apply_patch', 'arguments': '{"cmd":"[\\"apply_patch\\", \\"*** Begin Patch\\\\n*** Update File: path/to/file.py\\\\n@@ def example():\\\\n-  pass\\\\n+  return 123\\\\n*** End Patch\\"]"}'}}]}, 'finish_reason': None}]}
+
+                                        response_obj.output.append({
+                                            "arguments": tool_call["function"]["arguments"],
+                                            "call_id": tool_call["id"],
+                                            "name": tool_call["function"]["name"],
+                                            "type": "function_call",
+                                            "id": tool_call["id"],
+                                            "status": "in_progress"
+                                        })
+                                        # Also emit the in_progress event
+                                        in_progress_event = ResponseInProgress(
+                                            type="response.in_progress",
+                                            response=response_obj
+                                        )
                                         
+                                        logger.info(f"Emitting {in_progress_event}")
+                                        yield f"data: {json.dumps(in_progress_event.dict())}\n\n"
+
+
                                         created_event = ToolCallsCreated(
                                             type="response.tool_calls.created",
                                             item_id=tool_call["item_id"],
@@ -419,7 +440,7 @@ async def process_chat_completions_stream(response):
                                     
                                     # Emit delta event
                                     args_event = ToolCallArgumentsDelta(
-                                        type="response.tool_calls.arguments.delta",
+                                        type="response.function_call_arguments.delta",
                                         item_id=tool_calls[index]["item_id"],
                                         output_index=tool_calls[index]["output_index"],
                                         delta=arg_fragment
@@ -462,12 +483,13 @@ async def process_chat_completions_stream(response):
                                 logger.info(f"Tool call completed: {tool_call['function']['name']} with arguments: {tool_call['function']['arguments']}")
                                 
                                 done_event = ToolCallArgumentsDone(
-                                    type="response.tool_calls.arguments.done",
-                                    item_id=tool_call["item_id"],
+                                    type="response.function_call_arguments.done",
+                                    id=tool_call["item_id"],
+                                    #=f'{tool_call["item_id"]}_{uuid.uuid().hex}',
                                     output_index=tool_call["output_index"],
                                     arguments=tool_call["function"]["arguments"]
                                 )
-                                
+                                logger.info(f"Emitting {done_event}")
                                 yield f"data: {json.dumps(done_event.dict())}\n\n"
                                 
                                 # Update response object with tool call
@@ -573,7 +595,8 @@ async def create_response(request: Request):
             # Handle streaming response
             async def stream_response():
                 try:
-                    logger.info(f"Tools: {chat_request['tools']}")
+                    chat_request['functions'] = chat_request['tools']
+                    logger.info(f"Sending tools: {chat_request['tools']}")
                     async with http_client.stream(
                         "POST",
                         "/v1/chat/completions",
