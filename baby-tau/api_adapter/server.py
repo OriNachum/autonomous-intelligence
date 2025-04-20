@@ -22,7 +22,13 @@ load_dotenv()
 # Configure logging with more focused format
 logging.basicConfig(
     level=logging.INFO,  # Keep at INFO level for important logs only
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    # Both console and logfile at ./log folder
+
+    handlers=[
+        logging.FileHandler("./log/api_adapter.log"),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger("api_adapter")
 
@@ -163,10 +169,12 @@ def convert_responses_to_chat_completions(request_data: dict) -> dict:
     """
     Convert a request in Responses API format to chat.completions API format.
     """
+    logger = logging.getLogger("api_adapter_conversion")
     # Log only essential info - model, tools count, if instructions present
     logger.info(f"Request: model={request_data.get('model')}, " +
                 f"tools={len(request_data.get('tools', []))}, " +
                 f"has_instructions={'instructions' in request_data}")
+    logger.info(f"tools={request_data.get('tools', [])}")
     
     chat_request = {
         "model": request_data.get("model"),
@@ -234,10 +242,10 @@ def convert_responses_to_chat_completions(request_data: dict) -> dict:
         
         for i, tool in enumerate(request_data["tools"]):
             try:
-                if not isinstance(tool, dict) or "type" not in tool or tool.get("type") != "function" or "function" not in tool:
+                if not isinstance(tool, dict) or "type" not in tool or tool.get("type") != "function":
                     continue
                     
-                function_obj = tool["function"]
+                function_obj = tool
                 if not isinstance(function_obj, dict) or "name" not in function_obj:
                     continue
                 
@@ -278,11 +286,13 @@ async def process_chat_completions_stream(response):
     Process the streaming response from chat.completions API.
     Tracks the state of tool calls to properly convert them to Responses API events.
     """
+    logger = logging.getLogger("api_adapter_stream")
     tool_calls = {}  # Store tool calls being built
     response_id = f"resp_{uuid.uuid4().hex}"
     tool_call_counter = 0
     message_id = f"msg_{uuid.uuid4().hex}"
     output_text_content = ""  # Track the full text content for logging
+    logger.info(f"Processing streaming response from chat.completions API response_id {response_id}; message_id {message_id}")
     
     # Create and yield the initial response.created event
     response_obj = ResponseModel(
@@ -296,7 +306,7 @@ async def process_chat_completions_stream(response):
         type="response.created",
         response=response_obj
     )
-    
+    logger.info(f"Emitting {created_event}")
     yield f"data: {json.dumps(created_event.dict())}\n\n"
     
     # Also emit the in_progress event
@@ -305,6 +315,7 @@ async def process_chat_completions_stream(response):
         response=response_obj
     )
     
+    logger.info(f"Emitting {in_progress_event}")
     yield f"data: {json.dumps(in_progress_event.dict())}\n\n"
     
     chunk_counter = 0
@@ -344,7 +355,7 @@ async def process_chat_completions_stream(response):
                 
             try:
                 data = json.loads(chunk)
-                
+                logger.info(f"data: {data}")
                 # Extract model name from the first chunk if available
                 if "model" in data and response_obj.model == "":
                     response_obj.model = data["model"]
@@ -359,6 +370,8 @@ async def process_chat_completions_stream(response):
                         
                         # Handle tool calls
                         if "tool_calls" in delta and delta["tool_calls"]:
+                            logger.info(f"tool_calls in {delta}")
+
                             for tool_delta in delta["tool_calls"]:
                                 index = tool_delta.get("index", 0)
                                 
@@ -560,6 +573,7 @@ async def create_response(request: Request):
             # Handle streaming response
             async def stream_response():
                 try:
+                    logger.info(f"Tools: {chat_request['tools']}")
                     async with http_client.stream(
                         "POST",
                         "/v1/chat/completions",
@@ -612,6 +626,9 @@ async def proxy_endpoint(request: Request, path_name: str):
     This ensures compatibility with applications that expect the full OpenAI API.
     """
     try:
+        logger = logging.getLogger("api_adapter_proxy")
+        logger.info(f"Proxying request to {path_name}")
+
         # Get the request body if available
         body = await request.body()
         # Get headers but exclude host
