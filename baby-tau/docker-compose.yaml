@@ -32,7 +32,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
       - NVIDIA_DRIVER_CAPABILITIES=all
       - OLLAMA_HOST=0.0.0.0:${VLLM_PORT:-8000}
-      - OLLAMA_MODELS=${OLLAMA_MODEL:-mistral}
+      - OLLAMA_MODELS=${OLLAMA_MODEL:-llama3.2:1b}
     volumes:
       - ./ollama:/root/.ollama
     command: >
