@@ -1,0 +1,82 @@
+# Base configuration shared between services
+x-shared-properties: &shared-properties
+  runtime: nvidia                 # Use NVIDIA runtime
+  init: false                     # Do not use init process
+  restart: unless-stopped         # Restart policy
+  network_mode: host              # Use host network mode, to auto-detect devices in network
+  devices:
+    - /dev/snd:/dev/snd           # to share audio devices
+    - /dev/bus/usb                # to share usb devices
+
+name: codex-assistant
+services:
+  ollama:
+    image: ${OLLAMA_TAG}
+    <<: *shared-properties
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - OLLAMA_HOST=0.0.0.0:${VLLM_PORT:-8000}
+      - OLLAMA_MODELS=llama3.2
+    volumes:
+      - ./ollama:/root/.ollama
+    command: >
+      sh -c "
+      echo '>>> Starting Ollama server in background...' &&
+      ollama serve &
+      SERVER_PID=$$! &&
+      echo '>>> Server started (PID $${SERVER_PID}). Waiting 10 seconds for it to initialize...' &&
+      sleep 10 &&
+      echo \">>> Triggering model pull for [$${OLLAMA_MODELS}] via internal API call...\" &&
+      curl http://$${OLLAMA_HOST}/api/pull -X POST -H \"Content-Type: application/json\" -d \"{\\\"name\\\": \\\"$${OLLAMA_MODELS}\\\"}\" &&
+      echo '>>> API call to pull model sent. Bringing server process to foreground...' &&
+      wait $${SERVER_PID}
+      "
+    ports:
+      - "8000-8010:${VLLM_PORT:-8000}-${VLLM_PORT:-8000}"
+      
+  codex:
+    image: ${CODEX_TAG:-dustynv/sound-utils:r35.4.1}
+    <<: *shared-properties
+    depends_on:
+      - ollama
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      # Connect to ollama as OpenAI-compatible API
+      - OPENAI_BASE_URL_INTERNAL=http://localhost:${OLLAMA_PORT:-8000}
+      - OPENAI_BASE_URL=http://localhost:8080 #http://localhost:${OLLAMA_PORT:-8000}/v1
+      - OPENAI_API_KEY=dummy-key
+      - CODEX_MODEL=llama3.2:latest #qwq:latest
+      # API adapter settings
+      - API_ADAPTER_PORT=8080
+      - API_ADAPTER_HOST=0.0.0.0
+    volumes:
+      # Mount your local files for interaction with the CLI
+      - ${WORKSPACE_DIR:-./workspace}:/workspace
+      # Mount the API adapter code
+      - ./api_adapter:/app/api_adapter
+      # Mount codex configuration 
+      - ./codex-config:/root/.codex
+    working_dir: /workspace
+    # Install Codex and the API adapter
+    command: >
+      sh -c "
+      echo '>>> Checking Node.js version...' &&
+      node --version &&
+      echo '>>> Installing Codex...' &&
+      npm install -g @openai/codex &&
+      echo '>>> Installing API adapter dependencies...' &&
+      cd /app/api_adapter && pip3 install openai-responses-server &&
+      otc start && 
+      echo '>>> Codex installed successfully!' &&
+      echo '>>> You can now use the codex command with either API format.' &&
+      echo '>>> Example: codex --help' &&
+      echo '>>> API adapter running on port ${API_ADAPTER_PORT:-8080}' &&
+      echo '>>> Starting interactive shell...' &&
+      exec bash
+      "
+    stdin_open: true
+    tty: true
+    ports:
+      - "${API_ADAPTER_PORT:-8080}:${API_ADAPTER_PORT:-8080}"

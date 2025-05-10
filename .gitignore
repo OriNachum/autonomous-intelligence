@@ -16,3 +16,6 @@ baby-tau/*.wav
 ***/*.whl
 ***/.aider*
 ***/.env
+***/codex-config/***
+local-codex/ollama/*
+local-codex/workspace/*
