@@ -70,3 +70,22 @@ No additional commands needed - just speak and listen!
 
 These are all "Best in slow" packages optimized for Jetson devices.
 
+## Citation
+### dusty-nv/jetson-containers
+```
+cff-version: 1.2.0
+title: >-
+  Jetson Containers(Machine Learning Containers for Jetson and JetPack)
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Dustin
+    family-names: Franklin
+    affiliation: Nvidia
+repository-code: 'https://github.com/dusty-nv/jetson-containers'
+url: 'https://www.jetson-ai-lab.com/'
+abstract: Machine Learning Containers for Jetson and JetPack
+license: MIT
+```
