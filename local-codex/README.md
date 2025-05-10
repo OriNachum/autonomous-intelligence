@@ -40,6 +40,10 @@ Once installed, you're all set to supercharge your development workflow!
 Happy coding! 💪
 
 ## Citation
+
+### TeaBranch/openai-responses-server
+TeaBranch. (2025). openai-responses-server: Open-source server the serves any AI provider with OpenAI ChatCompletions as OpenAI's Responses API and hosted tools. [Computer software]. GitHub. https://github.com/teabranch/openai-responses-server
+
 ### dusty-nv/jetson-containers
 ```
 cff-version: 1.2.0
