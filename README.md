@@ -68,6 +68,22 @@ If you fork - delete history and facts to reset their knowledge and embark the j
 - [ ] Introspection: Add Introspection agent for active and background thinking and processing.
 - [ ] Growth: Add nightly finetuning, move to smaller model.
 
+### Notes
+
+While this is still my goal, you may see lower progress. 
+This is becuase I have moved local AI development and help maintain jetson-containers.  
+I still drive lower cost smart AI with personality, and it is easier on Pi and 3rd party models, but a true AI companion must be local AI.  
+
+I also publish under org TeaBranch:
+- [open-responses-server](https://github.com/teabranch/open-responses-server) for mcp support on chat-completions (as responses api and chat completions api) and all OpenAI's responses features
+- [agentic-developer-mcp](https://github.com/teabranch/agentic-developer-mcp) for an agentic developer served as mcp that can work with other agentic developers, with agents as code.
+- [agentic-code-indexer](https://github.com/teabranch/agentic-code-indexer) for indexing code for the agentic-developer-mcp
+- [simple-semantic-chunker](https://github.com/teabranch/simple-semantic-chunker) for simple rag over documents
+
+Join our Jetson AI Homelab discord community to talk more 
+
+-nachos
+
 ## Prerequisites
 
 Tau should be able to run on any linux with internet, but was tested only on a raspberry pi 5 8GB with official OS 64bit.  
