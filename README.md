@@ -144,6 +144,11 @@ There are multiple people for which I want to acknowledge for this development.
 Of them, these are the people who confirmed for me to mention them: 
 - @Sagigamil 
   
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=OriNachum/autonomous-intelligence&type=Date)](https://www.star-history.com/#OriNachum/autonomous-intelligence&Date)
+
+⸻
 
 ## License
 
