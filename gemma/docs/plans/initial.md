@@ -16,7 +16,7 @@ Read then dequeue. If get `reset queue` - stop current read
 
 6.1. Model inference:
 
-6.1.1. 
+6.1.1. Send system prompt, history of last X messages and latest cache of image, sound & memory.
 
 6.2. Memory management:
 
