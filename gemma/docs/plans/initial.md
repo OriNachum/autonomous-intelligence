@@ -1,90 +1,120 @@
-# Gemma
+# Gemma - Multimodal AI Assistant
 
-## Plan
+## Overview
 
-1. All events are Unix domain events. Event management module. Raise / consume events.
+Gemma is a real-time multimodal AI assistant designed to process camera, audio, and text inputs simultaneously. The system uses event-driven architecture with Unix domain sockets and targets 400ms response time for natural interaction.
 
-2. Queue script that reads sentences. It supports `queue sentences` and `reset queue` events. While queue has content:
-   Read then dequeue. If get `reset queue` - stop current read
+## Core Architecture
 
-3. Camera feed loop - gstreamer camera loop to emit frames events. Includes object detection model.
+### Event System
+- **Implementation**: Unix domain sockets (custom implementation, see ../TauLegacy/)
+- **Priority**: Latest events take precedence
+- **Throughput**: TBD
 
-4. Sound feed loop - microphone loop to emit sound events `speech detected` and `wake word`. Includes VAD and wake up word models to detect relevant sound. Only when speech detected or when wake up word used emit event along with recorded sound.
+### Processing Loops
+The system consists of 6 concurrent processing loops:
 
-5. Text loop - when running, if text entered and sent (press enter) 
+1. **Event Management Module**: Raise/consume Unix domain events
+2. **Queue Script**: Manages TTS sentence queue with `queue sentences` and `reset queue` events
+3. **Camera Feed Loop**: GStreamer camera processing with object detection
+4. **Sound Feed Loop**: Microphone processing with VAD and wake word detection
+5. **Text Loop**: Terminal text input processing
+6. **Main Loop**: Event coordination and model inference
 
-6. Main loop, accepts events. 
-
-   - Model inference:
-     - Send system prompt, history of last X messages and latest cache of image, sound & memory.
-
-   - Memory management:
-     - Immediate memory management:
-       - When finished generating a response, distill important facts to remember.
-       - Then remove old facts that can be archived. Archived facts go to long-term memory.
-       - Inject immediate memory to next request.
-
-     - Long-term memory management:
-       - Store long-term memory in local rag milvus and local graphrag neo4j.
-       - Fetch long-term Memory loop - when sending new prompt, create embeddings and search semantically in archive. Inject long-term memory to next request.
-       - Run model on fetched long-term memory. If relevant, stop current speech and send again with memory.
-
-## Technical Specifications
-
-### Event System Architecture
-
-1. **Unix Domain Socket Implementation**: My own implementation. Example in this repo under ../TauLegacy/
-2. **Event Priorities**: Latest counts
-3. **Event Throughput and Latency**: Undecided
-
-### Queue Management
-
-4. **Maximum Queue Size**: Undecided. Unblocked, but capped by max_tokens
-5. **Queue Overflow Handling**: overflow not expected due max_tokens limit
-6. **Text-to-Speech Engine**: KokoroTTS model supported by Jetson-containers
+## Input Processing
 
 ### Camera Processing
-
-7. **Object Detection Model**: Yolov6
-8. **Target Frame Rates**: Undecided
-9. **Camera Calibration**: Irrelevant for now
-10. **Object Detection Priority**: Humans, animals
-
-*Note: Last frame will always be sent as well, so the model gets current state + last events of object changes. (Appear/disappear)*
+- **Model**: Yolov6 object detection
+- **Focus**: Humans and animals detection
+- **Frame Rate**: TBD
+- **Behavior**: Send current frame + object change events (appear/disappear)
 
 ### Audio Processing
+- **VAD Model**: SileroVAD (Jetson-containers supported)
+- **Wake Words**: "Gemma" or "Hey Gemma"
+- **Noise Filtering**: TBD (possibly headset-native)
+- **Quality**: TBD sampling rate
+- **Behavior**: Emit events only on speech detection or wake word
 
-11. **VAD Model**: SileroVAD Supported by Jetson-containers
-12. **Wake Word Detection**: Gemma or Hey Gemma
-13. **Background Noise Filtering**: Undecided. Possibly natively by headset
-14. **Audio Quality/Sampling Rate**: Undecided
+### Text Processing
+- **Input**: Terminal text entry (press enter to send)
+- **Integration**: Feeds into main event loop
 
-### Model Inference
+## AI Model & Inference
 
-15. **Language Model**: Gemma 3n - it's image, audio, text -> text model. I will send all 3, all the time.
-16. **Target Response Time**: Time to first word said 400ms. Will be implemented by only running TTS on content between quotations, and prompting the model to split sentences. (So "Hey" *Looking at the user* "Look at me when I am speaking to you") will have 2 sentences, and since I queue speech generation, and speech play in parallel, by the time the first word is said, the next sentence is already finished and ready to play, and so on. This gives the experience of real time.
-17. **System Prompt Structure**: Reply in quotations what you want the user to hear - only what is in quotations is sent to the user. Use asterisk for actions. If it can be executed - it will be. (The last part is a preparations for robot performing actions not via tool use, but by play-acting an entity, and having a background system executing the actions.)
-18. **Message History Length**: Let's start with 20 messages.
+### Primary Model
+- **Model**: Gemma 3n (multimodal: image + audio + text → text)
+- **Input**: Always sends all 3 modalities simultaneously
+- **History**: 20 messages
+- **Response Target**: 400ms to first spoken word
 
-### Memory Management
+### Response Format
+- **Speech Output**: Only content in quotations is spoken to user
+- **Actions**: Asterisk-marked actions (*Looking at the user*)
+- **Future Extension**: Action execution system for robotic control
 
-19. **Immediate Memory Archival Criteria**: Inner model decides what to archive - gemma 3n with the same input, but different instructions.
-20. **Fact Importance Scoring**: Undecided
-21. **Target Immediate Memory Size**: 50-100 facts
+### Real-time Implementation
+Streaming approach for 400ms target:
+1. Model outputs sentences in quotations
+2. TTS processes quoted content immediately
+3. Speech generation and playback run in parallel
+4. Next sentence ready before current finishes
+
+## Memory System
+
+### Immediate Memory (50-100 facts)
+- **Archival Decision**: Gemma 3n with different instructions
+- **Lifecycle**: 
+  - Distill facts after response generation
+  - Archive old facts to long-term storage
+  - Inject current facts into next request
 
 ### Long-term Memory
+- **Vector Storage**: Milvus with sentence embeddings
+- **Graph Storage**: Neo4j (structure TBD, possibly model-managed)
+- **Embedding Model**: TBD (Vllm or Ollama compatible)
+- **Retrieval**: Semantic search on new prompts
+- **Interruption**: Small decision model can stop current speech to inject relevant memories
 
-22. **Milvus Configuration**: Embeddings from sentence. Embeddings model undecided.
-23. **Neo4j Graph Structure**: Undecided. Possible a model responsible for it.
-24. **Embedding Model**: Undecided. Something Vllm or Ollama support.
-25. **Memory Relevance Scoring**: Undecided
-26. **Memory Interrupt Trigger**: A small decision model with same input and different prompt.
+## Output & Speech
 
-### Integration and Deployment
+### Text-to-Speech
+- **Engine**: KokoroTTS (Jetson-containers supported)
+- **Queue Management**: 
+  - Sentences queued and processed in parallel
+  - Max tokens cap prevents overflow
+  - `reset queue` stops current speech
 
-27. **Hardware Requirements**: Microphone, Speakers, Camera, AGX 64GB Jetson
-28. **Loop Orchestration**: Different applications, possibly on different dockers with shared volumes
-29. **Monitoring and Logging**: python logger
-30. **Component Failure Handling**: Undecided
+### Speech Queue Behavior
+- While queue has content: read then dequeue
+- If `reset queue` event: stop current read immediately
+
+## Deployment
+
+### Hardware Requirements
+- AGX 64GB Jetson
+- Microphone
+- Speakers  
+- Camera
+
+### Architecture
+- **Orchestration**: Different applications, possibly separate Docker containers
+- **Data Sharing**: Shared volumes between containers
+- **Monitoring**: Python logger
+- **Failure Handling**: TBD
+
+## Implementation Notes
+
+### Performance Targets
+- **Response Time**: 400ms to first spoken word
+- **Memory Size**: 50-100 immediate facts
+- **Message History**: 20 messages
+
+### Undecided Items
+- Event throughput/latency requirements
+- Camera frame rates and audio quality specs
+- Memory relevance scoring algorithms
+- Embedding model selection
+- Component failure handling strategies
 
 
