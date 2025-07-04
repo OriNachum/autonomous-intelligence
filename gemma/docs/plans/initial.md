@@ -1,10 +1,11 @@
 # Gemma
 
 ## Plan
+
 1. All events are Unix domain events. Event management module. Raise / consume events.
 
 2. Queue script that reads sentences. It supports `queue sentences` and `reset queue` events. While queue has content:
-Read then dequeue. If get `reset queue` - stop current read
+   Read then dequeue. If get `reset queue` - stop current read
 
 3. Camera feed loop - gstreamer camera loop to emit frames events. Includes object detection model.
 
@@ -14,26 +15,18 @@ Read then dequeue. If get `reset queue` - stop current read
 
 6. Main loop, accepts events. 
 
-6.1. Model inference:
+   - Model inference:
+     - Send system prompt, history of last X messages and latest cache of image, sound & memory.
 
-6.1.1. Send system prompt, history of last X messages and latest cache of image, sound & memory.
+   - Memory management:
+     - Immediate memory management:
+       - When finished generating a response, distill important facts to remember.
+       - Then remove old facts that can be archived. Archived facts go to long-term memory.
+       - Inject immediate memory to next request.
 
-6.2. Memory management:
-
-6.2.1. Immediate memory management:
-
-6.2.1.1. When finished generating a response, distill important facts to remember.
-
-6.2.1.2. Then remove old facts that can be archived. Archived facts go to long-term memory.
-
-6.2.1.3. Inject immediate memory to next request.
-
-6.2.2. Long-term memory management:
-
-6.2.2.1. Store long-term memory in local rag milvus and local graphrag neo4j.
-
-6.2.2.2. Fetch long-term Memory loop - when sending new prompt, create embeddings and search semantically in archive. Inject long-term memory to next request.
-
-6.2.2.3. Run model on fetched long-term memory. If relevant, stop current speech and send again with memory.
+     - Long-term memory management:
+       - Store long-term memory in local rag milvus and local graphrag neo4j.
+       - Fetch long-term Memory loop - when sending new prompt, create embeddings and search semantically in archive. Inject long-term memory to next request.
+       - Run model on fetched long-term memory. If relevant, stop current speech and send again with memory.
 
 
