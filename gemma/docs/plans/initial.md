@@ -30,7 +30,7 @@ Read then dequeue. If get `reset queue` - stop current read
 
 6.2.2. Long-term memory management:
 
-6.2.2.1. Store long-term memory 
+6.2.2.1. Store long-term memory in local rag milvus and local graphrag neo4j.
 
 6.2.2.2. Fetch long-term Memory loop - when sending new prompt, create embeddings and search semantically in archive. Inject long-term memory to next request.
 
