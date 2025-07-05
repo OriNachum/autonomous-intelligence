@@ -7,7 +7,7 @@ Gemma is a real-time multimodal AI assistant designed to process camera, audio, 
 ## Core Architecture
 
 ### Event System
-- **Implementation**: Unix domain sockets (custom implementation, see ../TauLegacy/)
+- **Implementation**: Unix domain sockets (custom implementation, see [event_system_reference.md](event_system_reference.md))
 - **Priority**: Latest events take precedence
 - **Throughput**: TBD
 
