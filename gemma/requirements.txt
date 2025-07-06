@@ -1,0 +1,25 @@
+# Core dependencies
+asyncio
+asyncio-queue
+python-socketio
+aiofiles
+numpy
+opencv-python
+gstreamer-python
+pyaudio
+silero-vad
+transformers
+torch
+torchvision
+torchaudio
+ultralytics
+pydub
+pyaudio
+soundfile
+neo4j
+pymilvus
+sentence-transformers
+accelerate
+datasets
+tokenizers
+protobuf
