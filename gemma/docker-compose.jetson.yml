@@ -1,0 +1,123 @@
+# Docker Compose configuration optimized for NVIDIA Jetson devices
+version: '3.8'
+
+services:
+  gemma:
+    build:
+      context: .
+      dockerfile: Dockerfile.jetson
+    container_name: gemma-assistant-jetson
+    restart: unless-stopped
+    
+    # Jetson GPU support
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - JETSON_MODEL_NAME=AGX_XAVIER
+    
+    # Jetson-optimized environment variables
+    environment:
+      - GEMMA_LOG_LEVEL=INFO
+      - GEMMA_CAMERA_DEVICE=0
+      - GEMMA_CAMERA_WIDTH=1280
+      - GEMMA_CAMERA_HEIGHT=720
+      - GEMMA_CAMERA_FPS=30
+      - GEMMA_AUDIO_SAMPLE_RATE=16000
+      - GEMMA_WAKE_WORDS=Gemma,Hey Gemma
+      - GEMMA_TTS_ENGINE=espeak
+      - GEMMA_MODEL_CACHE_DIR=/app/models
+      - GEMMA_YOLO_MODEL_PATH=yolov6n.pt
+      - GEMMA_VAD_MODEL_PATH=silero_vad
+      # Use CSI camera on Jetson
+      - GEMMA_GSTREAMER_PIPELINE=nvarguscamerasrc sensor-id=0
+    
+    # Volumes for persistence
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev/snd:/dev/snd
+      # Jetson camera access
+      - /dev/video0:/dev/video0
+      - /dev/tegra-cam:/dev/tegra-cam
+    
+    # Jetson device access
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/snd:/dev/snd
+      - /dev/tegra-cam:/dev/tegra-cam
+      - /dev/nvhost-ctrl:/dev/nvhost-ctrl
+      - /dev/nvhost-ctrl-gpu:/dev/nvhost-ctrl-gpu
+      - /dev/nvhost-prof-gpu:/dev/nvhost-prof-gpu
+      - /dev/nvmap:/dev/nvmap
+      - /dev/nvhost-gpu:/dev/nvhost-gpu
+      - /dev/nvhost-as-gpu:/dev/nvhost-as-gpu
+    
+    # Memory limits for Jetson
+    mem_limit: 8g
+    memswap_limit: 8g
+    
+    # Network configuration
+    ports:
+      - "8888:8888"  # Jupyter
+      - "8080:8080"  # Web interface
+    
+    # Privileges for hardware access
+    privileged: true
+    
+    networks:
+      - gemma-network
+
+  # Lightweight databases for Jetson
+  milvus-lite:
+    image: milvusdb/milvus:v2.3.0-lite
+    container_name: gemma-milvus-lite
+    restart: unless-stopped
+    
+    volumes:
+      - milvus_data:/var/lib/milvus
+    
+    ports:
+      - "19530:19530"
+    
+    # Reduced memory for Jetson
+    mem_limit: 2g
+    
+    networks:
+      - gemma-network
+
+  neo4j-lite:
+    image: neo4j:5.13-community
+    container_name: gemma-neo4j-lite
+    restart: unless-stopped
+    
+    environment:
+      - NEO4J_AUTH=neo4j/gemma_password
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+      # Reduced memory settings for Jetson
+      - NEO4J_dbms_memory_heap_initial__size=256m
+      - NEO4J_dbms_memory_heap_max__size=512m
+      - NEO4J_dbms_memory_pagecache_size=128m
+    
+    volumes:
+      - neo4j_data:/data
+    
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    
+    # Memory limits for Jetson
+    mem_limit: 1g
+    
+    networks:
+      - gemma-network
+
+networks:
+  gemma-network:
+    driver: bridge
+
+volumes:
+  milvus_data:
+  neo4j_data:

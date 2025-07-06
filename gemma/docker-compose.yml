@@ -1,0 +1,201 @@
+version: '3.8'
+
+services:
+  gemma:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gemma-assistant
+    restart: unless-stopped
+    
+    # GPU support
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    
+    # Environment variables
+    environment:
+      - GEMMA_LOG_LEVEL=INFO
+      - GEMMA_CAMERA_DEVICE=0
+      - GEMMA_AUDIO_SAMPLE_RATE=16000
+      - GEMMA_WAKE_WORDS=Gemma,Hey Gemma
+      - GEMMA_TTS_ENGINE=espeak
+      - GEMMA_MODEL_CACHE_DIR=/app/models
+      - GEMMA_MILVUS_HOST=milvus
+      - GEMMA_NEO4J_URI=bolt://neo4j:7687
+      - GEMMA_NEO4J_PASSWORD=gemma_password
+      - PULSE_RUNTIME_PATH=/tmp/pulse
+    
+    # Volumes for persistence
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev/snd:/dev/snd
+      - /dev/video0:/dev/video0
+      - /run/user/1000/pulse:/tmp/pulse:rw
+    
+    # Device access
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/snd:/dev/snd
+    
+    # Network configuration
+    ports:
+      - "8888:8888"  # Jupyter
+      - "8080:8080"  # Web interface (if implemented)
+    
+    # Privileges for hardware access
+    privileged: true
+    
+    # Dependencies
+    depends_on:
+      - milvus
+      - neo4j
+    
+    networks:
+      - gemma-network
+
+  # Milvus vector database
+  milvus:
+    image: milvusdb/milvus:v2.3.0
+    container_name: gemma-milvus
+    restart: unless-stopped
+    
+    environment:
+      - ETCD_ENDPOINTS=etcd:2379
+      - MINIO_ADDRESS=minio:9000
+    
+    volumes:
+      - milvus_data:/var/lib/milvus
+    
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    
+    depends_on:
+      - etcd
+      - minio
+    
+    networks:
+      - gemma-network
+
+  # Neo4j graph database
+  neo4j:
+    image: neo4j:5.13-community
+    container_name: gemma-neo4j
+    restart: unless-stopped
+    
+    environment:
+      - NEO4J_AUTH=neo4j/gemma_password
+      - NEO4J_PLUGINS=["apoc", "graph-data-science"]
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+    
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/var/lib/neo4j/import
+      - neo4j_plugins:/plugins
+    
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    
+    networks:
+      - gemma-network
+
+  # ETCD for Milvus
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: gemma-etcd
+    restart: unless-stopped
+    
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    
+    volumes:
+      - etcd_data:/etcd
+    
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    
+    networks:
+      - gemma-network
+
+  # MinIO for Milvus
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: gemma-minio
+    restart: unless-stopped
+    
+    environment:
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    
+    volumes:
+      - minio_data:/data
+    
+    command: minio server /data
+    
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    
+    networks:
+      - gemma-network
+
+  # Optional: Jupyter Lab for development and monitoring
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gemma-jupyter
+    restart: unless-stopped
+    
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=gemma_jupyter_token
+    
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./src:/app/src
+    
+    ports:
+      - "8889:8888"
+    
+    command: >
+      bash -c "pip install notebook jupyterlab && 
+               jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root 
+               --notebook-dir=/app --token=gemma_jupyter_token"
+    
+    networks:
+      - gemma-network
+
+networks:
+  gemma-network:
+    driver: bridge
+
+volumes:
+  milvus_data:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:
+  neo4j_plugins:
+  etcd_data:
+  minio_data:

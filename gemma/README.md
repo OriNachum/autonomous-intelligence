@@ -1,5 +1,7 @@
 # Gemma - Multimodal AI Assistant
 
+⚠️ Untested! ⚠️
+
 A real-time multimodal AI assistant designed to process camera, audio, and text inputs simultaneously using an event-driven architecture.
 
 ## Features
@@ -30,19 +32,43 @@ The system consists of 6 concurrent processing loops:
 - AGX 64GB Jetson (recommended) or compatible hardware
 - Camera, microphone, speakers
 - CUDA-capable GPU (optional but recommended)
+- Docker and Docker Compose (for containerized deployment)
 
-### Dependencies
+### Quick Setup
+
+Run the automated setup script:
+
+```bash
+chmod +x scripts/setup.sh
+./scripts/setup.sh
+```
+
+### Manual Installation
+
+#### Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Hardware Setup
+#### Hardware Setup
 
 Ensure your hardware is connected:
 - Camera (USB or CSI)
 - Microphone
 - Speakers or headphones
+
+#### Database Setup
+
+The system requires Milvus (vector database) and Neo4j (graph database):
+
+```bash
+# With Docker (recommended)
+docker-compose up -d milvus neo4j
+
+# For Jetson devices
+docker-compose -f docker-compose.jetson.yml up -d milvus-lite neo4j-lite
+```
 
 ## Configuration
 
@@ -59,8 +85,33 @@ export GEMMA_TTS_ENGINE="kokoro"
 
 ### Quick Start
 
+#### Native Python
 ```bash
 ./run_gemma.py
+```
+
+#### Docker (Recommended)
+```bash
+# Standard deployment
+docker-compose up
+
+# Jetson deployment
+docker-compose -f docker-compose.jetson.yml up
+
+# Background deployment
+docker-compose up -d
+```
+
+#### Build and Deploy Script
+```bash
+chmod +x scripts/build.sh
+
+# Auto-detect system and deploy
+./scripts/build.sh auto
+
+# Manual build and deploy
+./scripts/build.sh build jetson
+./scripts/build.sh deploy jetson
 ```
 
 ### Manual Start
@@ -77,6 +128,8 @@ While running, you can use these text commands:
 - `/status` - Show system status
 - `/clear` - Clear screen
 - `/history` - Show input history
+- `/memory` - Show memory status
+- `/facts` - Show recent facts
 - `/reset` - Reset conversation
 - `/quit` - Exit application
 
@@ -91,18 +144,18 @@ While running, you can use these text commands:
 - [x] Text input processing with terminal interface
 - [x] Main coordination loop with model interface
 - [x] Response processing and TTS integration
-
-### 🚧 In Progress
-- [ ] Immediate memory system with fact distillation
-- [ ] Long-term memory with Milvus and Neo4j
-- [ ] Docker containerization
+- [x] Immediate memory system with fact distillation
+- [x] Long-term memory with Milvus and Neo4j
+- [x] Docker containerization and deployment
 
 ### 📋 Planned
-- [ ] Advanced memory retrieval and injection
+- [ ] Advanced memory retrieval and injection algorithms
 - [ ] Robotic action execution system
 - [ ] Performance optimization for 400ms response target
-- [ ] Web interface for monitoring
-- [ ] Advanced model fine-tuning
+- [ ] Web interface for monitoring and control
+- [ ] Advanced model fine-tuning and optimization
+- [ ] Multi-user support and authentication
+- [ ] Cloud deployment configurations
 
 ## Performance Targets
 
@@ -142,6 +195,22 @@ gemma/
 3. Register with main application
 4. Update configuration as needed
 
+### Docker Development
+
+```bash
+# Build development image
+./scripts/build.sh build dev
+
+# Run with mounted source for development
+docker-compose -f docker-compose.dev.yml up
+
+# View logs
+./scripts/build.sh logs
+
+# Clean up
+./scripts/build.sh clean
+```
+
 ## Troubleshooting
 
 ### Common Issues
@@ -150,6 +219,8 @@ gemma/
 2. **Audio device error**: Verify microphone permissions and ALSA configuration
 3. **Model loading fails**: Ensure sufficient GPU memory and model files
 4. **Socket permission denied**: Check `/tmp` directory permissions
+5. **Database connection failed**: Ensure Milvus and Neo4j are running
+6. **Docker permission denied**: Add user to docker group: `sudo usermod -aG docker $USER`
 
 ### Debugging
 

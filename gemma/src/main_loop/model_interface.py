@@ -236,12 +236,38 @@ Current capabilities:
         """Build conversation context for the model"""
         context_parts = [self.system_prompt]
         
+        # Add memory context if available
+        context = input_data.get('context', {})
+        if context.get('relevant_facts'):
+            context_parts.append("\nRelevant facts from memory:")
+            for fact in context['relevant_facts'][:5]:  # Top 5 relevant facts
+                context_parts.append(f"- {fact}")
+        
+        if context.get('important_facts'):
+            context_parts.append("\nImportant facts to remember:")
+            for fact in context['important_facts']:
+                context_parts.append(f"- {fact}")
+        
+        if context.get('long_term_facts'):
+            context_parts.append("\nRelevant long-term memories:")
+            for fact in context['long_term_facts']:
+                context_parts.append(f"- {fact}")
+        
         # Add recent conversation history
         for msg in self.conversation_history[-5:]:  # Last 5 messages
             if msg['type'] == 'user':
                 context_parts.append(f"User: {msg['content']}")
             elif msg['type'] == 'assistant':
                 context_parts.append(f"Assistant: {msg['content']}")
+        
+        # Add current multimodal input context
+        if context.get('wake_word_active'):
+            context_parts.append(f"\nNote: User activated with wake word '{context.get('wake_word', 'unknown')}'")
+        
+        if context.get('detections'):
+            detected_objects = [d.get('class_name') for d in context['detections']]
+            if detected_objects:
+                context_parts.append(f"Currently visible: {', '.join(detected_objects)}")
         
         # Add current input
         current_input = []

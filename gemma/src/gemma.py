@@ -28,7 +28,7 @@ class GemmaApplication:
         self.camera_processor = CameraProcessor(self.config)
         self.sound_processor = SoundProcessor(self.config)
         self.text_processor = TextProcessor(self.config)
-        self.main_loop = MainLoop(self.config)
+        self.main_loop = MainLoop(self.config)  # Memory manager is included in main_loop
         
         # Application state
         self.running = False

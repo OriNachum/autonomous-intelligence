@@ -9,6 +9,7 @@ import numpy as np
 from .model_interface import ModelInterface
 from .response_processor import ResponseProcessor
 from ..event_system import EventConsumer, EventManager, EventType, GemmaEvent
+from ..memory_system import MemoryManager
 from ..config import Config
 
 class MainLoop:
@@ -21,6 +22,7 @@ class MainLoop:
         # Core components
         self.model_interface = ModelInterface(config)
         self.response_processor = ResponseProcessor(config)
+        self.memory_manager = MemoryManager(config)
         self.event_consumer = EventConsumer(config, "main_loop")
         
         # Processing state
@@ -70,6 +72,7 @@ class MainLoop:
         # Connect components
         await self.event_consumer.connect()
         await self.response_processor.connect()
+        await self.memory_manager.start()
         
         # Start consuming events
         await self.event_consumer.start_consuming()
@@ -92,6 +95,7 @@ class MainLoop:
         # Disconnect components
         await self.event_consumer.stop_consuming()
         await self.response_processor.disconnect()
+        await self.memory_manager.stop()
         
         self.logger.info("Main loop stopped")
     
@@ -205,6 +209,11 @@ class MainLoop:
             context['wake_word_active'] = self.wake_word_active
             context['speech_active'] = self.speech_active
             
+            # Get memory context if we have text input
+            if self.current_text:
+                memory_context = await self.memory_manager.get_memory_context(self.current_text, context)
+                context.update(memory_context)
+            
             # Generate response
             response = await self.model_interface.process_multimodal_input(
                 text_input=self.current_text,
@@ -215,6 +224,12 @@ class MainLoop:
             
             # Process response
             await self.response_processor.process_response(response, context)
+            
+            # Process conversation for memory
+            if self.current_text:
+                await self.memory_manager.process_conversation(
+                    self.current_text, response, context
+                )
             
             # Update statistics
             inference_time = time.time() - start_time
@@ -286,6 +301,7 @@ class MainLoop:
         # Clear conversation history
         self.model_interface.clear_conversation_history()
         self.response_processor.clear_history()
+        await self.memory_manager.clear_memory()
         
     async def _handle_shutdown(self, event: GemmaEvent):
         """Handle shutdown event"""
@@ -314,5 +330,6 @@ class MainLoop:
                 'context_keys': list(self.current_context.keys())
             },
             'model_stats': self.model_interface.get_statistics(),
-            'response_stats': self.response_processor.get_statistics()
+            'response_stats': self.response_processor.get_statistics(),
+            'memory_stats': self.memory_manager.get_statistics()
         }

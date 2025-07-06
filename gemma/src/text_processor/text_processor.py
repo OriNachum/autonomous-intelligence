@@ -46,7 +46,9 @@ class TextProcessor:
             '/status': self._handle_status,
             '/clear': self._handle_clear,
             '/history': self._handle_history,
-            '/reset': self._handle_reset
+            '/reset': self._handle_reset,
+            '/memory': self._handle_memory,
+            '/facts': self._handle_facts
         }
     
     async def start(self):
@@ -98,6 +100,8 @@ class TextProcessor:
         print("  /clear   - Clear screen")
         print("  /history - Show input history")
         print("  /reset   - Reset conversation")
+        print("  /memory  - Show memory status")
+        print("  /facts   - Show recent facts")
         print("  /quit    - Exit application")
         print("="*50)
         print()
@@ -232,6 +236,8 @@ class TextProcessor:
         print("  /clear   - Clear the screen")
         print("  /history - Show recent input history")
         print("  /reset   - Reset the conversation")
+        print("  /memory  - Show memory status")
+        print("  /facts   - Show recent facts")
         print("  /quit    - Exit the application")
         print("\nJust type your message and press Enter to chat with Gemma!")
         print()
@@ -290,6 +296,22 @@ class TextProcessor:
             self.logger.error(f"Error sending reset event: {e}")
         
         print("Conversation reset complete")
+    
+    async def _handle_memory(self, cmd_parts: List[str]):
+        """Handle memory status command"""
+        print("\nMemory Status")
+        print("=" * 20)
+        print("This feature requires access to the memory manager.")
+        print("Memory status would show current facts and statistics.")
+        print()
+    
+    async def _handle_facts(self, cmd_parts: List[str]):
+        """Handle facts display command"""
+        print("\nRecent Facts")
+        print("=" * 15)
+        print("This feature requires access to the memory manager.")
+        print("Recent facts from memory would be displayed here.")
+        print()
     
     def get_status(self) -> Dict[str, Any]:
         """Get text processor status"""

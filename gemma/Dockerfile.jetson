@@ -1,0 +1,124 @@
+# Gemma for NVIDIA Jetson devices
+FROM nvcr.io/nvidia/l4t-pytorch:r35.2.1-pth2.0-py3
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Install Jetson-specific dependencies
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    cmake \
+    git \
+    pkg-config \
+    # GStreamer for Jetson
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libgstreamer-plugins-bad1.0-dev \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav \
+    gstreamer1.0-tools \
+    # Jetson multimedia API
+    nvidia-l4t-gstreamer \
+    nvidia-l4t-multimedia \
+    nvidia-l4t-multimedia-utils \
+    # Audio
+    portaudio19-dev \
+    alsa-utils \
+    pulseaudio \
+    espeak \
+    espeak-data \
+    libespeak-dev \
+    # Video
+    v4l-utils \
+    # Other utilities
+    wget \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create application directory
+WORKDIR /app
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+
+# Install Python packages with Jetson optimizations
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip3 install --no-cache-dir \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+    pip3 install --no-cache-dir -r requirements.txt
+
+# Install Jetson-specific packages
+RUN pip3 install --no-cache-dir \
+    jetson-stats \
+    jetson-inference \
+    jetson-utils
+
+# Copy application code
+COPY src/ ./src/
+COPY run_gemma.py .
+
+# Create directories
+RUN mkdir -p /app/models /app/data /app/logs
+
+# Download YOLOv6 model for Jetson
+RUN mkdir -p /app/models && \
+    wget -O /app/models/yolov6n.pt \
+    https://github.com/meituan/YOLOv6/releases/download/0.4.0/yolov6n.pt
+
+# Set up Jetson-specific permissions
+RUN usermod -a -G video,audio,dialout root
+
+# Create Jetson startup script
+RUN echo '#!/bin/bash\n\
+# Check Jetson stats\n\
+echo "Jetson Device Information:"\n\
+if command -v jetson_stats &> /dev/null; then\n\
+    jtop --json | head -20\n\
+fi\n\
+\n\
+# Set up camera permissions\n\
+chmod 666 /dev/video0 2>/dev/null || true\n\
+chmod 666 /dev/tegra-cam 2>/dev/null || true\n\
+\n\
+# Start PulseAudio\n\
+pulseaudio --start --log-target=newfile:/tmp/pulse.log\n\
+sleep 2\n\
+\n\
+# Check camera availability\n\
+echo "Checking camera devices:"\n\
+ls -la /dev/video* 2>/dev/null || echo "No video devices found"\n\
+\n\
+# Check audio devices\n\
+echo "Audio devices:"\n\
+aplay -l 2>/dev/null || echo "No audio playback devices"\n\
+arecord -l 2>/dev/null || echo "No audio capture devices"\n\
+\n\
+# Set CPU governor to performance\n\
+echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true\n\
+\n\
+# Start Gemma\n\
+exec python3 run_gemma.py\n\
+' > /app/start_jetson.sh && chmod +x /app/start_jetson.sh
+
+# Jetson-specific environment variables
+ENV GEMMA_LOG_LEVEL=INFO
+ENV GEMMA_CAMERA_DEVICE=0
+ENV GEMMA_CAMERA_WIDTH=1280
+ENV GEMMA_CAMERA_HEIGHT=720
+ENV GEMMA_CAMERA_FPS=30
+ENV GEMMA_YOLO_MODEL_PATH=/app/models/yolov6n.pt
+ENV GEMMA_MODEL_CACHE_DIR=/app/models
+ENV JETSON_OPTIMIZED=true
+
+# Health check
+HEALTHCHECK --interval=60s --timeout=15s --start-period=120s --retries=3 \
+    CMD python3 -c "import socket; s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect('/tmp/gemma_events.sock'); s.close()" || exit 1
+
+# Default command
+CMD ["/app/start_jetson.sh"]
