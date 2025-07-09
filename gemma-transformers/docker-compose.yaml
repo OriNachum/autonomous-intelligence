@@ -1,0 +1,53 @@
+x-shared-properties: &shared-properties
+  runtime: nvidia                 # Use NVIDIA runtime
+  init: false                     # Do not use init process
+  restart: unless-stopped         # Restart policy
+  network_mode: host              # Use host network mode
+  devices:
+    - /dev/snd:/dev/snd           # Audio devices (if needed)
+    - /dev/bus/usb                # USB devices (if needed)
+
+name: gemma3n-transformers
+services:
+  gemma3n-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${BASE_IMAGE:-dustynv/pytorch:2.1-r36.2.0}
+    image: ${GEMMA3N_TAG:-gemma3n-api:latest}
+    <<: *shared-properties
+    environment:
+      # Model configuration
+      - MODEL_NAME=${MODEL_NAME:-google/gemma-3n-e4b}
+      - PORT=${GEMMA3N_PORT:-8000}
+      - MAX_LENGTH=${MAX_LENGTH:-2048}
+      - TEMPERATURE=${TEMPERATURE:-0.7}
+      # NVIDIA GPU configuration
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      # Hugging Face token for gated models (if needed)
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+      # Performance settings
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+    volumes:
+      # Mount model cache directory to avoid re-downloading
+      - ${MODEL_CACHE_DIR:-./models}:/root/.cache/huggingface
+      # Mount logs directory
+      - ./logs:/app/logs
+    ports:
+      - "${GEMMA3N_PORT:-8000}:${GEMMA3N_PORT:-8000}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${GEMMA3N_PORT:-8000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    command: >
+      bash -c "
+      echo '>>> Starting Gemma3n API server...' &&
+      echo '>>> Model: ${MODEL_NAME:-google/gemma-3n-e4b}' &&
+      echo '>>> Port: ${GEMMA3N_PORT:-8000}' &&
+      python3 app.py
+      "
