@@ -22,8 +22,11 @@ class ModelHandler:
             except Exception as e:
                 print(f"Warning: Failed to login to HF Hub: {e}")
         
+        # Get cache directory
+        self.cache_dir = os.getenv('HF_HOME', '/cache/huggingface')
+        
         print(f"Loading model {self.model_id} on {self.device}...")
-        print(f"Model cache dir: {os.getenv('HF_HOME', '~/.cache/huggingface')}")
+        print(f"Model cache dir: {self.cache_dir}")
         
         # Load model with appropriate dtype
         dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
@@ -31,7 +34,7 @@ class ModelHandler:
         try:
             # First try to load the processor
             print("Loading processor...")
-            self.processor = AutoProcessor.from_pretrained(self.model_id)
+            self.processor = AutoProcessor.from_pretrained(self.model_id, cache_dir=self.cache_dir)
             
             # Then load the model
             print("Loading model weights...")
@@ -39,7 +42,8 @@ class ModelHandler:
                 self.model_id,
                 device_map=self.device,
                 torch_dtype=dtype,
-                low_cpu_mem_usage=True
+                low_cpu_mem_usage=True,
+                cache_dir=self.cache_dir
             ).eval()
             
             print(f"✓ Model loaded successfully on {self.device}")

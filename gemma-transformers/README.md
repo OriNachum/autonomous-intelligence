@@ -13,7 +13,12 @@ OpenAI-compatible API server for the Gemma3n model, optimized for NVIDIA Jetson 
 
 ## Model Setup
 
-The default model is `google/gemma-3n-e4b`. The model will be automatically downloaded on first run.
+The default model is `google/gemma-3n-e4b`. Everything is containerized - the model will be automatically downloaded on first run and stored in Docker volumes.
+
+### Persistent Model Storage
+- Models are stored in named Docker volumes (`gemma3n-hf-cache`)
+- Once downloaded, models persist across container restarts
+- No need to re-download unless you explicitly remove the volumes
 
 ### If the model is gated (requires authentication):
 1. Get a Hugging Face token from https://huggingface.co/settings/tokens
@@ -21,17 +26,6 @@ The default model is `google/gemma-3n-e4b`. The model will be automatically down
    ```bash
    HF_TOKEN=your_huggingface_token_here
    ```
-
-### Pre-download the model (optional):
-To download the model before running the server:
-```bash
-# Set environment variables
-export MODEL_NAME=google/gemma-3n-e4b
-export HF_TOKEN=your_token_here  # if needed
-
-# Run the download script
-python3 download_model.py
-```
 
 ## Quick Start
 
@@ -46,7 +40,22 @@ cp .env.example .env
 docker-compose up --build
 ```
 
-The first run will download the model (several GB), which may take 10-30 minutes depending on your connection.
+The first run will download the model (several GB), which may take 10-30 minutes. Subsequent runs will use the cached model and start in seconds.
+
+### Managing Model Storage
+
+View volume information:
+```bash
+docker volume ls | grep gemma3n
+docker volume inspect gemma3n-hf-cache
+```
+
+Remove cached models (to re-download):
+```bash
+docker-compose down -v  # Removes all volumes
+# OR
+docker volume rm gemma3n-hf-cache  # Remove only model cache
+```
 
 3. Test the API:
 ```bash

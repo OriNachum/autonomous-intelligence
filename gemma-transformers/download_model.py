@@ -16,6 +16,10 @@ def download_model(model_id="google/gemma-3n-e4b"):
     print(f"Downloading model: {model_id}")
     print("-" * 50)
     
+    # Get cache directory from environment
+    cache_dir = os.getenv("HF_HOME", "/cache/huggingface")
+    print(f"Cache directory: {cache_dir}")
+    
     # Check if HF token is needed
     hf_token = os.getenv("HUGGING_FACE_HUB_TOKEN", os.getenv("HF_TOKEN"))
     if hf_token:
@@ -33,7 +37,7 @@ def download_model(model_id="google/gemma-3n-e4b"):
     try:
         # Download processor
         print("Downloading processor...")
-        processor = AutoProcessor.from_pretrained(model_id)
+        processor = AutoProcessor.from_pretrained(model_id, cache_dir=cache_dir)
         print("✓ Processor downloaded successfully")
         
         # Download model
@@ -43,7 +47,8 @@ def download_model(model_id="google/gemma-3n-e4b"):
         model = Gemma3nForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=dtype,
-            low_cpu_mem_usage=True
+            low_cpu_mem_usage=True,
+            cache_dir=cache_dir
         )
         
         print("✓ Model downloaded successfully")

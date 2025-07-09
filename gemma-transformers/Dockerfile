@@ -32,10 +32,12 @@ RUN chmod +x entrypoint.sh
 ENV PYTHONUNBUFFERED=1
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=all
-ENV HF_HOME=/root/.cache/huggingface
+ENV HF_HOME=/cache/huggingface
+ENV TRANSFORMERS_CACHE=/cache/huggingface
 
-# Create cache directory
-RUN mkdir -p /root/.cache/huggingface
+# Create cache directories with proper permissions
+RUN mkdir -p /cache/huggingface /models /app/logs && \
+    chmod -R 777 /cache /models /app/logs
 
 # Expose the API port
 EXPOSE 8000
