@@ -7,3 +7,4 @@ pillow==10.1.0
 pydantic==2.5.0
 python-multipart==0.0.6
 accelerate==0.24.1
+huggingface-hub==0.19.4

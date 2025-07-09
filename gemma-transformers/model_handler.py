@@ -1,8 +1,10 @@
 import os
+import sys
 import torch
 from typing import Optional, Dict, AsyncGenerator
 from PIL import Image
 from transformers import AutoProcessor, Gemma3nForConditionalGeneration
+from huggingface_hub import login
 import asyncio
 
 
@@ -11,20 +13,49 @@ class ModelHandler:
         self.model_id = os.getenv("MODEL_NAME", "google/gemma-3n-e4b")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
+        # Check for HF token if needed
+        hf_token = os.getenv("HUGGING_FACE_HUB_TOKEN", os.getenv("HF_TOKEN"))
+        if hf_token:
+            print("Logging in to Hugging Face Hub...")
+            try:
+                login(token=hf_token)
+            except Exception as e:
+                print(f"Warning: Failed to login to HF Hub: {e}")
+        
         print(f"Loading model {self.model_id} on {self.device}...")
+        print(f"Model cache dir: {os.getenv('HF_HOME', '~/.cache/huggingface')}")
         
         # Load model with appropriate dtype
         dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
         
-        self.model = Gemma3nForConditionalGeneration.from_pretrained(
-            self.model_id,
-            device_map=self.device,
-            torch_dtype=dtype
-        ).eval()
-        
-        self.processor = AutoProcessor.from_pretrained(self.model_id)
-        
-        print(f"Model loaded successfully on {self.device}")
+        try:
+            # First try to load the processor
+            print("Loading processor...")
+            self.processor = AutoProcessor.from_pretrained(self.model_id)
+            
+            # Then load the model
+            print("Loading model weights...")
+            self.model = Gemma3nForConditionalGeneration.from_pretrained(
+                self.model_id,
+                device_map=self.device,
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True
+            ).eval()
+            
+            print(f"✓ Model loaded successfully on {self.device}")
+            
+            # Print model info
+            total_params = sum(p.numel() for p in self.model.parameters())
+            print(f"Model parameters: {total_params:,}")
+            
+        except Exception as e:
+            print(f"✗ Failed to load model: {e}")
+            print("\nTroubleshooting:")
+            print("1. Run 'python download_model.py' to pre-download the model")
+            print("2. If the model is gated, ensure HF_TOKEN is set")
+            print("3. Check your internet connection")
+            print("4. Verify sufficient disk space and GPU memory")
+            raise
     
     def prepare_input(self, prompt: str, image: Optional[Image.Image] = None) -> Dict:
         """Prepare input for the model."""

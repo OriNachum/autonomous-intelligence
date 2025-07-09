@@ -22,14 +22,23 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app.py .
 COPY model_handler.py .
+COPY download_model.py .
+COPY entrypoint.sh .
+
+# Make entrypoint executable
+RUN chmod +x entrypoint.sh
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=all
+ENV HF_HOME=/root/.cache/huggingface
+
+# Create cache directory
+RUN mkdir -p /root/.cache/huggingface
 
 # Expose the API port
 EXPOSE 8000
 
-# Run the application
-CMD ["python3", "app.py"]
+# Use entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -36,6 +36,8 @@ services:
       - ${MODEL_CACHE_DIR:-./models}:/root/.cache/huggingface
       # Mount logs directory
       - ./logs:/app/logs
+      # Mount the .env file if it exists
+      - ./.env:/app/.env:ro
     ports:
       - "${GEMMA3N_PORT:-8000}:${GEMMA3N_PORT:-8000}"
     healthcheck:
