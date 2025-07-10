@@ -37,7 +37,7 @@ cp .env.example .env
 
 2. Build and run with Docker Compose:
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 The first run will download the model (several GB), which may take 10-30 minutes. Subsequent runs will use the cached model and start in seconds.

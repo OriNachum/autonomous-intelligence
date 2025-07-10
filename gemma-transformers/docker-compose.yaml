@@ -24,7 +24,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        BASE_IMAGE: ${BASE_IMAGE:-dustynv/pytorch:2.1-r36.2.0}
+        BASE_IMAGE: ${BASE_IMAGE:-dustynv/pytorch:2.1-r36.2.0}  
     image: ${GEMMA3N_TAG:-gemma3n-api:latest}
     <<: *shared-properties
     environment:
