@@ -3,7 +3,7 @@ import sys
 import torch
 from typing import Optional, Dict, AsyncGenerator
 from PIL import Image
-from transformers import AutoProcessor, Gemma3nForConditionalGeneration
+from transformers import AutoProcessor, AutoModelForVision2Seq
 from huggingface_hub import login
 import asyncio
 
@@ -38,7 +38,7 @@ class ModelHandler:
             
             # Then load the model
             print("Loading model weights...")
-            self.model = Gemma3nForConditionalGeneration.from_pretrained(
+            self.model = AutoModelForVision2Seq.from_pretrained(
                 self.model_id,
                 device_map=self.device,
                 torch_dtype=dtype,

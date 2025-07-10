@@ -44,7 +44,6 @@ services:
       - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
       # Cache settings
       - HF_HOME=/cache/huggingface
-      - TRANSFORMERS_CACHE=/cache/huggingface
     volumes:
       # Use named volumes for persistent model storage
       - huggingface-cache:/cache/huggingface
