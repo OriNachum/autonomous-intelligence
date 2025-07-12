@@ -32,9 +32,6 @@ class ModelHandler:
         dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
         
         try:
-            # First try to load the processor
-            print("Loading processor...")
-            self.processor = AutoProcessor.from_pretrained(self.model_id, cache_dir=self.cache_dir)
             
             # Then load the model
             print("Loading model weights...")
@@ -45,6 +42,10 @@ class ModelHandler:
                 low_cpu_mem_usage=True,
                 cache_dir=self.cache_dir
             ).eval()
+
+            # First try to load the processor
+            print("Loading processor...")
+            self.processor = AutoProcessor.from_pretrained(self.model_id, cache_dir=self.cache_dir)
             
             print(f"✓ Model loaded successfully on {self.device}")
             

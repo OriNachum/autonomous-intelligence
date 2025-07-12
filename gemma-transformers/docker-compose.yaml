@@ -9,14 +9,7 @@ x-shared-properties: &shared-properties
 
 name: gemma3n-transformers
 
-# Define named volumes for persistent storage
-volumes:
-  huggingface-cache:
-    name: gemma3n-hf-cache
-    driver: local
-  model-data:
-    name: gemma3n-model-data
-    driver: local
+# Note: Using bind mounts instead of named volumes for host access
 
 services:
   gemma3n-api:
@@ -45,9 +38,9 @@ services:
       # Cache settings
       - HF_HOME=/cache/huggingface
     volumes:
-      # Use named volumes for persistent model storage
-      - huggingface-cache:/cache/huggingface
-      - model-data:/models
+      # Use bind mounts for persistent model storage (accessible from host)
+      - ./models/huggingface:/cache/huggingface
+      - ./models/data:/models
       # Mount logs directory (local bind mount for easy access)
       - ./logs:/app/logs
     ports:
