@@ -10,3 +10,4 @@ python-multipart==0.0.6
 accelerate==1.8.1
 huggingface-hub==0.30.0
 hf_xet
+timm

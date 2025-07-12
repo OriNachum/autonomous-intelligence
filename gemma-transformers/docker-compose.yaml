@@ -35,6 +35,9 @@ services:
       # Performance settings
       - CUDA_VISIBLE_DEVICES=0
       - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+      # Disable torch.compile on Jetson (avoids Triton errors)
+      - TORCH_COMPILE_DISABLE=1
+      - TORCHDYNAMO_DISABLE=1
       # Cache settings
       - HF_HOME=/cache/huggingface
     volumes:

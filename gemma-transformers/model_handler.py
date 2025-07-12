@@ -32,6 +32,9 @@ class ModelHandler:
         dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
         
         try:
+            # Disable torch.compile on Jetson to avoid Triton issues
+            torch._dynamo.config.suppress_errors = True
+            torch._dynamo.config.cache_size_limit = 0
             
             # Then load the model
             print("Loading model weights...")
@@ -40,7 +43,8 @@ class ModelHandler:
                 device_map=self.device,
                 torch_dtype=dtype,
                 low_cpu_mem_usage=True,
-                cache_dir=self.cache_dir
+                cache_dir=self.cache_dir,
+                attn_implementation="eager"  # Use eager attention on Jetson
             ).eval()
 
             # First try to load the processor

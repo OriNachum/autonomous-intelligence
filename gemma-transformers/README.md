@@ -11,6 +11,10 @@ OpenAI-compatible API server for the Gemma3n model, optimized for NVIDIA Jetson 
 - Docker containerization with NVIDIA runtime support
 - Automatic model download and caching
 
+## Docker setup
+
+`SB_RELEASE=24.04 jc build --skip-tests=all --name test-torchvision torchvision`
+
 ## Model Setup
 
 The default model is `google/gemma-3n-e4b`. Everything is containerized - the model will be automatically downloaded on first run and stored in Docker volumes.
