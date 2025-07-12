@@ -44,6 +44,8 @@ cp .env.example .env
 docker compose up --build
 ```
 
+  -  To recreate, and run in background: `docker compose down && docker compose up --build -d`
+
 The first run will download the model (several GB), which may take 10-30 minutes. Subsequent runs will use the cached model and start in seconds.
 
 ### Managing Model Storage
@@ -68,7 +70,8 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gemma3n",
-    "messages": [{"role": "user", "content": "Hello, how are you?"}]
+    "messages": [{"role": "user", "content": "Hello, how are you?"}],
+    "max_new_tokens": 100
   }'
 
 # With streaming
@@ -77,6 +80,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   -d '{
     "model": "gemma3n",
     "messages": [{"role": "user", "content": "Tell me a story"}],
+    "max_new_tokens": 100,
     "stream": true
   }'
 ```
