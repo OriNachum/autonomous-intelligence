@@ -7,7 +7,7 @@ This ensures the model is available and reduces startup time.
 import os
 import sys
 import torch
-from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoProcessor, Gemma3nForConditionalGeneration
 from huggingface_hub import login
 
 
@@ -44,7 +44,7 @@ def download_model(model_id="google/gemma-3n-e4b"):
         print("\nDownloading model weights...")
         print("This may take several minutes depending on your internet connection...")
         
-        model = AutoModelForVision2Seq.from_pretrained(
+        model = Gemma3nForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=dtype,
             low_cpu_mem_usage=True,

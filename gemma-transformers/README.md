@@ -103,3 +103,13 @@ To send images with your prompts, use the OpenAI format:
 ## Environment Variables
 
 See `.env.example` for all available configuration options.
+
+## Citation
+
+@article{gemma_3n_2025,
+    title={Gemma 3n},
+    url={https://ai.google.dev/gemma/docs/gemma-3n},
+    publisher={Google DeepMind},
+    author={Gemma Team},
+    year={2025}
+}
