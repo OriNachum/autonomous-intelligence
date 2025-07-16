@@ -1,0 +1,23 @@
+# Triton Inference Server with Python backend for Gemma3n
+FROM nvcr.io/nvidia/tritonserver:24.10-py3
+
+# Install Python dependencies for the model
+RUN pip install --upgrade pip && \
+    pip install transformers torch torchvision pillow accelerate sentencepiece protobuf
+
+# Copy model repository
+COPY model_repository /models
+
+# Set environment variables
+ENV MODEL_NAME="google/gemma-3n-e4b"
+ENV HF_HOME=/models/huggingface
+ENV TRANSFORMERS_CACHE=/models/huggingface
+
+# Create cache directory
+RUN mkdir -p /models/huggingface
+
+# Expose Triton ports
+EXPOSE 8000 8001 8002
+
+# Run Triton
+CMD ["tritonserver", "--model-repository=/models", "--strict-model-config=false"]

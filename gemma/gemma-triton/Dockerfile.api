@@ -1,0 +1,22 @@
+# FastAPI server for OpenAI-compatible API
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code
+COPY src/ ./src/
+
+# Environment variables
+ENV TRITON_HTTP_URL="triton:8000"
+ENV TRITON_GRPC_URL="triton:8001"
+ENV API_PORT="8080"
+
+# Expose API port
+EXPOSE 8080
+
+# Run the API server
+CMD ["python", "-m", "uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8080"]

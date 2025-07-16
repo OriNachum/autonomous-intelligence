@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  triton:
+    build:
+      context: .
+      dockerfile: Dockerfile.triton
+    image: gemma-triton:latest
+    container_name: gemma-triton-server
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - MODEL_NAME=google/gemma-3n-e4b
+      - HF_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - ./models:/models
+      - ./model_repository:/models
+    ports:
+      - "8000:8000"  # HTTP
+      - "8001:8001"  # gRPC
+      - "8002:8002"  # Metrics
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: gemma-triton-api:latest
+    container_name: gemma-triton-api
+    environment:
+      - TRITON_HTTP_URL=triton:8000
+      - TRITON_GRPC_URL=triton:8001
+      - API_PORT=8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      triton:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  default:
+    name: gemma-triton-network
