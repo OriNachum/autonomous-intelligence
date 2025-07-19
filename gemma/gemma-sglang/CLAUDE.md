@@ -27,7 +27,7 @@ Based on sibling projects, this should become:
 
 The main build command documented is:
 ```bash
-jc build --skip-tests all --name gemma-3n-sglang sglang
+CUDA_VERSION=12.9 LSB_RELEASE=24.04 jc build --skip-tests all --name gemma-3n-sglang sglang
 ```
 
 Where `jc` refers to jetson-containers build system.
