@@ -1,6 +1,6 @@
 services:
   vllm:
-    image: dustynv/vllm:r36.4.0-cu129
+    image: vllm:r36.4.tegra-aarch64-cp312-cu129-24.04
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all

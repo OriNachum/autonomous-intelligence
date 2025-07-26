@@ -7,6 +7,10 @@ import os
 import sys
 from pathlib import Path
 from huggingface_hub import snapshot_download
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Model configurations
 MODELS = {

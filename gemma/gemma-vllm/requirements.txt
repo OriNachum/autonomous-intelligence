@@ -4,3 +4,4 @@ pillow>=10.0.0
 pydub>=0.25.1
 click>=8.1.0
 huggingface-hub>=0.20.0
+python-dotenv>=1.0.0
