@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Gemma 3n vLLM Demo Runner
-# Simple wrapper to run the demo CLI with docker-compose
+# Simple wrapper to run the demo CLI with docker compose
 
 set -e
 
@@ -36,7 +36,7 @@ check_dependencies() {
         exit 1
     fi
     
-    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    if ! command -v docker compose &> /dev/null && ! docker compose version &> /dev/null; then
         echo -e "${RED}Error: Docker Compose is not installed${NC}"
         exit 1
     fi
@@ -46,17 +46,17 @@ check_vllm_service() {
     echo -e "${YELLOW}Checking if vLLM service is running...${NC}"
     
     # Check if vLLM container is running
-    if ! docker-compose ps vllm | grep -q "Up"; then
+    if ! docker compose ps vllm | grep -q "Up"; then
         echo -e "${YELLOW}vLLM service is not running. Starting it now...${NC}"
         echo "This may take several minutes to download and start the model."
-        docker-compose up -d vllm
+        docker compose up -d vllm
         
         # Wait for health check
         echo "Waiting for vLLM service to be ready..."
         timeout=300  # 5 minutes
         elapsed=0
         while [ $elapsed -lt $timeout ]; do
-            if docker-compose ps vllm | grep -q "healthy"; then
+            if docker compose ps vllm | grep -q "healthy"; then
                 echo -e "${GREEN}vLLM service is ready!${NC}"
                 break
             fi
@@ -67,7 +67,7 @@ check_vllm_service() {
         
         if [ $elapsed -ge $timeout ]; then
             echo -e "${RED}Error: vLLM service failed to start within timeout${NC}"
-            docker-compose logs vllm
+            docker compose logs vllm
             exit 1
         fi
     else
@@ -99,4 +99,4 @@ check_vllm_service
 
 # Run the demo CLI
 echo -e "${GREEN}Running Gemma 3n demo...${NC}"
-docker-compose run --rm demo-cli python demo_cli.py "$@"
+docker compose run --rm demo-cli python demo_cli.py "$@"
