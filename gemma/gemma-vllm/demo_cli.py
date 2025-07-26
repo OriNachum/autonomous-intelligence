@@ -101,7 +101,7 @@ def call_vllm_api(messages: List[Dict[str, Any]]) -> str:
     
     except requests.exceptions.ConnectionError:
         print(f"Error: Could not connect to vLLM server at {VLLM_URL}")
-        print("Make sure the vLLM server is running with: docker-compose up vllm")
+        print("Make sure the vLLM server is running with: docker compose up vllm")
         sys.exit(1)
     except requests.exceptions.Timeout:
         print("Error: Request timed out. The model might be processing a large input.")

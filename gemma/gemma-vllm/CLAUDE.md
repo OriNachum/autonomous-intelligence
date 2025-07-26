@@ -46,5 +46,5 @@ Create a demonstration CLI that:
 1. Accepts command-line arguments for text, audio files, and image files
 2. Processes inputs through vLLM-served Gemma 3n model
 3. Returns text responses
-4. Runs via single script + docker-compose execution
+4. Runs via single script + docker compose execution
 5. Supports all three modalities (text, audio, image)

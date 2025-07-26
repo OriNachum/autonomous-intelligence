@@ -33,7 +33,7 @@ python download_model.py --model fp16
 
 3. **Start Services**:
 ```bash
-docker-compose up -d vllm
+docker compose up -d vllm
 ```
 
 ### Usage
@@ -63,10 +63,10 @@ You can also run the CLI directly:
 
 ```bash
 # Start vLLM service first
-docker-compose up -d vllm
+docker compose up -d vllm
 
 # Run CLI in container
-docker-compose run --rm demo-cli python demo_cli.py --text "Hello world"
+docker compose run --rm demo-cli python demo_cli.py --text "Hello world"
 ```
 
 ## API Endpoints
@@ -98,7 +98,7 @@ gemma-vllm/
 ├── demo_cli.py           # Main CLI script
 ├── run_demo.sh          # Convenience wrapper script  
 ├── download_model.py    # Model download utility
-├── docker-compose.yml   # Docker services configuration
+├── docker compose.yml   # Docker services configuration
 ├── Dockerfile           # CLI container definition
 ├── requirements.txt     # Python dependencies
 ├── .env.sample         # Environment template
@@ -111,13 +111,13 @@ gemma-vllm/
 
 ```bash
 # Check service status
-docker-compose ps
+docker compose ps
 
 # View vLLM logs
-docker-compose logs vllm
+docker compose logs vllm
 
 # Restart services
-docker-compose restart vllm
+docker compose restart vllm
 ```
 
 ### Model Download Issues
@@ -134,7 +134,7 @@ python download_model.py --model fp16
 
 For Jetson devices with limited memory:
 - Use the fp16 model variant
-- Reduce `--max-model-len` in docker-compose.yml
+- Reduce `--max-model-len` in docker compose.yml
 - Monitor GPU memory with `nvidia-smi`
 
 ## Examples Directory
@@ -158,6 +158,6 @@ mkdir -p examples inputs
 To extend or modify the CLI:
 
 1. Edit `demo_cli.py` for CLI functionality
-2. Modify `docker-compose.yml` for service configuration  
+2. Modify `docker compose.yml` for service configuration  
 3. Update `requirements.txt` for new dependencies
 4. Test with `./run_demo.sh`
