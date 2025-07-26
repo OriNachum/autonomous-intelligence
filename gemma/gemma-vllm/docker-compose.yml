@@ -1,0 +1,60 @@
+services:
+  vllm:
+    image: dustynv/vllm:r36.4.0-cu129
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - MODEL_PATH=${MODEL_PATH:-/models/gemma3n}
+      - PORT=8000
+      - HOST=0.0.0.0
+      - HF_TOKEN=${HF_TOKEN}
+      # Jetson-specific optimizations
+      - TORCH_COMPILE_DISABLE=1
+      - TORCHDYNAMO_DISABLE=1
+      - CUDA_VISIBLE_DEVICES=0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/models
+      - /tmp:/tmp
+    command: >
+      python -m vllm.entrypoints.openai.api_server
+      --model /models/gemma3n
+      --host 0.0.0.0
+      --port 8000
+      --trust-remote-code
+      --enforce-eager
+      --disable-log-requests
+      --max-model-len 4096
+      --dtype float16
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  demo-cli:
+    build: .
+    environment:
+      - VLLM_URL=http://vllm:8000
+      - MODEL_NAME=gemma3n
+    depends_on:
+      vllm:
+        condition: service_healthy
+    volumes:
+      - ./examples:/app/examples
+      - ./inputs:/app/inputs
+    working_dir: /app
+    profiles:
+      - cli
+
+volumes:
+  models:
