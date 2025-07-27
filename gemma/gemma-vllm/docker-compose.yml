@@ -19,7 +19,7 @@ services:
       - /tmp:/tmp
     command: >
       python -m vllm.entrypoints.openai.api_server
-      --model /models/gemma3n
+      --model /models/gemma3n-full
       --host 0.0.0.0
       --port 8000
       --trust-remote-code
@@ -27,6 +27,8 @@ services:
       --disable-log-requests
       --max-model-len 4096
       --dtype float16
+      --gpu-memory-utilization 0.8
+      --max-num-batched-tokens 1024
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

@@ -14,6 +14,12 @@ import requests
 from PIL import Image
 import io
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+
 VLLM_URL = os.getenv("VLLM_URL", "http://localhost:8000")
 MODEL_NAME = os.getenv("MODEL_NAME", "gemma3n")
 
@@ -83,12 +89,16 @@ def call_vllm_api(messages: List[Dict[str, Any]]) -> str:
     """Call vLLM OpenAI-compatible API."""
     url = f"{VLLM_URL}/v1/chat/completions"
     
+    # Define a simple chat template for Gemma
+    chat_template = "{% for message in messages %}{% if message['role'] == 'user' %}User: {{ message['content'] }}\n{% elif message['role'] == 'assistant' %}Assistant: {{ message['content'] }}\n{% endif %}{% endfor %}Assistant:"
+    
     payload = {
         "model": MODEL_NAME,
         "messages": messages,
         "max_tokens": 1024,
         "temperature": 0.7,
-        "stream": False
+        "stream": False,
+        "chat_template": chat_template
     }
     
     try:

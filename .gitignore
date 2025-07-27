@@ -19,3 +19,4 @@ baby-tau/*.wav
 ***/codex-config/***
 local-codex/ollama/*
 local-codex/workspace/*
+gemma/gemma-vllm/models/*
