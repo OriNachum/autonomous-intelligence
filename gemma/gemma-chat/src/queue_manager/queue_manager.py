@@ -180,13 +180,44 @@ class QueueManager:
             # Create temporary audio file
             audio_file = os.path.join(self.temp_dir, f"tts_{asyncio.get_event_loop().time()}.wav")
             
-            if self.tts_engine == "kokoro":
+            if self.tts_engine == "piper":
+                # Use Piper TTS
+                # Piper expects model path or will use default
+                model_path = getattr(self.config, 'PIPER_MODEL_PATH', None)
+                
+                # If no model path specified, try default location
+                if not model_path:
+                    default_model = os.path.expanduser("~/piper-voices/en_US-amy-medium.onnx")
+                    if os.path.exists(default_model):
+                        model_path = default_model
+                
+                cmd = ["piper", "--output_file", audio_file]
+                
+                if model_path and os.path.exists(model_path):
+                    cmd.extend(["--model", model_path])
+                else:
+                    self.logger.warning("No Piper model found. Install a model or set PIPER_MODEL_PATH")
+                
+                # Use echo to pipe text to piper
+                full_cmd = f'echo "{text}" | {" ".join(cmd)}'
+                process = await asyncio.create_subprocess_shell(
+                    full_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                
+            elif self.tts_engine == "kokoro":
                 # Use KokoroTTS (placeholder - adjust based on actual API)
                 cmd = [
                     "python", "-m", "kokoro_tts",
                     "--text", text,
                     "--output", audio_file
                 ]
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
             else:
                 # Fallback to espeak
                 cmd = [
@@ -194,17 +225,16 @@ class QueueManager:
                     "-w", audio_file,
                     text
                 ]
-            
-            # Run TTS command
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
             
             stdout, stderr = await process.communicate()
             
             if process.returncode == 0 and os.path.exists(audio_file):
+                self.logger.debug(f"Generated audio file: {audio_file}")
                 return audio_file
             else:
                 self.logger.error(f"TTS generation failed: {stderr.decode()}")

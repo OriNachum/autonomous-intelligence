@@ -10,6 +10,8 @@ A real-time multimodal AI assistant designed to process camera, audio, and text 
 - **Real-time Camera Processing**: GStreamer-based camera feed with YOLOv6 object detection
 - **Advanced Audio Processing**: Voice Activity Detection (VAD) and wake word recognition
 - **Text-to-Speech Queue**: Sentence-level TTS processing with reset capabilities
+  - Support for multiple TTS engines: Piper (neural), Kokoro, eSpeak
+  - High-quality voice synthesis with Piper TTS
 - **Multimodal AI Model**: Gemma 3n integration for simultaneous image, audio, and text processing
 - **Memory System**: Immediate fact distillation and long-term storage (planned)
 
@@ -34,6 +36,7 @@ The system consists of 6 concurrent processing loops:
 - CUDA-capable GPU (optional but recommended)
 - Docker and Docker Compose (for containerized deployment)
 - **Gemma Transformers API Server** running on localhost:8000 (see ../gemma-transformers)
+- **Piper TTS** (optional, for high-quality speech synthesis)
 
 ### Quick Setup
 
@@ -50,6 +53,37 @@ chmod +x scripts/setup.sh
 
 ```bash
 pip install -r requirements.txt
+```
+
+#### Installing Piper TTS (Optional)
+
+Piper provides high-quality, fast neural text-to-speech:
+
+**Quick Install (Recommended):**
+```bash
+# Run the install script
+./install_piper.sh
+```
+
+**Manual Install:**
+```bash
+# For x86_64 systems
+wget https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_linux_x86_64.tar.gz
+tar -xzf piper_linux_x86_64.tar.gz
+
+# For ARM64/Jetson systems  
+wget https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_arm64.tar.gz
+tar -xzf piper_arm64.tar.gz
+
+# Install binary
+sudo cp piper /usr/local/bin/
+sudo chmod +x /usr/local/bin/piper
+
+# Download a voice model (example: US English voice)
+mkdir -p ~/piper-voices
+cd ~/piper-voices
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json
 ```
 
 #### Hardware Setup
@@ -79,7 +113,8 @@ Configuration can be set via environment variables or the `Config` class:
 export GEMMA_CAMERA_DEVICE=0
 export GEMMA_AUDIO_SAMPLE_RATE=16000
 export GEMMA_WAKE_WORDS="Gemma,Hey Gemma"
-export GEMMA_TTS_ENGINE="kokoro"
+export GEMMA_TTS_ENGINE="piper"  # Options: piper, kokoro, espeak
+export GEMMA_PIPER_MODEL_PATH="/path/to/model.onnx"  # Optional
 ```
 
 ## Usage

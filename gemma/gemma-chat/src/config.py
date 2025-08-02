@@ -42,9 +42,10 @@ class Config:
     NEO4J_PASSWORD: str = "password"
     
     # TTS
-    TTS_ENGINE: str = "kokoro"
+    TTS_ENGINE: str = "piper"  # Options: "piper", "kokoro", "espeak"
     TTS_QUEUE_MAX_SIZE: int = 10
     TTS_MAX_TOKENS: int = 500
+    PIPER_MODEL_PATH: str = ""  # Path to Piper model file (optional)
     
     # Logging
     LOG_LEVEL: str = "INFO"
