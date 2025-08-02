@@ -3,6 +3,7 @@ asyncio
 asyncio-queue
 python-socketio
 aiofiles
+aiohttp
 numpy
 opencv-python
 gstreamer-python

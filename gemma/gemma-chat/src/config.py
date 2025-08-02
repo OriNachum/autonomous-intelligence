@@ -25,10 +25,12 @@ class Config:
     VAD_MODEL_PATH: str = "silero_vad"
     WAKE_WORDS: list = ("Gemma", "Hey Gemma")
     
-    # AI Model
-    MODEL_NAME: str = "gemma-3n"
-    MODEL_CACHE_DIR: str = "./models"
+    # AI Model API
+    API_URL: str = "http://localhost:8000"
+    MODEL_NAME: str = "gemma3n"
     MAX_HISTORY: int = 20
+    MAX_NEW_TOKENS: int = 100
+    TEMPERATURE: float = 0.7
     RESPONSE_TARGET_MS: int = 400
     
     # Memory System

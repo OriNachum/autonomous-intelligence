@@ -96,6 +96,7 @@ class MainLoop:
         await self.event_consumer.stop_consuming()
         await self.response_processor.disconnect()
         await self.memory_manager.stop()
+        await self.model_interface.cleanup()
         
         self.logger.info("Main loop stopped")
     

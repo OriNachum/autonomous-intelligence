@@ -1,21 +1,14 @@
-"""Model interface for Gemma 3n multimodal model"""
+"""Model interface for Gemma 3n multimodal model via OpenAI API"""
 
 import logging
 import asyncio
 from typing import Dict, Any, List, Optional, Tuple
-import numpy as np
 import time
 import base64
 import io
+import json
 from PIL import Image
-
-try:
-    import torch
-    from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
-    TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    TRANSFORMERS_AVAILABLE = False
-    logging.warning("Transformers not available, using mock model")
+import aiohttp
 
 from ..config import Config
 
@@ -26,15 +19,15 @@ class ModelInterface:
         self.config = config
         self.logger = logging.getLogger(__name__)
         
-        # Model configuration
-        self.model_name = config.MODEL_NAME
-        self.model_cache_dir = config.MODEL_CACHE_DIR
-        self.max_history = config.MAX_HISTORY
+        # API configuration
+        self.api_url = getattr(config, 'API_URL', 'http://localhost:8000')
+        self.model_name = "gemma3n"
+        self.max_history = getattr(config, 'MAX_HISTORY', 10)
+        self.max_new_tokens = getattr(config, 'MAX_NEW_TOKENS', 100)
+        self.temperature = getattr(config, 'TEMPERATURE', 0.7)
         
-        # Model components
-        self.model = None
-        self.tokenizer = None
-        self.processor = None
+        # HTTP session for API calls
+        self.session = None
         
         # Conversation history
         self.conversation_history: List[Dict[str, Any]] = []
@@ -45,42 +38,30 @@ class ModelInterface:
         self.total_inference_time = 0
         self.last_inference_time = 0
         
-        # Initialize model
-        self._initialize_model()
+        # API health status
+        self.api_healthy = False
     
-    def _initialize_model(self):
-        """Initialize the multimodal model"""
+    async def _initialize_session(self):
+        """Initialize HTTP session and check API health"""
+        if self.session is None:
+            self.session = aiohttp.ClientSession()
+        
         try:
-            if not TRANSFORMERS_AVAILABLE:
-                self.logger.warning("Transformers not available, using mock model")
-                return
-            
-            # Load model and tokenizer
-            # Note: This is a placeholder - actual Gemma 3n model loading would be different
-            self.logger.info(f"Loading model: {self.model_name}")
-            
-            # For now, use a basic language model as placeholder
-            # In production, this would be the actual Gemma 3n multimodal model
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                "microsoft/DialoGPT-medium",
-                cache_dir=self.model_cache_dir
-            )
-            
-            self.model = AutoModelForCausalLM.from_pretrained(
-                "microsoft/DialoGPT-medium",
-                cache_dir=self.model_cache_dir
-            )
-            
-            # Set padding token
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-            
-            self.logger.info("Model loaded successfully")
-            
+            async with self.session.get(f"{self.api_url}/health", timeout=5) as response:
+                if response.status == 200:
+                    self.api_healthy = True
+                    self.logger.info(f"Connected to API at {self.api_url}")
+                else:
+                    self.api_healthy = False
+                    self.logger.warning(f"API health check failed: {response.status}")
         except Exception as e:
-            self.logger.error(f"Error loading model: {e}")
-            self.model = None
-            self.tokenizer = None
+            self.api_healthy = False
+            self.logger.error(f"Failed to connect to API: {e}")
+    
+    async def _ensure_session(self):
+        """Ensure HTTP session is initialized"""
+        if self.session is None or not self.api_healthy:
+            await self._initialize_session()
     
     def _get_system_prompt(self) -> str:
         """Get system prompt for Gemma"""
@@ -166,41 +147,50 @@ Current capabilities:
         return f"Image of size {image.size[0]}x{image.size[1]}"
     
     async def _generate_response(self, input_data: Dict[str, Any]) -> str:
-        """Generate response from input data"""
-        if self.model is None or self.tokenizer is None:
+        """Generate response from input data using OpenAI API"""
+        await self._ensure_session()
+        
+        if not self.api_healthy:
             return self._mock_response(input_data)
         
         try:
-            # Prepare conversation context
-            context = self._build_context(input_data)
+            # Build messages for OpenAI API format
+            messages = self._build_openai_messages(input_data)
             
-            # Tokenize input
-            inputs = self.tokenizer.encode(context, return_tensors="pt")
+            # Prepare API request
+            payload = {
+                "model": self.model_name,
+                "messages": messages,
+                "max_new_tokens": self.max_new_tokens,
+                "temperature": self.temperature,
+                "stream": False
+            }
             
-            # Generate response
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    inputs,
-                    max_length=inputs.shape[1] + 100,
-                    num_return_sequences=1,
-                    temperature=0.7,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    do_sample=True
-                )
+            # Make API request
+            async with self.session.post(
+                f"{self.api_url}/v1/chat/completions",
+                json=payload,
+                timeout=30
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    if 'choices' in result and len(result['choices']) > 0:
+                        content = result['choices'][0]['message']['content']
+                        return content.strip()
+                    else:
+                        self.logger.warning("No choices in API response")
+                        return "I apologize, but I didn't receive a proper response."
+                else:
+                    error_text = await response.text()
+                    self.logger.error(f"API request failed: {response.status} - {error_text}")
+                    return "I apologize, but I'm having trouble connecting to the model right now."
             
-            # Decode response
-            response = self.tokenizer.decode(outputs[0][inputs.shape[1]:], skip_special_tokens=True)
-            
-            # Clean up response
-            response = response.strip()
-            if not response:
-                response = "I understand."
-            
-            return response
-            
+        except asyncio.TimeoutError:
+            self.logger.error("API request timed out")
+            return "I apologize, but the response is taking too long. Please try again."
         except Exception as e:
-            self.logger.error(f"Error generating response: {e}")
-            return "I apologize, but I'm having trouble generating a response right now."
+            self.logger.error(f"Error calling API: {e}")
+            return "I apologize, but I encountered an error processing your request."
     
     def _mock_response(self, input_data: Dict[str, Any]) -> str:
         """Mock response for testing"""
@@ -232,58 +222,89 @@ Current capabilities:
         import random
         return random.choice(responses)
     
-    def _build_context(self, input_data: Dict[str, Any]) -> str:
-        """Build conversation context for the model"""
-        context_parts = [self.system_prompt]
+    def _build_openai_messages(self, input_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Build messages array for OpenAI API format"""
+        messages = []
         
-        # Add memory context if available
-        context = input_data.get('context', {})
-        if context.get('relevant_facts'):
-            context_parts.append("\nRelevant facts from memory:")
-            for fact in context['relevant_facts'][:5]:  # Top 5 relevant facts
-                context_parts.append(f"- {fact}")
-        
-        if context.get('important_facts'):
-            context_parts.append("\nImportant facts to remember:")
-            for fact in context['important_facts']:
-                context_parts.append(f"- {fact}")
-        
-        if context.get('long_term_facts'):
-            context_parts.append("\nRelevant long-term memories:")
-            for fact in context['long_term_facts']:
-                context_parts.append(f"- {fact}")
+        # Add system message with context
+        system_content = self._build_system_content(input_data)
+        messages.append({"role": "system", "content": system_content})
         
         # Add recent conversation history
         for msg in self.conversation_history[-5:]:  # Last 5 messages
             if msg['type'] == 'user':
-                context_parts.append(f"User: {msg['content']}")
+                messages.append({"role": "user", "content": msg['content']})
             elif msg['type'] == 'assistant':
-                context_parts.append(f"Assistant: {msg['content']}")
+                messages.append({"role": "assistant", "content": msg['content']})
+        
+        # Add current user input
+        user_content = self._build_user_content(input_data)
+        if user_content:
+            messages.append({"role": "user", "content": user_content})
+        
+        return messages
+    
+    def _build_system_content(self, input_data: Dict[str, Any]) -> str:
+        """Build system message content with context"""
+        content_parts = [self.system_prompt]
+        
+        # Add memory context if available
+        context = input_data.get('context', {})
+        if context.get('relevant_facts'):
+            content_parts.append("\nRelevant facts from memory:")
+            for fact in context['relevant_facts'][:5]:  # Top 5 relevant facts
+                content_parts.append(f"- {fact}")
+        
+        if context.get('important_facts'):
+            content_parts.append("\nImportant facts to remember:")
+            for fact in context['important_facts']:
+                content_parts.append(f"- {fact}")
+        
+        if context.get('long_term_facts'):
+            content_parts.append("\nRelevant long-term memories:")
+            for fact in context['long_term_facts']:
+                content_parts.append(f"- {fact}")
         
         # Add current multimodal input context
         if context.get('wake_word_active'):
-            context_parts.append(f"\nNote: User activated with wake word '{context.get('wake_word', 'unknown')}'")
+            content_parts.append(f"\nNote: User activated with wake word '{context.get('wake_word', 'unknown')}'")
         
         if context.get('detections'):
             detected_objects = [d.get('class_name') for d in context['detections']]
             if detected_objects:
-                context_parts.append(f"Currently visible: {', '.join(detected_objects)}")
+                content_parts.append(f"Currently visible: {', '.join(detected_objects)}")
         
-        # Add current input
-        current_input = []
+        return "\n".join(content_parts)
+    
+    def _build_user_content(self, input_data: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+        """Build user message content for multimodal input"""
+        content = []
+        
+        # Add text content
         if input_data.get('text'):
-            current_input.append(f"Text: {input_data['text']}")
-        if input_data.get('image_description'):
-            current_input.append(f"Image: {input_data['image_description']}")
+            content.append({"type": "text", "text": input_data['text']})
+        
+        # Add image content if available
+        if input_data.get('image'):
+            try:
+                # Convert PIL Image to base64
+                buffered = io.BytesIO()
+                input_data['image'].save(buffered, format="JPEG")
+                img_str = base64.b64encode(buffered.getvalue()).decode()
+                
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{img_str}"}
+                })
+            except Exception as e:
+                self.logger.error(f"Error encoding image: {e}")
+                content.append({"type": "text", "text": "[Image could not be processed]"})
+        
+        # Add audio description if available
         if input_data.get('audio_description'):
-            current_input.append(f"Audio: {input_data['audio_description']}")
+            content.append({"type": "text", "text": f"[Audio: {input_data['audio_description']}]"})
         
-        if current_input:
-            context_parts.append(f"User: {' | '.join(current_input)}")
-        
-        context_parts.append("Assistant:")
-        
-        return "\n".join(context_parts)
+        return content if content else None
     
     def _update_conversation_history(self, input_data: Dict[str, Any], response: str):
         """Update conversation history"""
@@ -330,11 +351,20 @@ Current capabilities:
         
         return {
             'model_name': self.model_name,
-            'model_loaded': self.model is not None,
+            'api_url': self.api_url,
+            'api_healthy': self.api_healthy,
             'inference_count': self.inference_count,
             'total_inference_time': self.total_inference_time,
             'avg_inference_time': avg_inference_time,
             'last_inference_time': self.last_inference_time,
             'conversation_length': len(self.conversation_history),
-            'max_history': self.max_history
+            'max_history': self.max_history,
+            'max_new_tokens': self.max_new_tokens,
+            'temperature': self.temperature
         }
+    
+    async def cleanup(self):
+        """Cleanup resources"""
+        if self.session:
+            await self.session.close()
+            self.session = None

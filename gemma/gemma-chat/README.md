@@ -33,6 +33,7 @@ The system consists of 6 concurrent processing loops:
 - Camera, microphone, speakers
 - CUDA-capable GPU (optional but recommended)
 - Docker and Docker Compose (for containerized deployment)
+- **Gemma Transformers API Server** running on localhost:8000 (see ../gemma-transformers)
 
 ### Quick Setup
 
@@ -85,7 +86,14 @@ export GEMMA_TTS_ENGINE="kokoro"
 
 ### Quick Start
 
-#### Native Python
+#### 1. Start the Gemma Transformers API Server
+First, start the OpenAI-compatible API server in the gemma-transformers directory:
+```bash
+cd ../gemma-transformers
+docker compose up --build
+```
+
+#### 2. Start Gemma Chat
 ```bash
 ./run_gemma.py
 ```

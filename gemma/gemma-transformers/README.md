@@ -58,7 +58,7 @@ docker volume inspect gemma3n-hf-cache
 
 Remove cached models (to re-download):
 ```bash
-docker-compose down -v  # Removes all volumes
+docker compose down -v  # Removes all volumes
 # OR
 docker volume rm gemma3n-hf-cache  # Remove only model cache
 ```
