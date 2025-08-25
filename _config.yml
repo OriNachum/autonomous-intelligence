@@ -1,0 +1,18 @@
+# _config.yml
+title: Agentic Developer Mcp
+description: An MCP server that scales development into controllable agentic, recursive flows, and build a feature from bottom-up.
+baseurl: "/autonomous-intelligence" # Or "" if it's a user/org page like your-username.github.io
+url: "https://OriNachum.github.io"
+
+plugins:
+  - jekyll-seo-tag
+
+# Add Google Site Verification
+webmaster_verifications:
+  google: SAWMasZ1hKCZm8hnk0xFUgqnFYYPgdrKG8jKuTJa6a0
+  # You can also add codes for Bing, Yandex, Baidu, and Facebook App ID here
+  # bing: YOUR_BING_CODE
+  # yandex: YOUR_YANDEX_CODE
+  # baidu: YOUR_BAIDU_CODE
+  # facebook_app_id: YOUR_FACEBOOK_APP_ID
+  # facebook_admins: YOUR_FACEBOOK_USER_ID
