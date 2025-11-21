@@ -1,0 +1,13 @@
+{
+  "name": "get_power_state",
+  "description": "Get the current power state of the robot.\n\nReturns whether the robot is powered on or off.",
+  "parameters": {
+    "required": [],
+    "optional": []
+  },
+  "execution": {
+    "type": "script",
+    "script_file": "get_power_state.py"
+  }
+}
+

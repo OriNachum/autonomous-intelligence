@@ -1,0 +1,5 @@
+pyaudio==0.2.14
+webrtcvad==2.0.10
+numpy==2.3.4
+python-dotenv==1.0.0
+faster-whisper

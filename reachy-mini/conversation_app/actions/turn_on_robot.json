@@ -1,0 +1,20 @@
+{
+  "name": "turn_on_robot",
+  "description": "Turn on the robot's motors and activate all systems.\n\nThis powers up the robot and makes it ready to receive movement commands.",
+  "parameters": {
+    "required": [],
+    "optional": [
+      {
+        "name": "speech",
+        "type": "string",
+        "default": null,
+        "description": "Optional text to speak via TTS after turning on robot"
+      }
+    ]
+  },
+  "execution": {
+    "type": "script",
+    "script_file": "turn_on_robot.py"
+  }
+}
+

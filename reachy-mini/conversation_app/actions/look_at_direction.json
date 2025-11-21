@@ -1,0 +1,26 @@
+{
+  "name": "look_at_direction",
+  "description": "Make the robot look in a specific direction.\n\nThis moves the head to look in the specified direction.",
+  "parameters": {
+    "required": [
+      {
+        "name": "direction",
+        "type": "string",
+        "description": "One of: 'up', 'down', 'left', 'right', 'forward'"
+      }
+    ],
+    "optional": [
+      {
+        "name": "duration",
+        "type": "number",
+        "default": 2.0,
+        "description": "Duration of the movement in seconds"
+      }
+    ]
+  },
+  "execution": {
+    "type": "script",
+    "script_file": "look_at_direction.py"
+  }
+}
+

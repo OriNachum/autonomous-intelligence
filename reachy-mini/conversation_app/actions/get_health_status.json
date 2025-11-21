@@ -1,0 +1,13 @@
+{
+  "name": "get_health_status",
+  "description": "Get the overall health status of the robot.\n\nReturns information about system health, temperature, and any warnings.",
+  "parameters": {
+    "required": [],
+    "optional": []
+  },
+  "execution": {
+    "type": "script",
+    "script_file": "get_health_status.py"
+  }
+}
+
