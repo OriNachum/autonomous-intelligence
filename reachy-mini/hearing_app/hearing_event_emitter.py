@@ -195,19 +195,34 @@ class HearingEventEmitter:
             # Check if this is the ReSpeaker device with 2 channels (AEC support)
             device_info = self.p.get_device_info_by_index(self.input_device_index)
             max_channels = device_info.get('maxInputChannels', 1)
+            device_name_lower = device_info['name'].lower()
             
+            # ONLY support reachy devices with 2 channels
             # ReSpeaker XVF3800 has 2 channels:
             # Channel 0: AEC-processed microphone (echo-cancelled)
             # Channel 1: Reference/playback signal
             # We need to record both channels but will use only channel 0
-            if 'reachy' in device_info['name'].lower() and max_channels >= 2:
-                self.num_channels = 2
-                self.use_aec_channel = True
-                logger.info("Using 'reachy' with 2-channel AEC mode (will use channel 0 for echo cancellation)")
-            else:
-                self.num_channels = 1
-                self.use_aec_channel = False
-                logger.info("Using single-channel mode")
+            if 'reachy' not in device_name_lower:
+                error_msg = (
+                    f"Unsupported audio device: '{device_info['name']}'. "
+                    f"Only 'reachy' devices are supported. "
+                    f"Please use --device reachy or set AUDIO_DEVICE_NAME=reachy"
+                )
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            
+            if max_channels < 2:
+                error_msg = (
+                    f"Device '{device_info['name']}' has {max_channels} channel(s), but 2 channels are required. "
+                    f"Please ensure you're using a ReSpeaker XVF3800 device with 2-channel AEC support."
+                )
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            
+            # Valid reachy device with 2 channels
+            self.num_channels = 2
+            self.use_aec_channel = True
+            logger.info(f"Using reachy device '{device_info['name']}' with 2-channel AEC mode (will use channel 0 for echo cancellation)")
             
             self.stream = self.p.open(
                 format=pyaudio.paInt16,
