@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+
+# Data and Models
+data/
+huggingface_cache/
+
+# System
+.DS_Store
