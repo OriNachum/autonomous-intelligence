@@ -23,8 +23,8 @@ from .actions_queue import AsyncActionsQueue
 logger = logging.getLogger(__name__)
 
 # Configuration
-CHAT_COMPLETIONS_URL = "http://localhost:8200/v1/chat/completions"
-MODEL_NAME = "RedHatAI/Llama-3.2-3B-Instruct-FP8"
+CHAT_COMPLETIONS_URL = os.environ.get("VLLM_ACTION_URL", "http://localhost:8200/v1/chat/completions")
+MODEL_NAME = os.environ.get("MODEL_ID", "RedHatAI/Llama-3.2-3B-Instruct-FP8")
 
 
 class ActionHandler:

@@ -51,8 +51,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-CHAT_COMPLETIONS_URL = "http://localhost:8100/v1/chat/completions"
-MODEL_NAME = "RedHatAI/Llama-3.2-3B-Instruct-FP8"
+CHAT_COMPLETIONS_URL = os.environ.get("VLLM_FRONT_URL", "http://localhost:8100/v1/chat/completions")
+MODEL_NAME = os.environ.get("MODEL_ID", "RedHatAI/Llama-3.2-3B-Instruct-FP8")
 AGENT_TEMPERATURE = 0.3
 
 class ConversationApp:

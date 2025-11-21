@@ -14,7 +14,7 @@ services:
     container_name: vllm-llama-3.2-3b-server-front
     restart: unless-stopped
     ports:
-      - "8100:8100"  # Expose vLLM API server on port 8100
+      - "${VLLM_FRONT_PORT}:8100"  # Expose vLLM API server on port 8100
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - CUDA_VISIBLE_DEVICES=0
@@ -30,9 +30,9 @@ services:
               capabilities: [gpu]
     command: >
       sh -c "
-      hf auth login --token ${HF_TOKEN} &&
-      hf download RedHatAI/Llama-3.2-3B-Instruct-FP8 --cache-dir /root/.cache/huggingface &&
-      vllm serve RedHatAI/Llama-3.2-3B-Instruct-FP8
+      hf auth login --token ${HF_TOKEN} --add-to-git-credential &&
+      hf download ${MODEL_ID} --cache-dir /root/.cache/huggingface &&
+      vllm serve ${MODEL_ID}
       --kv-cache-dtype fp8
       --max-num-seqs 1024
       --max-num-batched-tokens 32768
@@ -50,7 +50,7 @@ services:
       --port 8100
       "
     volumes:
-      - huggingface_cache:/root/.cache/huggingface  # Cache models locally
+      - ./data/huggingface_cache:/root/.cache/huggingface  # Cache models locally
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
       interval: 30s
@@ -65,7 +65,7 @@ services:
     container_name: vllm-llama-3.2-3b-server-action
     restart: unless-stopped
     ports:
-      - "8200:8200"  # Expose vLLM API server on port 8200
+      - "${VLLM_ACTION_PORT}:8200"  # Expose vLLM API server on port 8200
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - CUDA_VISIBLE_DEVICES=0
@@ -81,9 +81,9 @@ services:
               capabilities: [gpu]
     command: >
       sh -c "
-      hf auth login --token ${HF_TOKEN} &&
-      hf download RedHatAI/Llama-3.2-3B-Instruct-FP8 --cache-dir /root/.cache/huggingface &&
-      vllm serve RedHatAI/Llama-3.2-3B-Instruct-FP8
+      hf auth login --token ${HF_TOKEN} --add-to-git-credential &&
+      hf download ${MODEL_ID} --cache-dir /root/.cache/huggingface &&
+      vllm serve ${MODEL_ID}
       --kv-cache-dtype fp8
       --max-num-seqs 1024
       --max-num-batched-tokens 8192
@@ -101,7 +101,7 @@ services:
       --port 8200
       "
     volumes:
-      - huggingface_cache:/root/.cache/huggingface  # Cache models locally
+      - ./data/huggingface_cache:/root/.cache/huggingface  # Cache models locally
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8200/health"]
       interval: 30s
@@ -181,6 +181,9 @@ services:
       - PYTHONUNBUFFERED=1
       - REACHY_BASE_URL=http://localhost:8000  # Daemon URL (accessible via host network mode)
       - AUDIO_DEVICE=plughw:CARD=Audio,DEV=0  # Use Reachy Mini Audio for TTS output
+      - MODEL_ID=${MODEL_ID}
+      - VLLM_FRONT_URL=${VLLM_FRONT_URL}
+      - VLLM_ACTION_URL=${VLLM_ACTION_URL}
     command: >
       sh -c "
       apt-get update -qq &&
@@ -203,7 +206,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-volumes:
-  huggingface_cache:
-    driver: local
