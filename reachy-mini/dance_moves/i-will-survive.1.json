@@ -1,0 +1,93 @@
+// Sing the full I will survive song, first I was afraid, etc. and dance your antennas while you do
+
+{
+  "commands": [
+    {
+      "tool_name": "express_emotion",
+      "parameters": {
+        "emotion": "surprised",
+        "speech": "I will survive!"
+      }
+    },
+    {
+      "tool_name": "move_antennas",
+      "parameters": {
+        "left": 30,
+        "right": -30,
+        "duration": 1.5
+      }
+    },
+    {
+      "tool_name": "move_head",
+      "parameters": {
+        "z": 10,
+        "duration": 2.0,
+        "speech": "I will survive!"
+      }
+    },
+    {
+      "tool_name": "move_head",
+      "parameters": {
+        "y": 5,
+        "duration": 1.0,
+        "speech": "I will survive!"
+      }
+    },
+    {
+      "tool_name": "move_head",
+      "parameters": {
+        "x": 10,
+        "duration": 1.0,
+        "speech": "I will survive!"
+      }
+    },
+    {
+      "tool_name": "move_head",
+      "parameters": {
+        "z": -10,
+        "duration": 1.0,
+        "speech": "I will survive!"
+      }
+    },
+    {
+      "tool_name": "move_head",
+      "parameters": {
+        "y": -5,
+        "duration": 1.0,
+        "speech": "I will survive!"
+      }
+    },
+    {
+      "tool_name": "move_head",
+      "parameters": {
+        "x": -10,
+        "duration": 1.0,
+        "speech": "I will survive!"
+      }
+    },
+    {
+      "tool_name": "move_head",
+      "parameters": {
+        "z": 10,
+        "duration": 2.0,
+        "speech": "I will survive!"
+      }
+    },
+    {
+      "tool_name": "move_antennas",
+      "parameters": {
+        "left": -30,
+        "right": 30,
+        "duration": 1.5
+      }
+    },
+    {
+      "tool_name": "look_at_direction",
+      "parameters": {
+        "direction": "up",
+        "duration": 1.0,
+        "speech": "I will survive!"
+      }
+    }
+  ]
+}

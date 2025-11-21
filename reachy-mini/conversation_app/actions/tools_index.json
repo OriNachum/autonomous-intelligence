@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "description": "Repository of dynamically loaded tools for Reachy Mini MCP Server",
+  "tools": [
+    {
+      "name": "get_robot_state",
+      "enabled": true,
+      "definition_file": "get_robot_state.json"
+    },
+    {
+      "name": "get_head_state",
+      "enabled": true,
+      "definition_file": "get_head_state.json"
+    },
+    {
+      "name": "move_head",
+      "enabled": true,
+      "definition_file": "move_head.json"
+    },
+    {
+      "name": "reset_head",
+      "enabled": true,
+      "definition_file": "reset_head.json"
+    },
+    {
+      "name": "nod_head",
+      "enabled": true,
+      "definition_file": "nod_head.json"
+    },
+    {
+      "name": "shake_head",
+      "enabled": true,
+      "definition_file": "shake_head.json"
+    },
+    {
+      "name": "tilt_head",
+      "enabled": true,
+      "definition_file": "tilt_head.json"
+    },
+    {
+      "name": "get_antennas_state",
+      "enabled": true,
+      "definition_file": "get_antennas_state.json"
+    },
+    {
+      "name": "move_antennas",
+      "enabled": true,
+      "definition_file": "move_antennas.json"
+    },
+    {
+      "name": "reset_antennas",
+      "enabled": true,
+      "definition_file": "reset_antennas.json"
+    },
+    {
+      "name": "turn_on_robot",
+      "enabled": true,
+      "definition_file": "turn_on_robot.json"
+    },
+    {
+      "name": "turn_off_robot",
+      "enabled": true,
+      "definition_file": "turn_off_robot.json"
+    },
+    {
+      "name": "get_power_state",
+      "enabled": true,
+      "definition_file": "get_power_state.json"
+    },
+    {
+      "name": "stop_all_movements",
+      "enabled": true,
+      "definition_file": "stop_all_movements.json"
+    },
+    {
+      "name": "express_emotion",
+      "enabled": true,
+      "definition_file": "express_emotion.json"
+    },
+    {
+      "name": "look_at_direction",
+      "enabled": true,
+      "definition_file": "look_at_direction.json"
+    },
+    {
+      "name": "perform_gesture",
+      "enabled": true,
+      "definition_file": "perform_gesture.json"
+    },
+    {
+      "name": "get_health_status",
+      "enabled": true,
+      "definition_file": "get_health_status.json"
+    }
+  ]
+}
+
+

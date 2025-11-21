@@ -1,0 +1,20 @@
+{
+  "name": "perform_gesture",
+  "description": "Perform a predefined gesture sequence.\n\nThis executes a sequence of movements to perform the specified gesture.",
+  "parameters": {
+    "required": [
+      {
+        "name": "gesture",
+        "type": "string",
+        "description": "One of: 'greeting', 'yes', 'no', 'thinking', 'celebration'"
+      }
+    ],
+    "optional": []
+  },
+  "execution": {
+    "type": "script",
+    "script_file": "perform_gesture.py"
+  }
+}
+
+

@@ -1,0 +1,27 @@
+{
+  "name": "nod_head",
+  "description": "Make the robot nod its head (pitch up and down).\n\nThis performs a nod gesture by pitching the head forward and then back to neutral.",
+  "parameters": {
+    "required": [],
+    "optional": [
+      {
+        "name": "duration",
+        "type": "number",
+        "default": 1.0,
+        "description": "Duration for each movement in seconds"
+      },
+      {
+        "name": "angle",
+        "type": "number",
+        "default": 15.0,
+        "description": "Angle to pitch in degrees (default 15 degrees)"
+      }
+    ]
+  },
+  "execution": {
+    "type": "script",
+    "script_file": "nod_head.py"
+  }
+}
+
+

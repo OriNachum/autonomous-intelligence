@@ -1,0 +1,208 @@
+services:
+  cleanup:
+    image: alpine:latest
+    container_name: system-cleanup
+    privileged: true
+    command: sh -c "sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Cache cleanup completed'"
+    volumes:
+      - /proc:/proc
+    
+  vllm-server-front:
+    env_file:
+      - .env
+    image: nvcr.io/nvidia/vllm:25.10-py3
+    container_name: vllm-llama-3.2-3b-server-front
+    restart: unless-stopped
+    ports:
+      - "${VLLM_FRONT_PORT}:8100"  # Expose vLLM API server on port 8100
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+      - HF_TOKEN=${HF_TOKEN}  # Set your Hugging Face token in .env file or export it
+      # SET THIS IN YOUR DOCKER-COMPOSE ENVIRONMENT:
+      - VLLM_ATTENTION_BACKEND=FLASHINFER
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: >
+      sh -c "
+      hf auth login --token ${HF_TOKEN} --add-to-git-credential &&
+      hf download ${MODEL_ID} --cache-dir /root/.cache/huggingface &&
+      vllm serve ${MODEL_ID}
+      --kv-cache-dtype fp8
+      --max-num-seqs 1024
+      --max-num-batched-tokens 32768
+      --max-model-len 65536
+      --tensor-parallel-size 1 
+      --gpu-memory-utilization 0.4
+      --enable-prefix-caching 
+      --enable-chunked-prefill 
+      --host 0.0.0.0 
+      --trust-remote-code 
+      --enable-auto-tool-choice
+      --tool-call-parser llama3_json
+      --disable-fastapi-docs 
+      --download-dir /data/models/huggingface 
+      --port 8100
+      "
+    volumes:
+      - ./data/huggingface_cache:/root/.cache/huggingface  # Cache models locally
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  vllm-server-action:
+    env_file:
+      - .env
+    image: nvcr.io/nvidia/vllm:25.10-py3
+    container_name: vllm-llama-3.2-3b-server-action
+    restart: unless-stopped
+    ports:
+      - "${VLLM_ACTION_PORT}:8200"  # Expose vLLM API server on port 8200
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+      - HF_TOKEN=${HF_TOKEN}  # Set your Hugging Face token in .env file or export it
+      # SET THIS IN YOUR DOCKER-COMPOSE ENVIRONMENT:
+      - VLLM_ATTENTION_BACKEND=FLASHINFER
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: >
+      sh -c "
+      hf auth login --token ${HF_TOKEN} --add-to-git-credential &&
+      hf download ${MODEL_ID} --cache-dir /root/.cache/huggingface &&
+      vllm serve ${MODEL_ID}
+      --kv-cache-dtype fp8
+      --max-num-seqs 1024
+      --max-num-batched-tokens 8192
+      --max-model-len 16384
+      --tensor-parallel-size 1 
+      --gpu-memory-utilization 0.12
+      --enable-prefix-caching 
+      --enable-chunked-prefill 
+      --host 0.0.0.0 
+      --trust-remote-code 
+      --enable-auto-tool-choice
+      --tool-call-parser llama3_json
+      --disable-fastapi-docs 
+      --download-dir /data/models/huggingface 
+      --port 8200
+      "
+    volumes:
+      - ./data/huggingface_cache:/root/.cache/huggingface  # Cache models locally
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8200/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  reachy-daemon:
+    image: reachy-daemon-thor:r38.2.aarch64-cu130-24.04
+    container_name: reachy-mini-daemon
+    restart: unless-stopped
+    privileged: true  # Required for USB device access
+    network_mode: host  # To expose daemon on localhost:8000
+    devices:
+      - /dev/bus/usb:/dev/bus/usb  # USB devices for robot connection
+    volumes:
+      - .:/app  # Mount project for requirements.txt
+      - /dev:/dev  # Device access
+    working_dir: /app
+    environment:
+      - PYTHONUNBUFFERED=1
+    stop_signal: SIGTERM  # Send SIGTERM for graceful shutdown
+    stop_grace_period: 15s  # Allow 15 seconds for graceful shutdown
+    command: ["/bin/bash", "/app/start_daemon.sh"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/daemon/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  reachy-hearing:
+    image: reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
+    container_name: reachy-hearing-service
+    restart: unless-stopped
+    privileged: true  # Required for audio device access
+    devices:
+      - /dev/snd:/dev/snd  # Audio devices
+    volumes:
+      - ./hearing_app:/app
+      - /tmp/reachy_sockets:/tmp/reachy_sockets  # Shared socket directory
+      - /dev/shm:/dev/shm  # Shared memory for audio buffers
+    working_dir: /app
+    environment:
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native  # Optional: PulseAudio
+    command: >
+      sh -c "
+      apt-get update -qq &&
+      apt-get install -y -qq portaudio*-dev libgl1 libusb-1.0-0 git &&
+      pip install --no-cache-dir -q -r /app/requirements.txt &&
+      python3 hearing_event_emitter.py --device Reachy --language en
+      "
+    depends_on:
+      reachy-daemon:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-S", "/tmp/reachy_sockets/hearing.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  reachy-conversation:
+    image: reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
+    container_name: reachy-conversation-app
+    restart: unless-stopped
+    network_mode: host  # To access localhost:8100 vLLM server
+    privileged: true  # Required for audio device access
+    devices:
+      - /dev/snd:/dev/snd  # Audio devices for TTS playback
+    volumes:
+      - .:/app  # Mount entire project
+      - /tmp/reachy_sockets:/tmp/reachy_sockets  # Shared socket directory
+    working_dir: /app
+    environment:
+      - SOCKET_PATH=/tmp/reachy_sockets/hearing.sock
+      - PYTHONUNBUFFERED=1
+      - REACHY_BASE_URL=http://localhost:8000  # Daemon URL (accessible via host network mode)
+      - AUDIO_DEVICE=plughw:CARD=Audio,DEV=0  # Use Reachy Mini Audio for TTS output
+      - MODEL_ID=${MODEL_ID}
+      - VLLM_FRONT_URL=${VLLM_FRONT_URL}
+      - VLLM_ACTION_URL=${VLLM_ACTION_URL}
+    command: >
+      sh -c "
+      apt-get update -qq &&
+      apt-get install -y -qq alsa-utils &&
+      pip install --no-cache-dir -q -r /app/conversation_app/requirements.txt &&
+      python3 -m conversation_app.app
+      "
+    depends_on:
+      reachy-daemon:
+        condition: service_healthy
+      reachy-hearing:
+        condition: service_healthy
+      vllm-server-front:
+        condition: service_healthy
+      vllm-server-action:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "conversation_app.app"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

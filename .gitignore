@@ -20,3 +20,5 @@ baby-tau/*.wav
 local-codex/ollama/*
 local-codex/workspace/*
 gemma/gemma-vllm/models/*
+reachy-mini/log/*
+reachy-mini/data/*

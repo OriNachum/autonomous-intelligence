@@ -1,0 +1,38 @@
+{
+  "name": "tilt_head",
+  "description": "Tilt the robot's head to the left or right.\n\nThis rolls the head to create a tilting motion.",
+  "parameters": {
+    "required": [],
+    "optional": [
+      {
+        "name": "direction",
+        "type": "string",
+        "default": "left",
+        "description": "Direction to tilt: 'left' or 'right'"
+      },
+      {
+        "name": "angle",
+        "type": "number",
+        "default": 15.0,
+        "description": "Angle to roll in degrees (default 15 degrees)"
+      },
+      {
+        "name": "duration",
+        "type": "number",
+        "default": 2.0,
+        "description": "Duration of the movement in seconds"
+      },
+      {
+        "name": "speech",
+        "type": "string",
+        "default": null,
+        "description": "Optional text to speak via TTS while tilting head"
+      }
+    ]
+  },
+  "execution": {
+    "type": "script",
+    "script_file": "tilt_head.py"
+  }
+}
+

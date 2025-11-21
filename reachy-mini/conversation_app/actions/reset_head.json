@@ -1,0 +1,20 @@
+{
+  "name": "reset_head",
+  "description": "Reset the robot's head to the default neutral position.\n\nThis moves the head to (0, 0, 0) position with (0, 0, 0) orientation over 2 seconds.",
+  "parameters": {
+    "required": [],
+    "optional": [
+      {
+        "name": "speech",
+        "type": "string",
+        "default": null,
+        "description": "Optional text to speak via TTS while resetting head"
+      }
+    ]
+  },
+  "execution": {
+    "type": "script",
+    "script_file": "reset_head.py"
+  }
+}
+
