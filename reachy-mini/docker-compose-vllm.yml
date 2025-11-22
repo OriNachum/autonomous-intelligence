@@ -109,65 +109,40 @@ services:
       retries: 3
       start_period: 60s
 
-  reachy-gateway:
-    image: reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
-    container_name: reachy-gateway-service
-    restart: unless-stopped
-    privileged: true  # Required for USB and audio device access
-    network_mode: host  # To expose daemon on localhost:8000
-    devices:
-      - /dev/bus/usb:/dev/bus/usb  # USB devices for robot connection
-      - /dev/snd:/dev/snd  # Audio devices
-    volumes:
-      - ./gateway_app:/app/gateway_app
-      - /tmp/reachy_sockets:/tmp/reachy_sockets  # Shared socket directory
-      - /dev/shm:/dev/shm  # Shared memory for audio buffers
-      - /dev:/dev  # Device access
-    working_dir: /app
-    environment:
-      - PYTHONUNBUFFERED=1
-      - AUDIO_DEVICE_NAME=${AUDIO_DEVICE_NAME:-Reachy}
-      - LANGUAGE=${LANGUAGE:-en}
-    stop_signal: SIGTERM  # Send SIGTERM for graceful shutdown
-    stop_grace_period: 20s  # Allow 20 seconds for graceful shutdown
-    command: ["/bin/bash", "/app/gateway_app/start_gateway.sh"]
-    healthcheck:
-      test: ["CMD", "test", "-S", "/tmp/reachy_sockets/hearing.sock"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
   reachy-conversation:
     image: reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
     container_name: reachy-conversation-app
     restart: unless-stopped
-    network_mode: host  # To access localhost:8100 vLLM server
-    privileged: true  # Required for audio device access
+    network_mode: host  # To access localhost:8100 vLLM server and expose daemon on localhost:8000
+    privileged: true  # Required for USB and audio device access
     devices:
-      - /dev/snd:/dev/snd  # Audio devices for TTS playback
+      - /dev/bus/usb:/dev/bus/usb  # USB devices for robot connection
+      - /dev/snd:/dev/snd  # Audio devices for microphone and TTS playback
     volumes:
       - .:/app  # Mount entire project
-      - /tmp/reachy_sockets:/tmp/reachy_sockets  # Shared socket directory
+      - /tmp/reachy_sockets:/tmp/reachy_sockets  # Shared socket directory (kept for compatibility)
+      - /dev/shm:/dev/shm  # Shared memory for audio buffers
+      - /dev:/dev  # Device access
     working_dir: /app
     environment:
-      - SOCKET_PATH=/tmp/reachy_sockets/hearing.sock
       - PYTHONUNBUFFERED=1
       - REACHY_BASE_URL=http://localhost:8000  # Daemon URL (accessible via host network mode)
       - AUDIO_DEVICE=plughw:CARD=Audio,DEV=0  # Use Reachy Mini Audio for TTS output
       - MODEL_ID=${MODEL_ID}
       - VLLM_FRONT_URL=${VLLM_FRONT_URL}
       - VLLM_ACTION_URL=${VLLM_ACTION_URL}
+      - AUDIO_DEVICE_NAME=${AUDIO_DEVICE_NAME:-Reachy}
+      - LANGUAGE=${LANGUAGE:-en}
+      - PYTHONPATH=/app
     command: >
       sh -c "
       apt-get update -qq &&
       apt-get install -y -qq alsa-utils &&
+      pip install --no-cache-dir -q -r /app/gateway_app/requirements.txt &&
       pip install --no-cache-dir -q -r /app/conversation_app/requirements.txt &&
       python3 -m conversation_app.app
       "
     depends_on:
-      reachy-gateway:
-        condition: service_healthy
       vllm-server-front:
         condition: service_healthy
       vllm-server-action:

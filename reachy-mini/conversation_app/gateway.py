@@ -32,9 +32,9 @@ import torch
 import soundfile as sf
 
 # Import our custom modules
-from vad_detector import VADDetector
-from whisper_stt import WhisperSTT
-from reachy_controller import ReachyController
+from .vad_detector import VADDetector
+from .whisper_stt import WhisperSTT
+from .reachy_controller import ReachyController
 
 # Set up logging
 logging.basicConfig(
@@ -52,8 +52,12 @@ logger.debug("Environment variables loaded")
 class ReachyGateway:
     """Unified gateway service for daemon management and hearing event emission"""
     
-    def __init__(self, device_name=None, language='en'):
+    def __init__(self, device_name=None, language='en', event_callback=None, enable_socket_server=True):
         logger.info("Initializing Reachy Gateway")
+        
+        # Store callback and socket server flag
+        self.event_callback = event_callback
+        self.enable_socket_server = enable_socket_server
         
         # Configuration from environment or defaults
         self.device_name = (device_name or os.getenv('AUDIO_DEVICE_NAME', 'default')).lower()
@@ -166,10 +170,13 @@ class ReachyGateway:
             self.reachy_controller = None
             raise
         
-        # Socket setup
+        # Socket setup (conditional)
         self.server_socket = None
         self.clients = []
-        self.setup_socket_server()
+        if self.enable_socket_server:
+            self.setup_socket_server()
+        else:
+            logger.info("Socket server disabled - using callback mode")
         
         # Shutdown flag
         self.shutdown_requested = False
@@ -214,6 +221,9 @@ class ReachyGateway:
     
     async def accept_clients(self):
         """Accept new client connections"""
+        if not self.enable_socket_server:
+            return
+        
         while not self.shutdown_requested:
             try:
                 try:
@@ -231,7 +241,7 @@ class ReachyGateway:
                 await asyncio.sleep(1)
     
     async def emit_event(self, event_type, data=None):
-        """Emit event to all connected clients asynchronously"""
+        """Emit event to all connected clients and/or callback asynchronously"""
         event = {
             "type": event_type,
             "timestamp": datetime.utcnow().isoformat(),
@@ -246,34 +256,45 @@ class ReachyGateway:
                 logger.debug(f"DOA included in {event_type} event: {doa_dict['angle_degrees']:.1f}° "
                            f"(speech_detected={doa_dict['is_speech_detected']})")
         
-        message = json.dumps(event) + "\n"
-        message_bytes = message.encode('utf-8')
-        
-        # Send to all clients
-        disconnected_clients = []
-        for client in self.clients:
+        # Call callback if provided
+        if self.event_callback:
             try:
-                await asyncio.to_thread(client.sendall, message_bytes)
-            except (BrokenPipeError, ConnectionResetError) as e:
-                logger.warning(f"Client disconnected: {e}")
-                disconnected_clients.append(client)
+                await self.event_callback(event_type, event["data"])
+                logger.debug(f"Event callback invoked for: {event_type}")
             except Exception as e:
-                logger.error(f"Error sending to client: {e}")
-                disconnected_clients.append(client)
+                logger.error(f"Error in event callback: {e}", exc_info=True)
         
-        # Remove disconnected clients
-        for client in disconnected_clients:
-            try:
-                client.close()
-            except:
-                pass
-            self.clients.remove(client)
-        
-        if disconnected_clients:
-            logger.info(f"Removed {len(disconnected_clients)} disconnected clients. Active: {len(self.clients)}")
+        # Send to socket clients if enabled
+        if self.enable_socket_server:
+            message = json.dumps(event) + "\n"
+            message_bytes = message.encode('utf-8')
+            
+            # Send to all clients
+            disconnected_clients = []
+            for client in self.clients:
+                try:
+                    await asyncio.to_thread(client.sendall, message_bytes)
+                except (BrokenPipeError, ConnectionResetError) as e:
+                    logger.warning(f"Client disconnected: {e}")
+                    disconnected_clients.append(client)
+                except Exception as e:
+                    logger.error(f"Error sending to client: {e}")
+                    disconnected_clients.append(client)
+            
+            # Remove disconnected clients
+            for client in disconnected_clients:
+                try:
+                    client.close()
+                except:
+                    pass
+                self.clients.remove(client)
+            
+            if disconnected_clients:
+                logger.info(f"Removed {len(disconnected_clients)} disconnected clients. Active: {len(self.clients)}")
+            
+            logger.debug(f"Emitted event to {len(self.clients)} socket clients: {event_type}")
         
         logger.debug(f"Emitted event: {event_type}")
-        logger.debug(f"Emitted event: {message.strip()}")
     
     def is_speech(self, data):
         """Check if audio data contains speech using VAD or DOA"""
@@ -770,19 +791,25 @@ class ReachyGateway:
         logger.info("✅ Recording started successfully")
         
         # Start tasks
-        accept_task = asyncio.create_task(self.accept_clients())
+        tasks = []
+        
+        if self.enable_socket_server:
+            accept_task = asyncio.create_task(self.accept_clients())
+            tasks.append(accept_task)
+        
         listen_task = asyncio.create_task(self.listen())
+        tasks.append(listen_task)
+        
         process_task = asyncio.create_task(self.process())
+        tasks.append(process_task)
         
         doa_task = None
         if self.reachy_controller:
             doa_task = asyncio.create_task(self.sample_doa())
+            tasks.append(doa_task)
             logger.info("DOA sampling task started")
         
         try:
-            tasks = [accept_task, listen_task, process_task]
-            if doa_task:
-                tasks.append(doa_task)
             
             # Run until shutdown is requested
             while not self.shutdown_requested:

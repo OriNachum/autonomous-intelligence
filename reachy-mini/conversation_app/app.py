@@ -34,14 +34,18 @@ import json
 import httpx
 import traceback
 import os
+import sys
 from pathlib import Path
 from typing import List, Dict, Any
 import logging
 
-from .event_handler import EventHandler
+# Ensure gateway_app is importable
+sys.path.insert(0, '/app')
+
 from .conversation_parser import ConversationParser
 from .speech_handler import SpeechHandler
 from .action_handler import ActionHandler
+from .gateway import ReachyGateway
 
 # Set up logging
 logging.basicConfig(
@@ -58,12 +62,9 @@ AGENT_TEMPERATURE = 0.3
 class ConversationApp:
     """Conversation application with speech event integration."""
     
-    def __init__(self, socket_path: str = None):
+    def __init__(self):
         """
         Initialize the conversation application.
-        
-        Args:
-            socket_path: Path to the Unix Domain Socket for hearing events
         """
         self.messages = []
         
@@ -71,14 +72,10 @@ class ConversationApp:
         self.system_prompt = Path("/app/conversation_app/agents/reachy/reachy.system.md").read_text()
         
         # Initialize components
-        self.event_handler = EventHandler(socket_path)
+        self.gateway = None  # Will be initialized in initialize()
         self.parser = ConversationParser()
         self.speech_handler = None  # Will be initialized in initialize()
         self.action_handler = None  # Will be initialized in initialize()
-        
-        # Set up event callbacks
-        self.event_handler.set_speech_started_callback(self.on_speech_started)
-        self.event_handler.set_speech_stopped_callback(self.on_speech_stopped)
 
     async def initialize(self):
         """Initialize the application."""
@@ -90,6 +87,22 @@ class ConversationApp:
         self.messages = [
             {"role": "system", "content": self.system_prompt}
         ]
+        
+        # Initialize ReachyGateway with callback
+        try:
+            device_name = os.getenv('AUDIO_DEVICE_NAME', 'Reachy')
+            language = os.getenv('LANGUAGE', 'en')
+            
+            self.gateway = ReachyGateway(
+                device_name=device_name,
+                language=language,
+                event_callback=self.on_gateway_event,
+                enable_socket_server=False  # Use callback mode only
+            )
+            logger.info("✓ Reachy Gateway initialized")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize gateway: {e}")
+            raise
         
         # Initialize speech handler
         try:
@@ -131,6 +144,27 @@ class ConversationApp:
         
         self.messages = [system_message] + recent_messages
         logger.debug(f"Trimmed conversation history to {len(self.messages)} messages")
+    
+    async def on_gateway_event(self, event_type: str, data: Dict[str, Any]):
+        """
+        Route gateway events to appropriate handlers.
+        
+        Args:
+            event_type: Type of event (speech_started, speech_stopped, etc.)
+            data: Event data
+        """
+        if event_type == "speech_started":
+            await self.on_speech_started(data)
+        elif event_type == "speech_stopped":
+            await self.on_speech_stopped(data)
+        elif event_type == "speech_ongoing":
+            # Optional: handle ongoing events
+            pass
+        elif event_type == "speech_partial":
+            # Optional: handle partial transcriptions
+            pass
+        else:
+            logger.debug(f"Unhandled event type: {event_type}")
     
     async def _warm_up_for_caching(self, last_assistant_response: str) -> str:
         """
@@ -343,29 +377,31 @@ class ConversationApp:
     async def run(self):
         """Run the conversation application."""
         logger.info("=" * 70)
-        logger.info("Conversation Application with Speech Events")
+        logger.info("Conversation Application with Integrated Gateway")
         logger.info("=" * 70)
         logger.info("")
         logger.info("This app will:")
-        logger.info("  1. Connect to hearing event emitter")
-        logger.info("  2. Listen for speech events")
+        logger.info("  1. Start Reachy Gateway (daemon + hearing)")
+        logger.info("  2. Listen for speech events via callbacks")
         logger.info("  3. Process speech through vLLM streaming chat")
         logger.info("  4. Parse responses into quotes and actions")
         logger.info("=" * 70)
         logger.info("")
     
-        # Connect to hearing service
-        logger.info("Step 1: Connecting to hearing service...")
-        await self.event_handler.connect()
-        logger.info("   ✓ Connection established")
+        # Start gateway in background
+        logger.info("Step 1: Starting Reachy Gateway...")
+        gateway_task = asyncio.create_task(self.gateway.run())
+        logger.info("   ✓ Gateway task started")
         
-        # Start event listener
-        logger.info("Step 2: Starting event listener loop...")
-        logger.info("👂 Listening for speech events...")
-        logger.info("   (Waiting for events from hearing_event_emitter.py)")
+        logger.info("Step 2: Listening for speech events...")
+        logger.info("👂 Ready for voice interaction...")
         logger.info("")
         
-        await self.event_handler.listen()
+        try:
+            # Wait for gateway task (runs indefinitely)
+            await gateway_task
+        except asyncio.CancelledError:
+            logger.info("Gateway task cancelled")
         
         logger.warning("Event listener has stopped")
     
@@ -379,7 +415,11 @@ class ConversationApp:
         if self.action_handler:
             self.action_handler.cleanup()
         
-        self.event_handler.close()
+        if self.gateway:
+            logger.info("Stopping gateway...")
+            self.gateway.shutdown_requested = True
+            await asyncio.sleep(0.5)  # Give it time to shutdown gracefully
+            self.gateway.cleanup()
         
         logger.info("   ✓ Cleanup complete")
 
@@ -391,12 +431,12 @@ async def main():
     logger.info("=" * 70)
     logger.info("")
     logger.info("Make sure:")
-    logger.info("  - Hearing event emitter is running")
     logger.info("  - vLLM server is running on http://localhost:8100")
+    logger.info("  - Robot is connected via USB")
     logger.info("=" * 70)
     logger.info("")
     
-    app = ConversationApp()
+    app = ConversationApp()  # No socket_path needed
     
     try:
         # Initialize app
