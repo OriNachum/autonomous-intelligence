@@ -52,7 +52,7 @@ This service will:
     *   Point build context to `gateway_app`.
     *   Ensure volumes and devices are correctly mapped (needs access to USB/Audio).
 
-### 4. Verification
+### 4. Verification (Manual)
 *   [ ] **Test Startup**:
     *   Run `start_gateway.sh`.
     *   Verify `reachy-mini-daemon` process is running (spawned by Python).
