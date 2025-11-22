@@ -7,6 +7,8 @@ This service:
 2. Runs hearing logic (VAD, STT, DOA)
 3. Emits events via Unix Domain Socket
 4. Handles graceful shutdown via signals
+5. Continuously records audio and saves to WAV files
+6. Points robot head at speaker based on DOA
 
 Usage:
     python3 gateway.py --device Reachy --language en
@@ -27,6 +29,7 @@ import asyncio
 from collections import deque
 from pathlib import Path
 import torch
+import soundfile as sf
 
 # Import our custom modules
 from vad_detector import VADDetector
@@ -35,7 +38,7 @@ from reachy_controller import ReachyController
 
 # Set up logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -90,6 +93,17 @@ class ReachyGateway:
         self.speech_buffer = []
         self.post_speech_buffer = []
         
+        # Recording state for continuous audio collection
+        self.recording_samples = []
+        self.recording_duration = float(os.getenv('RECORDING_DURATION', '5.0'))  # seconds
+        self.recording_start_time = None
+        self.recordings_dir = os.getenv('RECORDINGS_DIR', './recordings')
+        os.makedirs(self.recordings_dir, exist_ok=True)
+        
+        # DOA head-pointing state
+        self.last_doa = -1
+        self.doa_threshold = float(os.getenv('DOA_THRESHOLD', '0.004'))  # ~2 degrees
+        
         # State
         self.speech_detected = False
         self.silence_start_time = None
@@ -131,7 +145,7 @@ class ReachyGateway:
         # DOA detector initialization (this will spawn the daemon)
         logger.info("Initializing DOA detector (this will spawn the daemon)...")
         try:
-            self.reachy_controller = ReachyController(smoothing_alpha=0.1, log_level="INFO")
+            self.reachy_controller = ReachyController(smoothing_alpha=0.1, log_level=logging.ERROR)
             self.current_doa = None
             self.doa_sample_interval = float(os.getenv('DOA_SAMPLE_INTERVAL', '0.1'))
             self.last_doa_sample_time = None
@@ -292,7 +306,13 @@ class ReachyGateway:
             })
     
     async def listen(self):
-        """Continuously listen to audio and buffer it"""
+        """Continuously listen to audio and collect samples for recording"""
+        logger.info("Starting listen loop for audio collection and recording")
+        
+        # Initialize recording
+        self.recording_start_time = time.time()
+        self.recording_samples = []
+        
         while not self.shutdown_requested:
             try:
                 # Get audio sample from ReachyMini via ReachyController
@@ -301,6 +321,11 @@ class ReachyGateway:
                 if sample is None:
                     # No sample available yet, wait a bit
                     await asyncio.sleep(0.01)
+                    continue
+                
+                # Verify we received mono audio (1D array)
+                if len(sample.shape) != 1:
+                    logger.error(f"Expected mono audio (1D array), got shape: {sample.shape}")
                     continue
                 
                 # ReachyMini may return float arrays, convert to int16 if needed
@@ -314,8 +339,20 @@ class ReachyGateway:
                     logger.warning(f"Unexpected audio data type: {sample.dtype}, attempting conversion")
                     np_data = sample.astype(np.int16)
                 
+                # Add to buffers
                 async with self.processing_lock:
                     self.audio_buffer.append(np_data)
+                    self.recording_samples.append(np_data)
+                
+                # === Periodic Recording Save ===
+                # Check if we should save the recording
+                elapsed_time = time.time() - self.recording_start_time
+                if elapsed_time >= self.recording_duration:
+                    logger.info(f"Recording duration ({self.recording_duration}s) reached, saving...")
+                    await self.save_recording()
+                    # Reset recording
+                    self.recording_samples = []
+                    self.recording_start_time = time.time()
                     
             except Exception as e:
                 if not self.shutdown_requested:
@@ -551,19 +588,81 @@ class ReachyGateway:
         except Exception as e:
             logger.error(f"Error saving audio file: {e}")
     
+    async def save_recording(self):
+        """Save collected audio samples to a WAV file"""
+        if not self.recording_samples:
+            logger.warning("No audio data to save")
+            return
+        
+        try:
+            # Concatenate all samples
+            audio_data = np.concatenate(self.recording_samples, axis=0)
+            
+            # Generate filename with timestamp
+            timestamp = int(time.time())
+            filename = os.path.join(self.recordings_dir, f"recorded_audio_{timestamp}.wav")
+            
+            # Get sample rate
+            sample_rate = await asyncio.to_thread(self.reachy_controller.get_sample_rate)
+            
+            # Save to WAV file
+            await asyncio.to_thread(
+                sf.write,
+                filename,
+                audio_data,
+                sample_rate
+            )
+            
+            logger.info(f"Audio saved to {filename} ({len(audio_data)} samples, {len(audio_data)/sample_rate:.2f}s)")
+            
+        except Exception as e:
+            logger.error(f"Error saving recording: {e}", exc_info=True)
+    
     async def sample_doa(self):
-        """Continuously sample DOA from ReachyMini"""
+        """Continuously sample DOA from ReachyMini and point head at speaker"""
         if not self.reachy_controller:
             logger.warning("DOA detector not available, skipping DOA sampling")
             return
         
         while not self.shutdown_requested:
             try:
+                # Sample DOA
                 doa = await asyncio.to_thread(self.reachy_controller.get_current_doa)
                 self.current_doa = doa
                 logger.debug(f"DOA sampled: angle={doa[0]:.3f} rad ({np.degrees(doa[0]):.1f}°), "
                            f"speech_detected={doa[1]}")
                 
+                # Head-pointing logic: point at speaker when DOA changes significantly
+                if doa[1] and np.abs(doa[0] - self.last_doa) > self.doa_threshold:
+                    # Speech detected and significant DOA change
+                    logger.info(f"Speech detected at {doa[0]:.1f} radians ({np.degrees(doa[0]):.1f}°)")
+                    
+                    # Calculate head pointing vector
+                    p_head = [np.sin(doa[0]), np.cos(doa[0]), 0.0]
+                    logger.info(f"Pointing to x={p_head[0]:.2f}, y={p_head[1]:.2f}, z={p_head[2]:.2f}")
+                    
+                    # Transform to world coordinates
+                    T_world_head = await asyncio.to_thread(self.reachy_controller.mini.get_current_head_pose)
+                    R_world_head = T_world_head[:3, :3]
+                    p_world = R_world_head @ p_head
+                    logger.info(f"In world coordinates: x={p_world[0]:.2f}, y={p_world[1]:.2f}, z={p_world[2]:.2f}")
+                    
+                    # # Point head at speaker
+                    # await asyncio.to_thread(
+                    #     self.reachy_controller.mini.look_at_world,
+                    #     p_world[0], p_world[1], p_world[2],
+                    #     duration=0.5
+                    # )
+                    # logger.info("Head pointed at speaker")
+                    
+                    self.last_doa = doa[0]
+                else:
+                    if not doa[1]:
+                        logger.debug("No speech detected")
+                    else:
+                        logger.debug(f"Small change in DOA: {doa[0]:.1f}° (last was {self.last_doa:.1f}°). Not moving.")
+                
+                # Buffer DOA samples during speech for averaging
                 if self.speech_detected and doa[1]:
                     self.reachy_controller.add_doa_sample(doa)
                     logger.debug(f"DOA sample buffered for averaging")

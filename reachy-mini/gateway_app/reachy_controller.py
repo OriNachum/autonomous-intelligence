@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class ReachyController:
     """Direction of Audio Detector using ReachyMini"""
     
-    def __init__(self, smoothing_alpha: float = 0.1, log_level: str = "INFO"):
+    def __init__(self, smoothing_alpha: float = 0.1, log_level: int = logging.DEBUG):
         """
         Initialize DOA detector
         
@@ -32,7 +32,7 @@ class ReachyController:
         # Initialize ReachyMini
         logger.info("Initializing ReachyMini for DOA detection...")
         try:
-            self.mini = ReachyMini(timeout=10.0, spawn_daemon=True, log_level=log_level, automatic_body_yaw=False,)
+            self.mini = ReachyMini(timeout=10.0, spawn_daemon=True, log_level=log_level, automatic_body_yaw=True,)
             logger.info("ReachyMini initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize ReachyMini: {e}")
@@ -191,14 +191,34 @@ class ReachyController:
         """
         Get audio sample from ReachyMini
         
+        ReachyMini returns stereo audio (2 channels):
+        - Channel 0: AEC-processed microphone (echo-cancelled)
+        - Channel 1: Reference/playback signal
+        
+        We extract only Channel 0 for speech detection/transcription.
+        
         Returns:
-            Audio sample as numpy array, or None if no sample available
+            Audio sample as mono numpy array (1D), or None if no sample available
         """
         try:
             sample = self.mini.media.get_audio_sample()
-            if sample is not None:
-                logger.debug(f"Got audio sample with shape: {sample.shape}")
-            return sample
+            if sample is None:
+                return None
+            
+            # Check if this is stereo audio (shape: (N, 2))
+            if len(sample.shape) == 2 and sample.shape[1] == 2:
+                # Extract Channel 0 (AEC-processed channel)
+                mono_sample = sample[:, 0]
+                logger.debug(f"Converted stereo audio {sample.shape} to mono {mono_sample.shape} (Channel 0)")
+                return mono_sample
+            elif len(sample.shape) == 1:
+                # Already mono
+                logger.debug(f"Got mono audio sample with shape: {sample.shape}")
+                return sample
+            else:
+                logger.warning(f"Unexpected audio shape: {sample.shape}, returning as-is")
+                return sample
+                
         except Exception as e:
             logger.error(f"Error getting audio sample: {e}", exc_info=True)
             return None
