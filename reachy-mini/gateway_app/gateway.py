@@ -64,9 +64,15 @@ class ReachyGateway:
         self.chunk_duration_ms = int(os.getenv('CHUNK_DURATION_MS', '30'))
         self.chunk_size = int(self.rate * self.chunk_duration_ms / 1000)
         
-        # VAD configuration
-        vad_aggressiveness = int(os.getenv('VAD_AGGRESSIVENESS', '3'))
-        self.vad = VADDetector(aggressiveness=vad_aggressiveness, sample_rate=self.rate)
+        # VAD configuration - DISABLED, using DOA speech detection instead
+        self.use_vad = os.getenv('USE_VAD', 'false').lower() == 'true'
+        if self.use_vad:
+            vad_aggressiveness = int(os.getenv('VAD_AGGRESSIVENESS', '3'))
+            self.vad = VADDetector(aggressiveness=vad_aggressiveness, sample_rate=self.rate)
+            logger.info("Using VAD for speech detection")
+        else:
+            self.vad = None
+            logger.info("VAD disabled - will use DOA speech detection")
         
         # Speech detection configuration
         self.min_silence_duration = float(os.getenv('MIN_SILENCE_DURATION', '0.5'))
@@ -230,6 +236,9 @@ class ReachyGateway:
             max_channels = device_info.get('maxInputChannels', 1)
             device_name_lower = device_info['name'].lower()
             
+            logger.info(f"Setting up audio stream for device: {device_info['name']}")
+            logger.info(f"Device info - maxInputChannels: {max_channels}, defaultSampleRate: {device_info.get('defaultSampleRate')}")
+            
             # ONLY support reachy devices with 2 channels
             if 'reachy' not in device_name_lower:
                 error_msg = (
@@ -253,6 +262,9 @@ class ReachyGateway:
             self.use_aec_channel = True
             logger.info(f"Using reachy device '{device_info['name']}' with 2-channel AEC mode (will use channel 0 for echo cancellation)")
             
+            logger.info(f"Opening audio stream: format=paInt16, channels={self.num_channels}, rate={self.rate}, "
+                       f"frames_per_buffer={self.chunk_size}, device_index={self.input_device_index}")
+            
             self.stream = self.p.open(
                 format=pyaudio.paInt16,
                 channels=self.num_channels,
@@ -262,8 +274,19 @@ class ReachyGateway:
                 input_device_index=self.input_device_index
             )
             logger.info(f"Audio stream opened successfully with {self.num_channels} channel(s)")
+            
+            # Verify stream is active
+            if not self.stream.is_active():
+                logger.warning("Audio stream opened but is not active, attempting to start...")
+                self.stream.start_stream()
+            
+            logger.info(f"Audio stream is active: {self.stream.is_active()}")
+            
         except IOError as e:
-            logger.error(f"Error opening audio stream: {e}")
+            logger.error(f"IOError opening audio stream: {e}", exc_info=True)
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error opening audio stream: {e}", exc_info=True)
             raise
     
     async def accept_clients(self):
@@ -330,8 +353,14 @@ class ReachyGateway:
         logger.debug(f"Emitted event: {message.strip()}")
     
     def is_speech(self, data):
-        """Check if audio data contains speech using VAD"""
-        return self.vad.is_speech(data)
+        """Check if audio data contains speech using VAD or DOA"""
+        if self.use_vad and self.vad:
+            return self.vad.is_speech(data)
+        else:
+            # Use DOA speech detection instead
+            if self.current_doa is not None:
+                return self.current_doa[1]  # is_speech_detected flag from DOA
+            return False
     
     async def log_speech_event(self, event_type, duration=None, transcription=None):
         """Log and emit speech detection events"""
@@ -376,7 +405,16 @@ class ReachyGateway:
                 
                 # If using 2-channel ReSpeaker, extract only channel 0 (AEC-processed)
                 if self.use_aec_channel and self.num_channels == 2:
-                    np_data = np_data.reshape(-1, 2)[:, 0]
+                    # Verify we have the expected amount of data
+                    expected_samples = self.chunk_size * self.num_channels
+                    if len(np_data) != expected_samples:
+                        logger.warning(f"Unexpected audio data size: got {len(np_data)} samples, expected {expected_samples}")
+                    # Reshape to separate channels and extract channel 0
+                    try:
+                        np_data = np_data.reshape(-1, self.num_channels)[:, 0]
+                    except ValueError as e:
+                        logger.error(f"Failed to reshape audio data: {e}. Data length: {len(np_data)}, channels: {self.num_channels}")
+                        continue
                 
                 async with self.processing_lock:
                     self.audio_buffer.append(np_data)
@@ -395,7 +433,12 @@ class ReachyGateway:
                     data = self.audio_buffer.popleft()
             
             if data is not None:
-                is_speech = await asyncio.to_thread(self.is_speech, data.tobytes())
+                # Use thread for VAD only, DOA is already async
+                if self.use_vad and self.vad:
+                    is_speech = await asyncio.to_thread(self.is_speech, data.tobytes())
+                else:
+                    # DOA-based detection, no need for thread
+                    is_speech = self.is_speech(data.tobytes())
                 
                 if is_speech:
                     await self.handle_speech(data)
@@ -647,6 +690,34 @@ class ReachyGateway:
         # Initialize audio device
         self.initialize_input_device()
         self.setup_audio_stream()
+        
+        # Test audio stream with a few reads
+        logger.info("Testing audio stream with initial reads...")
+        try:
+            for i in range(3):
+                test_data = await asyncio.to_thread(
+                    self.stream.read,
+                    self.chunk_size,
+                    exception_on_overflow=False
+                )
+                test_np_data = np.frombuffer(test_data, dtype=np.int16)
+                logger.info(f"Test read {i+1}: received {len(test_np_data)} samples "
+                           f"(expected {self.chunk_size * self.num_channels} for {self.num_channels} channels)")
+                
+                # Verify channel extraction works
+                if self.use_aec_channel and self.num_channels == 2:
+                    if len(test_np_data) != self.chunk_size * self.num_channels:
+                        raise RuntimeError(f"Audio data size mismatch: got {len(test_np_data)}, "
+                                         f"expected {self.chunk_size * self.num_channels}")
+                    reshaped = test_np_data.reshape(-1, self.num_channels)[:, 0]
+                    logger.info(f"Test read {i+1}: successfully extracted channel 0, {len(reshaped)} samples")
+                
+                await asyncio.sleep(0.1)
+            
+            logger.info("✅ Audio stream test successful")
+        except Exception as e:
+            logger.error(f"❌ Audio stream test failed: {e}", exc_info=True)
+            raise
         
         # Start tasks
         accept_task = asyncio.create_task(self.accept_clients())
