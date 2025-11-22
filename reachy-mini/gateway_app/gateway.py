@@ -99,12 +99,16 @@ class ReachyGateway:
         self.recording_samples = []
         self.recording_active = False  # Track if we're currently recording speech
         self.recording_start_time = None
-        self.speech_gap_tolerance = int(os.getenv('SPEECH_GAP_TOLERANCE', '1'))  # Allow N non-speech readings before stopping
+        self.speech_gap_tolerance = int(os.getenv('SPEECH_GAP_TOLERANCE', '30'))  # Allow N non-speech readings before stopping
         self.consecutive_non_speech_count = 0  # Track consecutive non-speech readings
-        self.min_speech_start_count = int(os.getenv('MIN_SPEECH_START_COUNT', '2'))  # Require N consecutive speech detections to start
+        self.min_speech_start_count = int(os.getenv('MIN_SPEECH_START_COUNT', '30'))  # Require N consecutive speech detections to start
         self.consecutive_speech_count = 0  # Track consecutive speech readings before starting
         self.recordings_dir = os.getenv('RECORDINGS_DIR', './recordings')
         os.makedirs(self.recordings_dir, exist_ok=True)
+        
+        # Rolling list of last 20 recordings
+        self.max_recordings = int(os.getenv('MAX_RECORDINGS', '20'))
+        self.recording_files = deque(maxlen=self.max_recordings)
         
         # DOA head-pointing state
         self.last_doa = -1
@@ -151,7 +155,7 @@ class ReachyGateway:
         # DOA detector initialization (this will spawn the daemon)
         logger.info("Initializing DOA detector (this will spawn the daemon)...")
         try:
-            self.reachy_controller = ReachyController(smoothing_alpha=0.1, log_level=logging.ERROR)
+            self.reachy_controller = ReachyController(smoothing_alpha=0.1, log_level=logging.INFO)
             self.current_doa = None
             self.doa_sample_interval = float(os.getenv('DOA_SAMPLE_INTERVAL', '0.1'))
             self.last_doa_sample_time = None
@@ -356,16 +360,28 @@ class ReachyGateway:
                     async with self.processing_lock:
                         self.pre_roll_buffer.append(np_data)
                     
-                    # Start recording when speech is detected
+                    # Track consecutive speech detections
                     if is_speech_now:
-                        logger.info(f"Speech detected - starting recording (with {len(self.pre_roll_buffer)} pre-roll samples)")
-                        self.recording_active = True
-                        self.recording_start_time = time.time()
-                        # Copy pre-roll buffer to recording samples
-                        async with self.processing_lock:
-                            self.recording_samples = list(self.pre_roll_buffer)
-                            # Add current sample
-                            self.recording_samples.append(np_data)
+                        self.consecutive_speech_count += 1
+                        logger.debug(f"Speech detection {self.consecutive_speech_count}/{self.min_speech_start_count}")
+                        
+                        # Start recording only after consecutive detections
+                        if self.consecutive_speech_count >= self.min_speech_start_count:
+                            logger.info(f"Speech confirmed after {self.consecutive_speech_count} detections - starting recording (with {len(self.pre_roll_buffer)} pre-roll samples)")
+                            self.recording_active = True
+                            self.recording_start_time = time.time()
+                            # Copy pre-roll buffer to recording samples
+                            async with self.processing_lock:
+                                self.recording_samples = list(self.pre_roll_buffer)
+                                # Add current sample
+                                self.recording_samples.append(np_data)
+                            # Reset speech counter
+                            self.consecutive_speech_count = 0
+                    else:
+                        # Reset counter if no speech detected
+                        if self.consecutive_speech_count > 0:
+                            logger.debug(f"Speech detection interrupted at {self.consecutive_speech_count}/{self.min_speech_start_count}")
+                        self.consecutive_speech_count = 0
                 
                 else:
                     # Currently recording
@@ -375,14 +391,14 @@ class ReachyGateway:
                         async with self.processing_lock:
                             self.recording_samples.append(np_data)
                     else:
-                        # No speech detected - increment counter and add to recording buffer
+                        # No speech detected - increment counter and add to recording buffer (extra frames)
                         self.consecutive_non_speech_count += 1
                         async with self.processing_lock:
                             self.recording_samples.append(np_data)
                         
                         # Check if we've exceeded the gap tolerance
                         if self.consecutive_non_speech_count > self.speech_gap_tolerance:
-                            # Gap too long - end recording
+                            # Gap too long - end recording (with extra frame already included)
                             logger.info(f"Speech ended after {self.consecutive_non_speech_count} non-speech readings - saving recording ({len(self.recording_samples)} total samples)")
                             await self.save_recording()
                             # Reset recording state
@@ -632,12 +648,13 @@ class ReachyGateway:
             logger.error(f"Error saving audio file: {e}")
     
     async def save_recording(self):
-        """Save collected audio samples to a WAV file"""
+        """Save collected audio samples to a WAV file with rolling list management"""
         if not self.recording_samples:
             logger.warning("No audio data to save")
             return
         
         try:
+            logger.info(f"Saving recording... {len(self.recording_samples)} samples")
             # Concatenate all samples
             audio_data = np.concatenate(self.recording_samples, axis=0)
             
@@ -665,6 +682,18 @@ class ReachyGateway:
             )
             
             logger.info(f"Audio saved to {filename} ({len(audio_data)} samples, {duration:.2f}s)")
+            
+            # Manage rolling list of recordings
+            if len(self.recording_files) >= self.max_recordings:
+                # Remove and delete the oldest recording
+                oldest_file = self.recording_files[0]
+                if os.path.exists(oldest_file):
+                    await asyncio.to_thread(os.remove, oldest_file)
+                    logger.info(f"Deleted oldest recording: {oldest_file}")
+            
+            # Add new recording to the list
+            self.recording_files.append(filename)
+            logger.info(f"Recording list updated: {len(self.recording_files)}/{self.max_recordings} recordings")
             
         except Exception as e:
             logger.error(f"Error saving recording: {e}", exc_info=True)

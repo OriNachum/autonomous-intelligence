@@ -62,7 +62,7 @@ class ReachyController:
             self.current_doa = doa
             
             # Log the raw values
-            logger.debug(f"DOA raw values: angle={doa[0]:.4f} rad ({np.degrees(doa[0]):.1f}°), "
+            logger.info(f"DOA raw values: angle={doa[0]:.4f} rad ({np.degrees(doa[0]):.1f}°), "
                         f"is_speech_detected={doa[1]}")
             
             return doa
