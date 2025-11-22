@@ -109,60 +109,34 @@ services:
       retries: 3
       start_period: 60s
 
-  reachy-daemon:
-    image: reachy-daemon-thor:r38.2.aarch64-cu130-24.04
-    container_name: reachy-mini-daemon
+  reachy-gateway:
+    image: reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
+    container_name: reachy-gateway-service
     restart: unless-stopped
-    privileged: true  # Required for USB device access
+    privileged: true  # Required for USB and audio device access
     network_mode: host  # To expose daemon on localhost:8000
     devices:
       - /dev/bus/usb:/dev/bus/usb  # USB devices for robot connection
+      - /dev/snd:/dev/snd  # Audio devices
     volumes:
-      - .:/app  # Mount project for requirements.txt
+      - ./gateway_app:/app/gateway_app
+      - /tmp/reachy_sockets:/tmp/reachy_sockets  # Shared socket directory
+      - /dev/shm:/dev/shm  # Shared memory for audio buffers
       - /dev:/dev  # Device access
     working_dir: /app
     environment:
       - PYTHONUNBUFFERED=1
+      - AUDIO_DEVICE_NAME=${AUDIO_DEVICE_NAME:-Reachy}
+      - LANGUAGE=${LANGUAGE:-en}
     stop_signal: SIGTERM  # Send SIGTERM for graceful shutdown
-    stop_grace_period: 15s  # Allow 15 seconds for graceful shutdown
-    command: ["/bin/bash", "/app/start_daemon.sh"]
+    stop_grace_period: 20s  # Allow 20 seconds for graceful shutdown
+    command: ["/bin/bash", "/app/gateway_app/start_gateway.sh"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/daemon/status"]
+      test: ["CMD", "test", "-S", "/tmp/reachy_sockets/hearing.sock"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 30s
-
-  reachy-hearing:
-    image: reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
-    container_name: reachy-hearing-service
-    restart: unless-stopped
-    privileged: true  # Required for audio device access
-    devices:
-      - /dev/snd:/dev/snd  # Audio devices
-    volumes:
-      - ./hearing_app:/app
-      - /tmp/reachy_sockets:/tmp/reachy_sockets  # Shared socket directory
-      - /dev/shm:/dev/shm  # Shared memory for audio buffers
-    working_dir: /app
-    environment:
-      - PULSE_SERVER=unix:/run/user/1000/pulse/native  # Optional: PulseAudio
-    command: >
-      sh -c "
-      apt-get update -qq &&
-      apt-get install -y -qq portaudio*-dev libgl1 libusb-1.0-0 git &&
-      pip install --no-cache-dir -q -r /app/requirements.txt &&
-      python3 hearing_event_emitter.py --device Reachy --language en
-      "
-    depends_on:
-      reachy-daemon:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "test", "-S", "/tmp/reachy_sockets/hearing.sock"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
 
   reachy-conversation:
     image: reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
@@ -192,9 +166,7 @@ services:
       python3 -m conversation_app.app
       "
     depends_on:
-      reachy-daemon:
-        condition: service_healthy
-      reachy-hearing:
+      reachy-gateway:
         condition: service_healthy
       vllm-server-front:
         condition: service_healthy
