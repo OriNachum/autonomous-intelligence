@@ -198,14 +198,16 @@ class ConversationApp:
         """
         event_number = data.get("event_number")
         duration = data.get("duration")
-        
+        doa = data.get("doa")
+        angle_degrees = doa.get("angle_degrees")
+
         logger.info(f"💭 Processing speech event #{event_number}")
         
         # Create a user message representing the speech event
         # In a real system, this would be transcribed speech
         # For now, we'll create a generic message indicating user spoke
-        user_message = data.get("transcription", "")
-        
+        user_message = f"*Heard from {angle_degrees:.2f}°* " +  f"\"{data.get("transcription", "")}\""
+        logger.info(f"User: {user_message}")
         # For a real implementation, you would:
         # 1. Get the audio file saved by hearing_event_emitter
         # 2. Transcribe it using Whisper or similar
