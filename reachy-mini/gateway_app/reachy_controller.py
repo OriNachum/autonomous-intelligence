@@ -15,7 +15,7 @@ from reachy_mini import ReachyMini
 logger = logging.getLogger(__name__)
 
 
-class DoADetector:
+class ReachyController:
     """Direction of Audio Detector using ReachyMini"""
     
     def __init__(self, smoothing_alpha: float = 0.1, log_level: str = "INFO"):
@@ -168,6 +168,55 @@ class DoADetector:
             "angle_degrees": float(np.degrees(self.current_doa[0])),
             "is_speech_detected": bool(self.current_doa[1])
         }
+    
+    def start_recording(self):
+        """Start recording audio via ReachyMini"""
+        try:
+            self.mini.media.start_recording()
+            logger.info("Recording started via ReachyMini")
+        except Exception as e:
+            logger.error(f"Error starting recording: {e}", exc_info=True)
+            raise
+    
+    def stop_recording(self):
+        """Stop recording audio via ReachyMini"""
+        try:
+            self.mini.media.stop_recording()
+            logger.info("Recording stopped via ReachyMini")
+        except Exception as e:
+            logger.error(f"Error stopping recording: {e}", exc_info=True)
+            raise
+    
+    def get_audio_sample(self) -> Optional[np.ndarray]:
+        """
+        Get audio sample from ReachyMini
+        
+        Returns:
+            Audio sample as numpy array, or None if no sample available
+        """
+        try:
+            sample = self.mini.media.get_audio_sample()
+            if sample is not None:
+                logger.debug(f"Got audio sample with shape: {sample.shape}")
+            return sample
+        except Exception as e:
+            logger.error(f"Error getting audio sample: {e}", exc_info=True)
+            return None
+    
+    def get_sample_rate(self) -> int:
+        """
+        Get audio sample rate from ReachyMini
+        
+        Returns:
+            Sample rate in Hz
+        """
+        try:
+            sample_rate = self.mini.media.get_input_audio_samplerate()
+            logger.debug(f"Sample rate: {sample_rate} Hz")
+            return sample_rate
+        except Exception as e:
+            logger.error(f"Error getting sample rate: {e}", exc_info=True)
+            return 16000  # Default fallback
     
     def cleanup(self):
         """Clean up ReachyMini resources"""

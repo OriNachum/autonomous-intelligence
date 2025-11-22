@@ -12,8 +12,6 @@ Usage:
     python3 gateway.py --device Reachy --language en
 """
 
-import pyaudio
-import wave
 import time
 import numpy as np
 import os
@@ -33,7 +31,7 @@ import torch
 # Import our custom modules
 from vad_detector import VADDetector
 from whisper_stt import WhisperSTT
-from doa_detector import DoADetector
+from reachy_controller import ReachyController
 
 # Set up logging
 logging.basicConfig(
@@ -133,7 +131,7 @@ class ReachyGateway:
         # DOA detector initialization (this will spawn the daemon)
         logger.info("Initializing DOA detector (this will spawn the daemon)...")
         try:
-            self.doa_detector = DoADetector(smoothing_alpha=0.1, log_level="INFO")
+            self.reachy_controller = ReachyController(smoothing_alpha=0.1, log_level="INFO")
             self.current_doa = None
             self.doa_sample_interval = float(os.getenv('DOA_SAMPLE_INTERVAL', '0.1'))
             self.last_doa_sample_time = None
@@ -141,20 +139,13 @@ class ReachyGateway:
             logger.info("✅ Reachy Mini daemon spawned successfully")
         except Exception as e:
             logger.error(f"Failed to initialize DOA detector (daemon spawn failed): {e}", exc_info=True)
-            self.doa_detector = None
+            self.reachy_controller = None
             raise
         
         # Socket setup
         self.server_socket = None
         self.clients = []
         self.setup_socket_server()
-        
-        # Audio setup
-        self.p = pyaudio.PyAudio()
-        self.stream = None
-        self.input_device_index = None
-        self.num_channels = 1
-        self.use_aec_channel = False
         
         # Shutdown flag
         self.shutdown_requested = False
@@ -195,99 +186,7 @@ class ReachyGateway:
         
         logger.info(f"Socket server listening on {self.socket_path}")
     
-    def initialize_input_device(self):
-        """Find and initialize audio input device"""
-        wait_times = [1, 2, 4, 8, 16, 32]
-        for wait_time in wait_times:
-            self.input_device_index = self.find_input_device()
-            if self.input_device_index is not None:
-                break
-            logger.warning(f"Input device not found, retrying in {wait_time} seconds...")
-            time.sleep(wait_time)
-        else:
-            logger.error("Suitable input device not found after multiple attempts")
-            raise RuntimeError("Suitable input device not found")
-        
-        logger.info(f"Using audio device index: {self.input_device_index}")
-    
-    def find_input_device(self):
-        """Search for audio input device by name"""
-        logger.info("Searching for input device")
-        device_count = self.p.get_device_count()
-        logger.info(f"Found {device_count} audio devices")
-        
-        for i in range(device_count):
-            device_info = self.p.get_device_info_by_index(i)
-            device_name = device_info['name'].lower()
-            logger.debug(f"Checking device {i}: {device_name}")
-            
-            if self.device_name in device_name and device_info['maxInputChannels'] > 0:
-                logger.info(f"Found matching device: {device_info['name']} (index {i})")
-                return i
-        
-        logger.warning("Suitable input device not found")
-        return None
-    
-    def setup_audio_stream(self):
-        """Open audio stream"""
-        try:
-            # Check if this is the ReSpeaker device with 2 channels (AEC support)
-            device_info = self.p.get_device_info_by_index(self.input_device_index)
-            max_channels = device_info.get('maxInputChannels', 1)
-            device_name_lower = device_info['name'].lower()
-            
-            logger.info(f"Setting up audio stream for device: {device_info['name']}")
-            logger.info(f"Device info - maxInputChannels: {max_channels}, defaultSampleRate: {device_info.get('defaultSampleRate')}")
-            
-            # ONLY support reachy devices with 2 channels
-            if 'reachy' not in device_name_lower:
-                error_msg = (
-                    f"Unsupported audio device: '{device_info['name']}'. "
-                    f"Only 'reachy' devices are supported. "
-                    f"Please use --device reachy or set AUDIO_DEVICE_NAME=reachy"
-                )
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
-            
-            if max_channels < 2:
-                error_msg = (
-                    f"Device '{device_info['name']}' has {max_channels} channel(s), but 2 channels are required. "
-                    f"Please ensure you're using a ReSpeaker XVF3800 device with 2-channel AEC support."
-                )
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
-            
-            # Valid reachy device with 2 channels
-            self.num_channels = 2
-            self.use_aec_channel = True
-            logger.info(f"Using reachy device '{device_info['name']}' with 2-channel AEC mode (will use channel 0 for echo cancellation)")
-            
-            logger.info(f"Opening audio stream: format=paInt16, channels={self.num_channels}, rate={self.rate}, "
-                       f"frames_per_buffer={self.chunk_size}, device_index={self.input_device_index}")
-            
-            self.stream = self.p.open(
-                format=pyaudio.paInt16,
-                channels=self.num_channels,
-                rate=self.rate,
-                input=True,
-                frames_per_buffer=self.chunk_size,
-                input_device_index=self.input_device_index
-            )
-            logger.info(f"Audio stream opened successfully with {self.num_channels} channel(s)")
-            
-            # Verify stream is active
-            if not self.stream.is_active():
-                logger.warning("Audio stream opened but is not active, attempting to start...")
-                self.stream.start_stream()
-            
-            logger.info(f"Audio stream is active: {self.stream.is_active()}")
-            
-        except IOError as e:
-            logger.error(f"IOError opening audio stream: {e}", exc_info=True)
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error opening audio stream: {e}", exc_info=True)
-            raise
+
     
     async def accept_clients(self):
         """Accept new client connections"""
@@ -316,8 +215,8 @@ class ReachyGateway:
         }
         
         # Add DOA information to all events if available
-        if self.doa_detector and self.current_doa is not None:
-            doa_dict = self.doa_detector.get_current_doa_dict()
+        if self.reachy_controller and self.current_doa is not None:
+            doa_dict = self.reachy_controller.get_current_doa_dict()
             if doa_dict:
                 event["data"]["doa"] = doa_dict
                 logger.debug(f"DOA included in {event_type} event: {doa_dict['angle_degrees']:.1f}° "
@@ -396,25 +295,24 @@ class ReachyGateway:
         """Continuously listen to audio and buffer it"""
         while not self.shutdown_requested:
             try:
-                data = await asyncio.to_thread(
-                    self.stream.read,
-                    self.chunk_size,
-                    exception_on_overflow=False
-                )
-                np_data = np.frombuffer(data, dtype=np.int16)
+                # Get audio sample from ReachyMini via ReachyController
+                sample = await asyncio.to_thread(self.reachy_controller.get_audio_sample)
                 
-                # If using 2-channel ReSpeaker, extract only channel 0 (AEC-processed)
-                if self.use_aec_channel and self.num_channels == 2:
-                    # Verify we have the expected amount of data
-                    expected_samples = self.chunk_size * self.num_channels
-                    if len(np_data) != expected_samples:
-                        logger.warning(f"Unexpected audio data size: got {len(np_data)} samples, expected {expected_samples}")
-                    # Reshape to separate channels and extract channel 0
-                    try:
-                        np_data = np_data.reshape(-1, self.num_channels)[:, 0]
-                    except ValueError as e:
-                        logger.error(f"Failed to reshape audio data: {e}. Data length: {len(np_data)}, channels: {self.num_channels}")
-                        continue
+                if sample is None:
+                    # No sample available yet, wait a bit
+                    await asyncio.sleep(0.01)
+                    continue
+                
+                # ReachyMini may return float arrays, convert to int16 if needed
+                if sample.dtype == np.float32 or sample.dtype == np.float64:
+                    # Normalize and convert to int16
+                    np_data = (sample * 32767).astype(np.int16)
+                    logger.debug(f"Converted float audio sample to int16, shape: {np_data.shape}")
+                elif sample.dtype == np.int16:
+                    np_data = sample
+                else:
+                    logger.warning(f"Unexpected audio data type: {sample.dtype}, attempting conversion")
+                    np_data = sample.astype(np.int16)
                 
                 async with self.processing_lock:
                     self.audio_buffer.append(np_data)
@@ -460,8 +358,8 @@ class ReachyGateway:
             self.last_partial_text = ""
             
             # Clear DOA buffer for new speech segment
-            if self.doa_detector:
-                self.doa_detector.start_speech_segment()
+            if self.reachy_controller:
+                self.reachy_controller.start_speech_segment()
                 logger.info("Speech detected, starting new buffer and clearing DOA buffer")
             else:
                 logger.debug("Speech detected, starting new buffer")
@@ -563,8 +461,8 @@ class ReachyGateway:
         
         # Get average DOA for this speech segment
         avg_doa = None
-        if self.doa_detector:
-            avg_doa = self.doa_detector.get_average_doa()
+        if self.reachy_controller:
+            avg_doa = self.reachy_controller.get_average_doa()
             if avg_doa:
                 logger.info(f"Average DOA over speech segment: {avg_doa['angle_degrees']:.1f}° "
                            f"from {avg_doa['sample_count']} samples")
@@ -655,19 +553,19 @@ class ReachyGateway:
     
     async def sample_doa(self):
         """Continuously sample DOA from ReachyMini"""
-        if not self.doa_detector:
+        if not self.reachy_controller:
             logger.warning("DOA detector not available, skipping DOA sampling")
             return
         
         while not self.shutdown_requested:
             try:
-                doa = await asyncio.to_thread(self.doa_detector.get_current_doa)
+                doa = await asyncio.to_thread(self.reachy_controller.get_current_doa)
                 self.current_doa = doa
                 logger.debug(f"DOA sampled: angle={doa[0]:.3f} rad ({np.degrees(doa[0]):.1f}°), "
                            f"speech_detected={doa[1]}")
                 
                 if self.speech_detected and doa[1]:
-                    self.doa_detector.add_doa_sample(doa)
+                    self.reachy_controller.add_doa_sample(doa)
                     logger.debug(f"DOA sample buffered for averaging")
                 
                 await asyncio.sleep(self.doa_sample_interval)
@@ -682,42 +580,15 @@ class ReachyGateway:
         logger.info(f"Device: {self.device_name}")
         logger.info(f"Rate: {self.rate} Hz")
         logger.info(f"Socket: {self.socket_path}")
-        logger.info(f"DOA Detection: {'Enabled' if self.doa_detector else 'Disabled'}")
+        logger.info(f"DOA Detection: {'Enabled' if self.reachy_controller else 'Disabled'}")
         
         # Set up signal handlers
         self.setup_signal_handlers()
         
-        # Initialize audio device
-        self.initialize_input_device()
-        self.setup_audio_stream()
-        
-        # Test audio stream with a few reads
-        logger.info("Testing audio stream with initial reads...")
-        try:
-            for i in range(3):
-                test_data = await asyncio.to_thread(
-                    self.stream.read,
-                    self.chunk_size,
-                    exception_on_overflow=False
-                )
-                test_np_data = np.frombuffer(test_data, dtype=np.int16)
-                logger.info(f"Test read {i+1}: received {len(test_np_data)} samples "
-                           f"(expected {self.chunk_size * self.num_channels} for {self.num_channels} channels)")
-                
-                # Verify channel extraction works
-                if self.use_aec_channel and self.num_channels == 2:
-                    if len(test_np_data) != self.chunk_size * self.num_channels:
-                        raise RuntimeError(f"Audio data size mismatch: got {len(test_np_data)}, "
-                                         f"expected {self.chunk_size * self.num_channels}")
-                    reshaped = test_np_data.reshape(-1, self.num_channels)[:, 0]
-                    logger.info(f"Test read {i+1}: successfully extracted channel 0, {len(reshaped)} samples")
-                
-                await asyncio.sleep(0.1)
-            
-            logger.info("✅ Audio stream test successful")
-        except Exception as e:
-            logger.error(f"❌ Audio stream test failed: {e}", exc_info=True)
-            raise
+        # Start recording via ReachyMini
+        logger.info("Starting recording via ReachyMini...")
+        self.reachy_controller.start_recording()
+        logger.info("✅ Recording started successfully")
         
         # Start tasks
         accept_task = asyncio.create_task(self.accept_clients())
@@ -725,7 +596,7 @@ class ReachyGateway:
         process_task = asyncio.create_task(self.process())
         
         doa_task = None
-        if self.doa_detector:
+        if self.reachy_controller:
             doa_task = asyncio.create_task(self.sample_doa())
             logger.info("DOA sampling task started")
         
@@ -754,28 +625,21 @@ class ReachyGateway:
         """Clean up resources"""
         logger.info("Cleaning up resources")
         
-        # Cleanup DOA detector (this will also stop the daemon)
-        if hasattr(self, 'doa_detector') and self.doa_detector:
+        # Stop recording via ReachyMini
+        if hasattr(self, 'doa_detector') and self.reachy_controller:
             try:
-                self.doa_detector.cleanup()
+                self.reachy_controller.stop_recording()
+                logger.info("Recording stopped via ReachyMini")
+            except Exception as e:
+                logger.error(f"Error stopping recording: {e}")
+        
+        # Cleanup DOA detector (this will also stop the daemon)
+        if hasattr(self, 'doa_detector') and self.reachy_controller:
+            try:
+                self.reachy_controller.cleanup()
                 logger.info("DOA detector cleaned up (daemon stopped)")
             except Exception as e:
                 logger.error(f"Error cleaning up DOA detector: {e}")
-        
-        # Close audio stream
-        if self.stream:
-            try:
-                self.stream.stop_stream()
-                self.stream.close()
-            except:
-                pass
-        
-        # Terminate PyAudio
-        if self.p:
-            try:
-                self.p.terminate()
-            except:
-                pass
         
         # Close all client connections
         for client in self.clients:
