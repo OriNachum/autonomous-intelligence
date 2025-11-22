@@ -24,8 +24,12 @@ The following are possible values for the tool_name
 - nod_head
 - shake_head
 - tilt_head
-- move_head (rotation should be up to -+65 degrees)
-- move_antennas (Complete 360 degrees circle - it is safe, Both left and right antenna positions must be specified)
+- move_head
+  - Rotation left is 65 degrees
+  - Rotation right is -65 degrees
+- move_antennas
+  - Complete 360 degrees circle.
+  - Both left and right antenna positions must be specified
 - reset_antennas
 - express_emotion
 - perform_gesture

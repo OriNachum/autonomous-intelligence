@@ -167,6 +167,8 @@ class ActionsQueue:
             if not hasattr(module, 'execute'):
                 return {"error": f"Action script missing execute function: {action_name}", "status": "failed"}
             
+            logger.info(f"   ✓ Action script loaded: {script_file}")
+
             # Execute the action with helper functions
             result = await module.execute(
                 self._make_request,
@@ -190,8 +192,8 @@ class ActionsQueue:
         roll: float = 0.0,
         pitch: float = 0.0,
         yaw: float = 0.0,
-        degrees: bool = False,
-        mm: bool = False
+        degrees: bool = True,
+        mm: bool = True
     ) -> Dict[str, Any]:
         """
         Create a head pose configuration for Reachy Mini.
@@ -206,9 +208,11 @@ class ActionsQueue:
             Dictionary with head pose configuration
         """
         if mm:
+            logger.info(f"   ✓ Converting mm to meters: {x}, {y}, {z}")
             x, y, z = x / 1000, y / 1000, z / 1000
         
-        if degrees:
+        if not degrees:
+            logger.info(f"   ✓ Converting degrees to radians: {roll}, {pitch}, {yaw}")
             roll = math.radians(roll)
             pitch = math.radians(pitch)
             yaw = math.radians(yaw)

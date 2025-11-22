@@ -45,7 +45,7 @@ from .action_handler import ActionHandler
 
 # Set up logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Changed to DEBUG for detailed logging
+    level=logging.ERROR,  # Changed to DEBUG for detailed logging
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -207,7 +207,7 @@ class ConversationApp:
         # Create a user message representing the speech event
         # In a real system, this would be transcribed speech
         # For now, we'll create a generic message indicating user spoke
-        user_message = f"*Heard from {angle_radians:.2f}° radians* " +  f"\"{data.get("transcription", "")}\""
+        user_message = f"*Heard from {angle_degrees:.2f}° degrees* " +  f"\"{data.get("transcription", "")}\""
         logger.info(f"User: {user_message}")
         # For a real implementation, you would:
         # 1. Get the audio file saved by hearing_event_emitter
