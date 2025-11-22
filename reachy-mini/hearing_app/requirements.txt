@@ -3,3 +3,4 @@ webrtcvad==2.0.10
 numpy==2.3.4
 python-dotenv==1.0.0
 faster-whisper
+reachy-mini==1.1.0
