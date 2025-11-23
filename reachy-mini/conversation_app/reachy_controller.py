@@ -225,7 +225,7 @@ class ReachyController:
             logger.error(f"Error getting audio sample: {e}", exc_info=True)
             return None
     
-    def move_to(self,duration=1.0, method=InterpolationTechnique.CARTOON, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def move_to(self,duration=1.0, method=InterpolationTechnique.LINEAR, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
         """
         Move the robot to a target head pose and/or antennas position and/or body direction.
         """
@@ -279,12 +279,21 @@ class ReachyController:
         - Head yaw is limited to ±40 degrees
         - Overflow beyond ±40 degrees is redirected to body_yaw
         - Head pitch is limited to ±20 degrees
+        - Head roll is limited to ±35 degrees
         """
         HEAD_YAW_LIMIT = np.deg2rad(40.0)  # 40 degrees in radians
         HEAD_PITCH_LIMIT = np.deg2rad(20.0)  # 20 degrees in radians
+        HEAD_ROLL_LIMIT = np.deg2rad(35.0)  # 35 degrees in radians
         
-        safe_roll = roll
         safe_antennas = antennas
+        
+        # Handle head roll limit
+        if abs(roll) > HEAD_ROLL_LIMIT:
+            safe_roll = np.sign(roll) * HEAD_ROLL_LIMIT
+            logger.debug(f"Head roll limited: requested={np.degrees(roll):.1f}°, "
+                        f"safe_roll={np.degrees(safe_roll):.1f}°")
+        else:
+            safe_roll = roll
         
         # Handle head pitch limit
         if abs(pitch) > HEAD_PITCH_LIMIT:
