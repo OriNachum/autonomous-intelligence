@@ -272,6 +272,7 @@ class ReachyController:
         """
         # Get current state
         curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self._get_current_state()
+        logger.info(f"Starting move_to: roll={curr_roll:.1f}, pitch={curr_pitch:.1f}, yaw={curr_yaw:.1f}, antennas={curr_antennas}, body_yaw={curr_body_yaw:.1f}")
         
         # Resolve None values to current state
         target_roll = roll if roll is not None else curr_roll
@@ -293,6 +294,10 @@ class ReachyController:
         self._current_body_yaw = np.degrees(safe_body_yaw)
         
         self.mini.goto_target(create_head_pose(roll=safe_roll, pitch=safe_pitch, yaw=safe_yaw), antennas=safe_antennas, duration=duration, method=method, body_yaw=safe_body_yaw)
+        
+        # Log final state
+        final_roll, final_pitch, final_yaw, final_antennas, final_body_yaw = self._get_current_state()
+        logger.info(f"Finished move_to: roll={final_roll:.1f}, pitch={final_pitch:.1f}, yaw={final_yaw:.1f}, antennas={final_antennas}, body_yaw={final_body_yaw:.1f}")
     
     def move_cyclically(self, duration=10.0, repetitions=1, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """
@@ -301,10 +306,18 @@ class ReachyController:
         Parameters default to None, which means maintain current position.
         Only specified parameters will have cyclical movement applied.
         """
+        # Log initial state
+        curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self._get_current_state()
+        logger.info(f"Starting move_cyclically: roll={curr_roll:.1f}, pitch={curr_pitch:.1f}, yaw={curr_yaw:.1f}, antennas={curr_antennas}, body_yaw={curr_body_yaw:.1f}")
+
         for _ in range(1):
             t = time.time()
             self.move_smoothly_to(duration=duration/2, offset=0, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
             self.move_smoothly_to(duration=duration/2, offset=1, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
+
+        # Log final state
+        final_roll, final_pitch, final_yaw, final_antennas, final_body_yaw = self._get_current_state()
+        logger.info(f"Finished move_cyclically: roll={final_roll:.1f}, pitch={final_pitch:.1f}, yaw={final_yaw:.1f}, antennas={final_antennas}, body_yaw={final_body_yaw:.1f}")
 
         
     def move_smoothly_to(self, duration=10.0, offset=0, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
@@ -315,10 +328,15 @@ class ReachyController:
         Only specified parameters will have smooth sinusoidal movement applied.
         """
         def smooth_movement(t, max_angle, offset=0):
-            return np.deg2rad(max_angle * np.sin((2*offset + 2) * np.pi * 0.5 * t ))
-        
+            # offset=0: π/2 (quarter cycle), offset=1: π (half cycle)
+            phase = np.pi / 2 * (offset + 1) * t / duration
+            smooth_position = np.deg2rad(max_angle * np.sin(phase))
+            # Apply 2 decimal points precision
+            smooth_position = round(smooth_position, 2)
+            return smooth_position
         # Get current state
         curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self._get_current_state()
+        logger.info(f"Starting move_smoothly_to: roll={curr_roll:.1f}, pitch={curr_pitch:.1f}, yaw={curr_yaw:.1f}, antennas={curr_antennas}, body_yaw={curr_body_yaw:.1f}")
         
         # Determine which parameters to animate vs keep constant
         # For None parameters, we use current values and mark them as constant
@@ -383,6 +401,10 @@ class ReachyController:
             )
             self.mini.set_target(head=head_pose, antennas=safe_antennas, body_yaw=safe_body_yaw)
             t = time.time()
+        
+        # Log final state
+        final_roll, final_pitch, final_yaw, final_antennas, final_body_yaw = self._get_current_state()
+        logger.info(f"Finished move_smoothly_to: roll={final_roll:.1f}, pitch={final_pitch:.1f}, yaw={final_yaw:.1f}, antennas={final_antennas}, body_yaw={final_body_yaw:.1f}")
 
     def apply_safety_to_movement(self, roll, pitch, yaw, antennas, body_yaw):
         """
