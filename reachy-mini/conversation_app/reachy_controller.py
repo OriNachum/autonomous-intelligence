@@ -273,12 +273,35 @@ class ReachyController:
             t = time.time()
 
     def apply_safety_to_movement(self, roll, pitch, yaw, antennas, body_yaw):
+        """
+        Apply safety limits to robot movements.
+        
+        - Head yaw is limited to ±40 degrees
+        - Overflow beyond ±40 degrees is redirected to body_yaw
+        """
+        HEAD_YAW_LIMIT = np.deg2rad(40.0)  # 40 degrees in radians
         
         safe_roll = roll
         safe_pitch = pitch
-        safe_yaw = yaw
         safe_antennas = antennas
-        safe_body_yaw = body_yaw
+        
+        # Handle head yaw overflow by redirecting to body_yaw
+        if abs(yaw) > HEAD_YAW_LIMIT:
+            # Calculate overflow amount
+            overflow = yaw - np.sign(yaw) * HEAD_YAW_LIMIT
+            
+            # Limit head yaw to maximum allowed
+            safe_yaw = np.sign(yaw) * HEAD_YAW_LIMIT
+            
+            # Add overflow to body_yaw
+            safe_body_yaw = body_yaw + overflow
+            
+            logger.debug(f"Head yaw limited: requested={np.degrees(yaw):.1f}°, "
+                        f"safe_yaw={np.degrees(safe_yaw):.1f}°, "
+                        f"overflow={np.degrees(overflow):.1f}° redirected to body_yaw")
+        else:
+            safe_yaw = yaw
+            safe_body_yaw = body_yaw
 
         return (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw)
 
