@@ -229,7 +229,8 @@ class ReachyController:
         """
         Move the robot to a target head pose and/or antennas position and/or body direction.
         """
-        self.mini.goto_target(create_head_pose(roll=roll, pitch=pitch, yaw=yaw), antennas=antennas, duration=duration, method=method, body_yaw=body_yaw)
+        (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw) = self.apply_safety_to_movement(roll, pitch, yaw, antennas, body_yaw)
+        self.mini.goto_target(create_head_pose(roll=safe_roll, pitch=safe_pitch, yaw=safe_yaw), antennas=safe_antennas, duration=duration, method=method, body_yaw=safe_body_yaw)
     
     def move_cyclicly(self, duration=1.0, repeatitions=1, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
         """
@@ -258,15 +259,28 @@ class ReachyController:
             pitch_t = smooth_movement(tick_in_time, pitch, offset)
             roll_t = smooth_movement(tick_in_time, roll, offset)
             yaw_t = smooth_movement(tick_in_time, yaw, offset)
+
+            (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw) = self.apply_safety_to_movement(roll_t, pitch_t, yaw_t, antennas=antennas_t, body_yaw=body_yaw_t)
+
             head_pose = create_head_pose(
-                roll=roll_t,
-                pitch=pitch_t,
-                yaw=yaw_t,
+                roll=safe_roll,
+                pitch=safe_pitch,
+                yaw=safe_yaw,
                 degrees=False,
                 mm=False,
             )
-            self.mini.set_target(head=head_pose, antennas=antennas_t, body_yaw=body_yaw_t)
+            self.mini.set_target(head=head_pose, antennas=safe_antennas, body_yaw=safe_body_yaw)
             t = time.time()
+
+    def apply_safety_to_movement(self, roll, pitch, yaw, antennas, body_yaw):
+        
+        safe_roll = roll
+        safe_pitch = pitch
+        safe_yaw = yaw
+        safe_antennas = antennas
+        safe_body_yaw = body_yaw
+
+        return (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw)
 
 
     def get_sample_rate(self) -> int:
