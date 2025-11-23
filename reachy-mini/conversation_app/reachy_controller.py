@@ -280,9 +280,6 @@ class ReachyController:
         target_antennas = antennas if antennas is not None else curr_antennas
         target_body_yaw = body_yaw if body_yaw is not None else curr_body_yaw
         
-        # Update tracked body_yaw
-        self._current_body_yaw = target_body_yaw
-        
         # Apply safety and execute movement
         (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw) = self.apply_safety_to_movement(
             np.deg2rad(target_roll),
@@ -291,6 +288,10 @@ class ReachyController:
             [np.deg2rad(target_antennas[0]), np.deg2rad(target_antennas[1])], 
             np.deg2rad(target_body_yaw)
         )
+        
+        # FIX: Update tracked body_yaw with the ACTUAL safe value used
+        self._current_body_yaw = np.degrees(safe_body_yaw)
+        
         self.mini.goto_target(create_head_pose(roll=safe_roll, pitch=safe_pitch, yaw=safe_yaw), antennas=safe_antennas, duration=duration, method=method, body_yaw=safe_body_yaw)
     
     def move_cyclically(self, duration=10.0, repetitions=1, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
@@ -343,9 +344,6 @@ class ReachyController:
             # Apply smooth movement only to animated parameters, keep others constant
             if animate_body_yaw:
                 body_yaw_t = smooth_movement(tick_in_time, target_body_yaw, offset)
-                # Update tracked value
-                if tick_in_time >= duration - 0.01:  # Near end of movement
-                    self._current_body_yaw = target_body_yaw
             else:
                 body_yaw_t = np.deg2rad(curr_body_yaw)
             
@@ -371,6 +369,10 @@ class ReachyController:
                 yaw_t = np.deg2rad(curr_yaw)
 
             (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw) = self.apply_safety_to_movement(roll_t, pitch_t, yaw_t, antennas=antennas_t, body_yaw=body_yaw_t)
+
+            # FIX: Update tracked body_yaw with the ACTUAL safe value used (at the end of animation)
+            if tick_in_time >= duration - 0.01:  # Near end of movement
+                self._current_body_yaw = np.degrees(safe_body_yaw)
 
             head_pose = create_head_pose(
                 roll=safe_roll,
@@ -427,7 +429,7 @@ class ReachyController:
         if abs(yaw) > HEAD_YAW_LIMIT:
             # Calculate overflow amount
             overflow = yaw - np.sign(yaw) * HEAD_YAW_LIMIT
-            safe_yaw = yaw
+            safe_yaw = np.sign(yaw) * HEAD_YAW_LIMIT  # FIX: Clamp to limit
             # Add overflow to body_yaw
             safe_body_yaw = body_yaw + overflow
             
@@ -439,7 +441,7 @@ class ReachyController:
         if abs(safe_body_yaw) > BODY_YAW_LIMIT:
             # Calculate overflow amount
             body_overflow = safe_body_yaw - np.sign(safe_body_yaw) * BODY_YAW_LIMIT
-            safe_body_yaw = safe_body_yaw
+            safe_body_yaw = np.sign(safe_body_yaw) * BODY_YAW_LIMIT  # FIX: Clamp to limit
             # Add overflow to head yaw
             safe_yaw = safe_yaw + body_overflow
             

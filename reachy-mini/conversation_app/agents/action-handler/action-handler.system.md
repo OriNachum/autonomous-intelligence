@@ -27,8 +27,6 @@ Move to a target pose using specified interpolation.
 - `yaw` (float): rotate head around the vertical axis angle in degrees, allows shaking head or looking to the sides (default: maintain current position)
 - `pitch` (float): rotate head around the horizontal axis angle in degrees, allows nodding (default: maintain current position)
 - `roll` (float): rotate head around the frontal axis angle in degrees, reflects curiosity (default: maintain current position)
-  - Left rotation: 65 degrees
-  - Right rotation: -65 degrees
 - `antennas` (list): [right, left] antenna angles in degrees (if not provided: maintain current position)
   - Full circle: 360 degrees
 - `body_yaw` (float): Body yaw angle in degrees (default: maintain current position)
@@ -38,31 +36,31 @@ Move to a target pose using specified interpolation.
 
 ### Nodding (Yes)
 ```json
-{"commands": [{"tool_name": "move_cyclically", "parameters": {"pitch": 15.0, "duration": 1.0}}]}
+{"commands": [{"tool_name": "move_cyclically", "parameters": {"pitch": 15.0, "duration": 5.0}}]}
 ```
 
 ### Shaking Head (No)
 ```json
-{"commands": [{"tool_name": "move_cyclically", "parameters": {"yaw": 30.0, "duration": 1.2}}]}
+{"commands": [{"tool_name": "move_cyclically", "parameters": {"yaw": 30.0, "duration": 5.0}}]}
 ```
 
 ### Tilting Head (Confused/Curious)
 ```json
-{"commands": [{"tool_name": "move_to", "parameters": {"roll": 20.0, "duration": 0.5}}]}
+{"commands": [{"tool_name": "move_to", "parameters": {"roll": 20.0, "duration": 1.5}}]}
 ```
 
 ### Looking Around
 ```json
 {"commands": [
-  {"tool_name": "move_to", "parameters": {"yaw": 45.0, "duration": 0.8}},
-  {"tool_name": "move_to", "parameters": {"yaw": -45.0, "duration": 0.8}},
-  {"tool_name": "move_to", "parameters": {"yaw": 0.0, "duration": 0.5}}
+  {"tool_name": "move_to", "parameters": {"yaw": 45.0, "duration": 2.8}},
+  {"tool_name": "move_to", "parameters": {"yaw": -45.0, "duration": 2.8}},
+  {"tool_name": "move_to", "parameters": {"yaw": 0.0, "duration": 2.5}}
 ]}
 ```
 
 ### Antenna Wiggle (Playful)
 ```json
-{"commands": [{"tool_name": "move_cyclically", "parameters": {"antennas": [180.0, 180.0], "duration": 1.5, "repetitions": 2}}]}
+{"commands": [{"tool_name": "move_cyclically", "parameters": {"antennas": [180.0, 180.0], "duration": 6.0, "repetitions": 2}}]}
 ```
 
 ## Response Format
@@ -72,8 +70,8 @@ Always respond with a JSON object containing a `commands` list:
 ```json
 {
   "commands": [
-    {"tool_name": "move_to", "parameters": {"pitch": 10.0, "duration": 0.5}},
-    {"tool_name": "move_cyclically", "parameters": {"yaw": 20.0, "duration": 1.0}}
+    {"tool_name": "move_to", "parameters": {"pitch": 10.0, "duration": 1.0}},
+    {"tool_name": "move_cyclically", "parameters": {"yaw": 20.0, "duration": 5.0}}
   ]
 }
 ```
