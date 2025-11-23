@@ -421,6 +421,12 @@ class ConversationApp:
         
         if self.gateway:
             logger.info("Stopping gateway...")
+            # Turn off robot smoothly before shutting down
+            try:
+                self.gateway.turn_off_smoothly(part='reachy', duration=2.0)
+            except Exception as e:
+                logger.error(f"Error turning off robot: {e}")
+            
             self.gateway.shutdown_requested = True
             await asyncio.sleep(0.5)  # Give it time to shutdown gracefully
             self.gateway.cleanup()
@@ -442,15 +448,34 @@ async def main():
     
     app = ConversationApp()  # No socket_path needed
     
+    # Handle signals
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+    
+    def signal_handler():
+        logger.info("Signal received, initiating shutdown...")
+        stop_event.set()
+        
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, signal_handler)
+    
     try:
         # Initialize app
         await app.initialize()
         
-        # Run conversation app
-        await app.run()
+        # Run conversation app in background
+        app_task = asyncio.create_task(app.run())
         
-    except KeyboardInterrupt:
-        logger.info("\n⚠️  Interrupted by user")
+        # Wait for stop signal
+        await stop_event.wait()
+        
+        logger.info("Shutdown signal received, cancelling app task...")
+        app_task.cancel()
+        try:
+            await app_task
+        except asyncio.CancelledError:
+            pass
+            
     except Exception as e:
         logger.error(f"\n❌ Error: {e}")
         traceback.print_exc()
@@ -461,4 +486,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    import signal
     asyncio.run(main())

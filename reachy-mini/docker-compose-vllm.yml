@@ -144,7 +144,7 @@ services:
       hf auth login --token ${HF_TOKEN} --add-to-git-credential &&
       hf download Systran/faster-whisper-large-v3 --local-dir /data/models/whisper/large-v3 &&
       echo 'Whisper model downloaded' &&
-      python3 -m conversation_app.app
+      exec python3 -m conversation_app.app
       "
     depends_on:
       vllm-server-front:

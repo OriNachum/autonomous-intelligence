@@ -232,6 +232,11 @@ class ReachyGateway:
         """Move the robot cyclicly to a target head pose and/or antennas position and/or body direction."""
         self.reachy_controller.move_cyclically(duration=duration, repetitions=repetitions, head_roll=head_roll, head_pitch=head_pitch, head_yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
     
+    def turn_off_smoothly(self, part='reachy', duration=10.0):
+        """Smoothly move the robot to a neutral position and then turn off compliance."""
+        if self.reachy_controller:
+            self.reachy_controller.turn_off_smoothly(part=part, duration=duration)
+    
     async def accept_clients(self):
         """Accept new client connections"""
         if not self.enable_socket_server:
@@ -853,7 +858,7 @@ class ReachyGateway:
                 logger.error(f"Error stopping recording: {e}")
         
         # Cleanup DOA detector (this will also stop the daemon)
-        if hasattr(self, 'doa_detector') and self.reachy_controller:
+        if self.reachy_controller:
             try:
                 self.reachy_controller.cleanup()
                 logger.info("DOA detector cleaned up (daemon stopped)")
