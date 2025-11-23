@@ -13,6 +13,7 @@ from typing import Optional, Tuple, Dict
 from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
 from reachy_mini.utils.interpolation import InterpolationTechnique, minimum_jerk
+from scipy.spatial.transform import Rotation
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,9 @@ class ReachyController:
         
         # Current DOA state
         self.current_doa = None
+        
+        # Track body yaw state (not directly readable from ReachyMini)
+        self._current_body_yaw = 0.0
         
         logger.info(f"DOA Detector initialized with smoothing_alpha={smoothing_alpha}")
     
@@ -225,16 +229,76 @@ class ReachyController:
             logger.error(f"Error getting audio sample: {e}", exc_info=True)
             return None
     
-    def move_to(self,duration=10.0, method=InterpolationTechnique.MIN_JERK, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def _get_current_state(self) -> Tuple[float, float, float, list, float]:
+        """
+        Get current robot state (pose and positions).
+        
+        Returns:
+            Tuple of (roll, pitch, yaw, antennas, body_yaw) all in degrees
+        """
+        try:
+            # Get current head pose as 4x4 transformation matrix
+            head_pose_matrix = self.mini.get_current_head_pose()
+            
+            # Convert rotation matrix to Euler angles (in radians)
+            rotation_matrix = head_pose_matrix[:3, :3]
+            rotation = Rotation.from_matrix(rotation_matrix)
+            # Get Euler angles in 'xyz' order (roll, pitch, yaw)
+            euler_angles = rotation.as_euler('xyz', degrees=True)
+            roll, pitch, yaw = euler_angles
+            
+            # Get antenna positions (in radians, convert to degrees)
+            antennas_rad = self.mini.get_present_antenna_joint_positions()
+            antennas = [np.degrees(antennas_rad[0]), np.degrees(antennas_rad[1])]
+            
+            # Use tracked body_yaw
+            body_yaw = self._current_body_yaw
+            
+            logger.debug(f"Current state: roll={roll:.1f}°, pitch={pitch:.1f}°, yaw={yaw:.1f}°, "
+                        f"antennas={antennas}, body_yaw={body_yaw:.1f}°")
+            
+            return (roll, pitch, yaw, antennas, body_yaw)
+        except Exception as e:
+            logger.error(f"Error getting current state: {e}", exc_info=True)
+            # Return safe defaults
+            return (0.0, 0.0, 0.0, [0.0, 0.0], 0.0)
+    
+    def move_to(self, duration=10.0, method=InterpolationTechnique.MIN_JERK, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """
         Move the robot to a target head pose and/or antennas position and/or body direction.
+        
+        Parameters default to None, which means maintain current position.
+        Only specified parameters will be changed.
         """
-        (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw) = self.apply_safety_to_movement(roll, pitch, yaw, antennas, body_yaw)
+        # Get current state
+        curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self._get_current_state()
+        
+        # Resolve None values to current state
+        target_roll = roll if roll is not None else curr_roll
+        target_pitch = pitch if pitch is not None else curr_pitch
+        target_yaw = yaw if yaw is not None else curr_yaw
+        target_antennas = antennas if antennas is not None else curr_antennas
+        target_body_yaw = body_yaw if body_yaw is not None else curr_body_yaw
+        
+        # Update tracked body_yaw
+        self._current_body_yaw = target_body_yaw
+        
+        # Apply safety and execute movement
+        (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw) = self.apply_safety_to_movement(
+            np.deg2rad(target_roll),
+            np.deg2rad(target_pitch),
+            np.deg2rad(target_yaw), 
+            [np.deg2rad(target_antennas[0]), np.deg2rad(target_antennas[1])], 
+            np.deg2rad(target_body_yaw)
+        )
         self.mini.goto_target(create_head_pose(roll=safe_roll, pitch=safe_pitch, yaw=safe_yaw), antennas=safe_antennas, duration=duration, method=method, body_yaw=safe_body_yaw)
     
-    def move_cyclically(self, duration=10.0, repetitions=1, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def move_cyclically(self, duration=10.0, repetitions=1, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """
-        A cyclical movement
+        A cyclical movement.
+        
+        Parameters default to None, which means maintain current position.
+        Only specified parameters will have cyclical movement applied.
         """
         for _ in range(1):
             t = time.time()
@@ -242,23 +306,69 @@ class ReachyController:
             self.move_smoothly_to(duration=duration/2, offset=1, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
 
         
-    def move_smoothly_to(self, duration=10.0, offset=0, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def move_smoothly_to(self, duration=10.0, offset=0, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """
         Move the robot smoothly to a single position.
+        
+        Parameters default to None, which means maintain current position (constant, no oscillation).
+        Only specified parameters will have smooth sinusoidal movement applied.
         """
         def smooth_movement(t, max_angle, offset=0):
             return np.deg2rad(max_angle * np.sin((2*offset + 2) * np.pi * 0.5 * t ))
+        
+        # Get current state
+        curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self._get_current_state()
+        
+        # Determine which parameters to animate vs keep constant
+        # For None parameters, we use current values and mark them as constant
+        animate_roll = roll is not None
+        animate_pitch = pitch is not None
+        animate_yaw = yaw is not None
+        animate_antennas = antennas is not None
+        animate_body_yaw = body_yaw is not None
+        
+        # Set target values
+        target_roll = roll if roll is not None else curr_roll
+        target_pitch = pitch if pitch is not None else curr_pitch
+        target_yaw = yaw if yaw is not None else curr_yaw
+        target_antennas = antennas if antennas is not None else curr_antennas
+        target_body_yaw = body_yaw if body_yaw is not None else curr_body_yaw
         
         logger.info(f"Moving robot smoothly to: roll={roll}, pitch={pitch}, yaw={yaw}, antennas={antennas}, body_yaw={body_yaw}")  
         start_time = time.time()
         t = time.time()
         while t - start_time < duration:
             tick_in_time = t - start_time
-            body_yaw_t = smooth_movement(tick_in_time, body_yaw, offset)
-            antennas_t = [smooth_movement(tick_in_time, antennas[0], offset), smooth_movement(tick_in_time, antennas[1], offset)]
-            pitch_t = smooth_movement(tick_in_time, pitch, offset)
-            roll_t = smooth_movement(tick_in_time, roll, offset)
-            yaw_t = smooth_movement(tick_in_time, yaw, offset)
+            
+            # Apply smooth movement only to animated parameters, keep others constant
+            if animate_body_yaw:
+                body_yaw_t = smooth_movement(tick_in_time, target_body_yaw, offset)
+                # Update tracked value
+                if tick_in_time >= duration - 0.01:  # Near end of movement
+                    self._current_body_yaw = target_body_yaw
+            else:
+                body_yaw_t = np.deg2rad(curr_body_yaw)
+            
+            if animate_antennas:
+                antennas_t = [smooth_movement(tick_in_time, target_antennas[0], offset), 
+                             smooth_movement(tick_in_time, target_antennas[1], offset)]
+            else:
+                antennas_t = [np.deg2rad(curr_antennas[0]), np.deg2rad(curr_antennas[1])]
+            
+            if animate_pitch:
+                pitch_t = smooth_movement(tick_in_time, target_pitch, offset)
+            else:
+                pitch_t = np.deg2rad(curr_pitch)
+            
+            if animate_roll:
+                roll_t = smooth_movement(tick_in_time, target_roll, offset)
+            else:
+                roll_t = np.deg2rad(curr_roll)
+            
+            if animate_yaw:
+                yaw_t = smooth_movement(tick_in_time, target_yaw, offset)
+            else:
+                yaw_t = np.deg2rad(curr_yaw)
 
             (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw) = self.apply_safety_to_movement(roll_t, pitch_t, yaw_t, antennas=antennas_t, body_yaw=body_yaw_t)
 
@@ -289,7 +399,7 @@ class ReachyController:
         HEAD_PITCH_LIMIT = np.deg2rad(20.0)  # 20 degrees in radians
         HEAD_ROLL_LIMIT = np.deg2rad(25.0)  # 25 degrees in radians
         BODY_YAW_LIMIT = np.deg2rad(25.0)  # 25 degrees in radians
-        MAX_YAW_DIFFERENCE = np.deg2rad(45.0)  # 45 degrees in radians
+        MAX_YAW_DIFFERENCE = np.deg2rad(30.0)  # 45 degrees in radians
         
         safe_antennas = antennas
         
