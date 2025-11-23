@@ -11,6 +11,8 @@ import numpy as np
 import time
 from typing import Optional, Tuple, Dict
 from reachy_mini import ReachyMini
+from reachy_mini.utils import create_head_pose
+from reachy_mini.utils.interpolation import InterpolationTechnique, minimum_jerk
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +225,50 @@ class ReachyController:
             logger.error(f"Error getting audio sample: {e}", exc_info=True)
             return None
     
+    def move_to(self,duration=1.0, method=InterpolationTechnique.CARTOON, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+        """
+        Move the robot to a target head pose and/or antennas position and/or body direction.
+        """
+        self.mini.goto_target(create_head_pose(roll=roll, pitch=pitch, yaw=yaw), antennas=antennas, duration=duration, method=method, body_yaw=body_yaw)
+    
+    def move_cyclicly(self, duration=1.0, repeatitions=1, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+        """
+        A cyclical movement
+        """
+        for _ in range(1):
+            t = time.time()
+            self.move_smoothly(duration=duration/2, offset=0, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
+            self.move_smoothly(duration=duration/2, offset=1, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
+
+        
+    def move_smoothly(self, duration=1.0, offset=0, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+        """
+        Move the robot smoothly to a single position.
+        """
+        def smooth_movement(t, max_angle, offset=0):
+            return np.deg2rad(max_angle * np.sin((2*offset + 2) * np.pi * 0.5 * t ))
+        
+        logger.info(f"Moving robot smoothly to: roll={roll}, pitch={pitch}, yaw={yaw}, antennas={antennas}, body_yaw={body_yaw}")  
+        start_time = time.time()
+        t = time.time()
+        while t - start_time < duration:
+            tick_in_time = t - start_time
+            body_yaw_t = smooth_movement(tick_in_time, body_yaw, offset)
+            antennas_t = [smooth_movement(tick_in_time, antennas[0], offset), smooth_movement(tick_in_time, antennas[1], offset)]
+            pitch_t = smooth_movement(tick_in_time, pitch, offset)
+            roll_t = smooth_movement(tick_in_time, roll, offset)
+            yaw_t = smooth_movement(tick_in_time, yaw, offset)
+            head_pose = create_head_pose(
+                roll=roll_t,
+                pitch=pitch_t,
+                yaw=yaw_t,
+                degrees=False,
+                mm=False,
+            )
+            self.mini.set_target(head=head_pose, antennas=antennas_t, body_yaw=body_yaw_t)
+            t = time.time()
+
+
     def get_sample_rate(self) -> int:
         """
         Get audio sample rate from ReachyMini
