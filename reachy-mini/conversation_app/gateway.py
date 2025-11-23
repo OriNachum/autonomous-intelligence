@@ -224,11 +224,11 @@ class ReachyGateway:
 
     def move_smoothly_to(self, duration=1.0, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
         """Move the robot smoothly to a target head pose and/or antennas position and/or body direction."""
-        self.reachy_controller.move_smoothly(duration=duration, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
+        self.reachy_controller.move_smoothly_to(duration=duration, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
     
-    def move_cyclicly(self, duration=1.0, repetitions=1, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def move_cyclically(self, duration=1.0, repetitions=1, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
         """Move the robot cyclicly to a target head pose and/or antennas position and/or body direction."""
-        self.reachy_controller.move_cyclicly(duration=duration, repeatitions=repetitions, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
+        self.reachy_controller.move_cyclically(duration=duration, repetitions=repetitions, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
     
     async def accept_clients(self):
         """Accept new client connections"""

@@ -74,13 +74,13 @@ class ActionHandler:
             logger.error(f"❌ Failed to load system prompt: {e}")
             raise
         
-        # Load tool definitions
-        try:
-            self.tools_definitions = self._load_tools_definitions()
-            logger.info(f"✓ Loaded {len(self.tools_definitions)} tool definitions")
-        except Exception as e:
-            logger.error(f"❌ Failed to load tool definitions: {e}")
-            raise
+#        # Load tool definitions
+#        try:
+#            self.tools_definitions = self._load_tools_definitions()
+#            logger.info(f"✓ Loaded {len(self.tools_definitions)} tool definitions")
+#        except Exception as e:
+#            logger.error(f"❌ Failed to load tool definitions: {e}")
+#            raise
         
         # Initialize actions queue
         try:
@@ -226,14 +226,14 @@ class ActionHandler:
             }
         """
         # Build the context with available tools
-        tools_context = self._build_tools_context()
+        #tools_context = self._build_tools_context()
         
         # Create the user message
         user_message = f"Action: {action_string}"
         
         # Build messages for LLM
         messages = [
-            {"role": "system", "content": self.system_prompt + "\n\n" + tools_context},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": user_message}
         ]
         
@@ -299,7 +299,7 @@ class ActionHandler:
             if not commands:
                 logger.warning(f"No commands parsed from action: {action_string}")
                 return
-            
+            logger.info(f"✅ Parsed {len(commands)} command(s) from action")
             # Execute each command
             for cmd in commands:
                 tool_name = cmd.get("tool_name")
@@ -319,7 +319,7 @@ class ActionHandler:
                         method_map = {
                             "linear": InterpolationTechnique.LINEAR,
                             "minjerk": InterpolationTechnique.MIN_JERK,
-                            "ease": InterpolationTechnique.EASE,
+                            #"ease": InterpolationTechnique.EASE,
                             "cartoon": InterpolationTechnique.CARTOON
                         }
                         parameters["method"] = method_map.get(parameters["method"].lower(), InterpolationTechnique.CARTOON)
@@ -331,7 +331,7 @@ class ActionHandler:
                         elif tool_name == "move_smoothly_to":
                             await asyncio.to_thread(self.gateway.move_smoothly_to, **parameters)
                         elif tool_name == "move_cyclically":
-                            await asyncio.to_thread(self.gateway.move_cyclicly, **parameters)
+                            await asyncio.to_thread(self.gateway.move_cyclically, **parameters)
                     except Exception as e:
                         logger.error(f"Error executing {tool_name}: {e}")
                     continue

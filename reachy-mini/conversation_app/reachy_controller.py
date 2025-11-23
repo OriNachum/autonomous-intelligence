@@ -225,24 +225,24 @@ class ReachyController:
             logger.error(f"Error getting audio sample: {e}", exc_info=True)
             return None
     
-    def move_to(self,duration=1.0, method=InterpolationTechnique.LINEAR, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def move_to(self,duration=10.0, method=InterpolationTechnique.MIN_JERK, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
         """
         Move the robot to a target head pose and/or antennas position and/or body direction.
         """
         (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw) = self.apply_safety_to_movement(roll, pitch, yaw, antennas, body_yaw)
         self.mini.goto_target(create_head_pose(roll=safe_roll, pitch=safe_pitch, yaw=safe_yaw), antennas=safe_antennas, duration=duration, method=method, body_yaw=safe_body_yaw)
     
-    def move_cyclicly(self, duration=1.0, repeatitions=1, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def move_cyclically(self, duration=10.0, repetitions=1, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
         """
         A cyclical movement
         """
         for _ in range(1):
             t = time.time()
-            self.move_smoothly(duration=duration/2, offset=0, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
-            self.move_smoothly(duration=duration/2, offset=1, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
+            self.move_smoothly_to(duration=duration/2, offset=0, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
+            self.move_smoothly_to(duration=duration/2, offset=1, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
 
         
-    def move_smoothly(self, duration=1.0, offset=0, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def move_smoothly_to(self, duration=10.0, offset=0, roll=0.0, pitch=0.0, yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
         """
         Move the robot smoothly to a single position.
         """
@@ -278,12 +278,18 @@ class ReachyController:
         
         - Head yaw is limited to ±40 degrees
         - Overflow beyond ±40 degrees is redirected to body_yaw
+        - Body yaw is limited to ±25 degrees
+        - Overflow beyond ±25 degrees is redirected to head yaw
+        - Difference between yaw and body_yaw never exceeds 45 degrees
+        - If they move in opposite directions and would exceed 45°, they are averaged proportionally
         - Head pitch is limited to ±20 degrees
-        - Head roll is limited to ±35 degrees
+        - Head roll is limited to ±25 degrees
         """
         HEAD_YAW_LIMIT = np.deg2rad(40.0)  # 40 degrees in radians
         HEAD_PITCH_LIMIT = np.deg2rad(20.0)  # 20 degrees in radians
-        HEAD_ROLL_LIMIT = np.deg2rad(35.0)  # 35 degrees in radians
+        HEAD_ROLL_LIMIT = np.deg2rad(25.0)  # 25 degrees in radians
+        BODY_YAW_LIMIT = np.deg2rad(25.0)  # 25 degrees in radians
+        MAX_YAW_DIFFERENCE = np.deg2rad(45.0)  # 45 degrees in radians
         
         safe_antennas = antennas
         
@@ -303,23 +309,60 @@ class ReachyController:
         else:
             safe_pitch = pitch
         
+        # Start with requested values
+        safe_yaw = yaw
+        safe_body_yaw = body_yaw
+        
         # Handle head yaw overflow by redirecting to body_yaw
         if abs(yaw) > HEAD_YAW_LIMIT:
             # Calculate overflow amount
             overflow = yaw - np.sign(yaw) * HEAD_YAW_LIMIT
-            
-            # Limit head yaw to maximum allowed
-            safe_yaw = np.sign(yaw) * HEAD_YAW_LIMIT
-            
+            safe_yaw = yaw
             # Add overflow to body_yaw
             safe_body_yaw = body_yaw + overflow
             
             logger.debug(f"Head yaw limited: requested={np.degrees(yaw):.1f}°, "
                         f"safe_yaw={np.degrees(safe_yaw):.1f}°, "
                         f"overflow={np.degrees(overflow):.1f}° redirected to body_yaw")
-        else:
-            safe_yaw = yaw
-            safe_body_yaw = body_yaw
+        
+        # Handle body yaw overflow by redirecting to head yaw
+        if abs(safe_body_yaw) > BODY_YAW_LIMIT:
+            # Calculate overflow amount
+            body_overflow = safe_body_yaw - np.sign(safe_body_yaw) * BODY_YAW_LIMIT
+            safe_body_yaw = safe_body_yaw
+            # Add overflow to head yaw
+            safe_yaw = safe_yaw + body_overflow
+            
+            logger.debug(f"Body yaw limited: requested={np.degrees(body_yaw):.1f}°, "
+                        f"safe_body_yaw={np.degrees(safe_body_yaw):.1f}°, "
+                        f"overflow={np.degrees(body_overflow):.1f}° redirected to head yaw")
+        
+        # Ensure difference between yaw and body_yaw never exceeds 45 degrees
+        yaw_difference = abs(safe_yaw - safe_body_yaw)
+        
+        if yaw_difference > MAX_YAW_DIFFERENCE:
+            # They are too far apart - need to bring them closer
+            # Average them proportionally based on how much each contributes
+            
+            # Calculate the midpoint
+            total_angle = safe_yaw + safe_body_yaw
+            
+            # Calculate how much we need to adjust
+            excess = yaw_difference - MAX_YAW_DIFFERENCE
+            
+            # Proportionally reduce the difference
+            # Move each one toward the other by half the excess
+            if safe_yaw > safe_body_yaw:
+                safe_yaw -= excess / 2
+                safe_body_yaw += excess / 2
+            else:
+                safe_yaw += excess / 2
+                safe_body_yaw -= excess / 2
+            
+            logger.debug(f"Yaw difference exceeded 45°: original_diff={np.degrees(yaw_difference):.1f}°, "
+                        f"adjusted yaw={np.degrees(safe_yaw):.1f}°, "
+                        f"adjusted body_yaw={np.degrees(safe_body_yaw):.1f}°, "
+                        f"new_diff={np.degrees(abs(safe_yaw - safe_body_yaw)):.1f}°")
 
         return (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw)
 
