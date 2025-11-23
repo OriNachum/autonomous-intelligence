@@ -36,7 +36,7 @@ class ReachyController:
         logger.info("Initializing ReachyMini for DOA detection...")
         try:
             self.mini = ReachyMini(timeout=10.0, spawn_daemon=True, log_level=log_level, automatic_body_yaw=True,)
-            time.sleep(10)
+            self.reachy_is_awake = True
             logger.info("ReachyMini initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize ReachyMini: {e}")
@@ -501,18 +501,16 @@ class ReachyController:
 
         return (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw)
 
-    def turn_off_smoothly(self, part='head', duration=2.0):
+    def turn_off_smoothly(self):
         """
         Smoothly move the robot to a neutral position and then turn off compliance.
         
-        Args:
-            part: The part to turn off (e.g., 'head')
-            duration: Duration of the smooth movement
         """
-        logger.info(f"Turning off {part} smoothly over {duration}s...")
-        
-        # Move to neutral position (0, 0, 0)
-        self.mini.goto_sleep()
+        logger.info(f"Reachy mini is going to sleep...")
+        if (self.reachy_is_awake):
+            self.reachy_is_awake = False
+            # Move to neutral position (0, 0, 0)
+            self.mini.goto_sleep()
 
 
     def get_sample_rate(self) -> int:
@@ -536,7 +534,7 @@ class ReachyController:
         if hasattr(self, 'mini') and self.mini is not None:
             try:
                 # ReachyMini context manager handles cleanup
-                self.mini.__exit__(None, None, None)
+                self.turn_off_smoothly()
                 logger.info("ReachyMini cleaned up successfully")
             except Exception as e:
                 logger.error(f"Error cleaning up ReachyMini: {e}")

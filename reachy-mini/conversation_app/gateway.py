@@ -232,10 +232,10 @@ class ReachyGateway:
         """Move the robot cyclicly to a target head pose and/or antennas position and/or body direction."""
         self.reachy_controller.move_cyclically(duration=duration, repetitions=repetitions, head_roll=head_roll, head_pitch=head_pitch, head_yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
     
-    def turn_off_smoothly(self, part='reachy', duration=10.0):
+    def turn_off_smoothly(self):
         """Smoothly move the robot to a neutral position and then turn off compliance."""
         if self.reachy_controller:
-            self.reachy_controller.turn_off_smoothly(part=part, duration=duration)
+            self.reachy_controller.turn_off_smoothly()
     
     async def accept_clients(self):
         """Accept new client connections"""
@@ -849,10 +849,12 @@ class ReachyGateway:
         """Clean up resources"""
         logger.info("Cleaning up resources")
         
+        #self.turn_off_smoothly()
         # Stop recording via ReachyMini
         if hasattr(self, 'doa_detector') and self.reachy_controller:
             try:
                 self.reachy_controller.stop_recording()
+                time.sleep(10)
                 logger.info("Recording stopped via ReachyMini")
             except Exception as e:
                 logger.error(f"Error stopping recording: {e}")

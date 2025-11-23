@@ -422,10 +422,10 @@ class ConversationApp:
         if self.gateway:
             logger.info("Stopping gateway...")
             # Turn off robot smoothly before shutting down
-            try:
-                self.gateway.turn_off_smoothly(part='reachy', duration=2.0)
-            except Exception as e:
-                logger.error(f"Error turning off robot: {e}")
+            #try:
+            #    self.gateway.turn_off_smoothly()
+            #except Exception as e:
+            #    logger.error(f"Error turning off robot: {e}")
             
             self.gateway.shutdown_requested = True
             await asyncio.sleep(0.5)  # Give it time to shutdown gracefully
