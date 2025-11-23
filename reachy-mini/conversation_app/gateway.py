@@ -222,15 +222,15 @@ class ReachyGateway:
     
     def move_to(self, duration=1.0, method=InterpolationTechnique.CARTOON, head_roll=0.0, head_pitch=0.0, head_yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
         """Move the robot to a target head pose and/or antennas position and/or body direction."""
-        self.reachy_controller.move_to(duration=duration, method=method, head_roll=head_roll, head_pitch=head_pitch, head_yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
+        self.reachy_controller.move_to(duration=duration, method=method, roll=head_roll, pitch=head_pitch, yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
 
     def move_smoothly_to(self, duration=1.0, head_roll=0.0, head_pitch=0.0, head_yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
         """Move the robot smoothly to a target head pose and/or antennas position and/or body direction."""
-        self.reachy_controller.move_smoothly_to(duration=duration, head_roll=head_roll, head_pitch=head_pitch, head_yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
+        self.reachy_controller.move_smoothly_to(duration=duration, roll=head_roll, pitch=head_pitch, yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
     
     def move_cyclically(self, duration=1.0, repetitions=1, head_roll=0.0, head_pitch=0.0, head_yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
         """Move the robot cyclicly to a target head pose and/or antennas position and/or body direction."""
-        self.reachy_controller.move_cyclically(duration=duration, repetitions=repetitions, head_roll=head_roll, head_pitch=head_pitch, head_yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
+        self.reachy_controller.move_cyclically(duration=duration, repetitions=repetitions, roll=head_roll, pitch=head_pitch, yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
     
     def turn_off_smoothly(self):
         """Smoothly move the robot to a neutral position and then turn off compliance."""
