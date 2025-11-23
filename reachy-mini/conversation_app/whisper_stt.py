@@ -22,7 +22,7 @@ class WhisperSTT:
     
     def __init__(
         self,
-        model_size: str = "base",
+        model_path_or_size: str = "base",
         device: str = "cpu",
         compute_type: str = "int8",
         language: str = "en"
@@ -31,12 +31,13 @@ class WhisperSTT:
         Initialize Whisper STT
         
         Args:
-            model_size: Whisper model size (tiny, base, small, medium, large)
+            model_path_or_size: Whisper model size (tiny, base, small, medium, large, large-v3)
+                               or local path to model (e.g., /data/models/whisper/large-v3)
             device: Device to run on (cpu, cuda)
             compute_type: Compute type (float16, float32, int8)
             language: Language code for transcription
         """
-        self.model_size = model_size
+        self.model_path_or_size = model_path_or_size
         self.device = device
         
         # Force int8 for CPU to avoid SGEMM backend issues
@@ -47,15 +48,34 @@ class WhisperSTT:
         self.compute_type = compute_type
         self.language = language
         
-        logger.info(f"Loading Whisper model: {model_size} on {device} with {compute_type}")
+        # Detect if model_path_or_size is a local path or a model size
+        # Check if it's an absolute path AND the directory exists
+        is_local_path = model_path_or_size.startswith("/") and Path(model_path_or_size).exists()
+        
+        if is_local_path:
+            logger.info(f"Loading Whisper model from local path: {model_path_or_size} on {device} with {compute_type}")
+        else:
+            logger.info(f"Loading Whisper model: {model_path_or_size} on {device} with {compute_type}")
         
         try:
-            self.model = WhisperModel(
-                model_size,
-                device=device,
-                compute_type=compute_type
-            )
-            logger.info("Whisper model loaded successfully")
+            if is_local_path:
+                # Load from local path - just pass the path directly
+                # faster-whisper will detect it's a local directory
+                self.model = WhisperModel(
+                    model_path_or_size,
+                    device=device,
+                    compute_type=compute_type
+                )
+                logger.info(f"Whisper model loaded successfully from local path: {model_path_or_size}")
+            else:
+                # Download if needed (model name like "base" or "Systran/faster-whisper-large-v3")
+                self.model = WhisperModel(
+                    model_path_or_size,
+                    device=device,
+                    compute_type=compute_type,
+                    download_root=str(Path.home() / ".whisper_models")
+                )
+                logger.info("Whisper model loaded successfully")
         except Exception as e:
             logger.error(f"Failed to load Whisper model: {e}")
             raise

@@ -28,7 +28,7 @@ Move to a target pose using specified interpolation.
 - `pitch` (float): rotate head around the horizontal axis angle in degrees, allows nodding (default: maintain current position)
 - `roll` (float): rotate head around the frontal axis angle in degrees, reflects curiosity (default: maintain current position)
 - `antennas` (list): [right, left] antenna angles in degrees (if not provided: maintain current position)
-  - Full circle: 360 degrees
+  - Full circle: 3up to 60 degrees, but avoid that much.
 - `body_yaw` (float): Body yaw angle in degrees (default: maintain current position)
 
 

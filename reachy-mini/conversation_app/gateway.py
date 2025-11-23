@@ -133,7 +133,8 @@ class ReachyGateway:
         self.last_partial_text = ""
         
         # Whisper STT configuration
-        whisper_model_size = os.getenv('WHISPER_MODEL_SIZE', 'base')
+        # Priority: WHISPER_MODEL_PATH > WHISPER_MODEL_SIZE > default 'large-v3'
+        whisper_model_path_or_size = os.getenv('WHISPER_MODEL_PATH') or os.getenv('WHISPER_MODEL_SIZE', 'large-v3')
         
         # Auto-detect CUDA availability
         cuda_available = torch.cuda.is_available()
@@ -149,9 +150,10 @@ class ReachyGateway:
         
         logger.info(f"CUDA available: {cuda_available}")
         logger.info(f"Whisper will use device: {whisper_device} with compute_type: {whisper_compute_type}")
+        logger.info(f"Whisper model path or size: {whisper_model_path_or_size}")
         
         self.whisper = WhisperSTT(
-            model_size=whisper_model_size,
+            model_path_or_size=whisper_model_path_or_size,
             device=whisper_device,
             compute_type=whisper_compute_type,
             language=self.language

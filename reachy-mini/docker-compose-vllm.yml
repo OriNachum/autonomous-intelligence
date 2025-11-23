@@ -110,7 +110,9 @@ services:
       start_period: 60s
 
   reachy-conversation:
-    image: reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
+    build:
+      context: .
+      dockerfile: conversation_app/Dockerfile
     container_name: reachy-conversation-app
     restart: unless-stopped
     network_mode: host  # To access localhost:8100 vLLM server and expose daemon on localhost:8000
@@ -120,6 +122,7 @@ services:
       - /dev/snd:/dev/snd  # Audio devices for microphone and TTS playback
     volumes:
       - .:/app  # Mount entire project
+      - ./data/whisper_models:/data/models/whisper  # Mount whisper models (read-only)
       - /tmp/reachy_sockets:/tmp/reachy_sockets  # Shared socket directory (kept for compatibility)
       - /dev/shm:/dev/shm  # Shared memory for audio buffers
       - /dev:/dev  # Device access
@@ -134,12 +137,13 @@ services:
       - AUDIO_DEVICE_NAME=${AUDIO_DEVICE_NAME:-Reachy}
       - LANGUAGE=${LANGUAGE:-en}
       - PYTHONPATH=/app
+      - HF_TOKEN=${HF_TOKEN}
+      - WHISPER_MODEL_PATH=/data/models/whisper/large-v3  # Use local Whisper large-v3 model
     command: >
       sh -c "
-      apt-get update -qq &&
-      apt-get install -y -qq alsa-utils &&
-      pip install --no-cache-dir -q -r /app/gateway_app/requirements.txt &&
-      pip install --no-cache-dir -q -r /app/conversation_app/requirements.txt &&
+      hf auth login --token ${HF_TOKEN} --add-to-git-credential &&
+      hf download Systran/faster-whisper-large-v3 --local-dir /data/models/whisper/large-v3 &&
+      echo 'Whisper model downloaded' &&
       python3 -m conversation_app.app
       "
     depends_on:
@@ -153,3 +157,4 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
