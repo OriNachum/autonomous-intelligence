@@ -278,12 +278,21 @@ class ReachyController:
         
         - Head yaw is limited to ±40 degrees
         - Overflow beyond ±40 degrees is redirected to body_yaw
+        - Head pitch is limited to ±20 degrees
         """
         HEAD_YAW_LIMIT = np.deg2rad(40.0)  # 40 degrees in radians
+        HEAD_PITCH_LIMIT = np.deg2rad(20.0)  # 20 degrees in radians
         
         safe_roll = roll
-        safe_pitch = pitch
         safe_antennas = antennas
+        
+        # Handle head pitch limit
+        if abs(pitch) > HEAD_PITCH_LIMIT:
+            safe_pitch = np.sign(pitch) * HEAD_PITCH_LIMIT
+            logger.debug(f"Head pitch limited: requested={np.degrees(pitch):.1f}°, "
+                        f"safe_pitch={np.degrees(safe_pitch):.1f}°")
+        else:
+            safe_pitch = pitch
         
         # Handle head yaw overflow by redirecting to body_yaw
         if abs(yaw) > HEAD_YAW_LIMIT:
