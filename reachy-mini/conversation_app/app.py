@@ -102,7 +102,7 @@ class ConversationApp:
                 enable_socket_server=False  # Use callback mode only
             )
             logger.info("✓ Reachy Gateway initialized")
-            self.gateway.move_cyclicly(duration=10.0, repetitions=3, roll=0.0, pitch=10.0, yaw=10.0, antennas=[25.0, 25.0], body_yaw=0.0)
+            #self.gateway.move_cyclicly(duration=10.0, repetitions=3, roll=0.0, pitch=10.0, yaw=10.0, antennas=[25.0, 25.0], body_yaw=0.0)
             #self.gateway.move_smoothly_to(duration=2.0, roll=-0.3, pitch=-0.2, yaw=0.2, antennas=[1.0, 1.0], body_yaw=0.0)
         except Exception as e:
             logger.error(f"❌ Failed to initialize gateway: {e}")
@@ -119,7 +119,7 @@ class ConversationApp:
         
         # Initialize action handler
         try:
-            self.action_handler = ActionHandler()
+            self.action_handler = ActionHandler(gateway=self.gateway)
             # Warm up action handler in background
             #asyncio.create_task(self.action_handler.execute("nod head"))
 
