@@ -63,17 +63,22 @@ Snappy movement - when you are suprised or shocked.
 
 ### Nodding (Yes)
 ```json
-{"commands": [{"tool_name": "move_cyclically", "parameters": {"pitch": 15.0, "duration": 5.0}}]}
-```
+{"commands": [{"tool_name": "move_cyclically", "parameters": {"pitch": 15.0, "duration": 5.0, "repetitions": 1}}]}
+```S
 
 ### Shaking Head (No)
 ```json
-{"commands": [{"tool_name": "move_cyclically", "parameters": {"yaw": "East", "duration": 5.0}}]}
+{"commands": [
+  {"tool_name": "move_cyclically", "parameters": {"yaw": "East", "duration": 1.0}},
+  {"tool_name": "move_cyclically", "parameters": {"yaw": "West", "duration": 1.0}},
+  {"tool_name": "move_cyclically", "parameters": {"yaw": "East", "duration": 1.0}},
+  {"tool_name": "move_cyclically", "parameters": {"yaw": "West", "duration": 1.0}}
+]}
 ```
 
 ### Tilting Head (Confused/Curious)
 ```json
-{"commands": [{"tool_name": "move_to", "parameters": {"roll": 20.0, "duration": 1.5}}]}
+{"commands": [{"tool_name": "move_to", "parameters": {"roll": 20.0, "duration": 3.0}}]}
 ```
 
 ### Looking Around
