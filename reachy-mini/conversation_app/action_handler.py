@@ -20,6 +20,7 @@ import asyncio
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from .actions_queue import AsyncActionsQueue
+from .logger import get_logger
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,8 @@ class ActionHandler:
                 ]
             }
         """
+        audit_logger = get_logger()
+        
         # Build the context with available tools
         #tools_context = self._build_tools_context()
         
@@ -157,10 +160,12 @@ class ActionHandler:
         user_message = f"Action: {action_string}"
         
         # Inject current state if available
+        current_state = None
         if self.gateway:
             try:
                 # Get natural language state
                 state_natural = self.gateway.get_current_state_natural()
+                current_state = state_natural
                 state_str = (
                     f"\nCurrent State: "
                     f"looking {state_natural['head_direction']}, "
@@ -181,6 +186,9 @@ class ActionHandler:
         ]
         
         logger.debug(f"Sending action to LLM for parsing: {action_string}")
+        
+        # Audit log: action LLM request
+        audit_logger.log_action_llm_request(user_message, current_state)
         
         try:
             # Make request to LLM
@@ -210,9 +218,15 @@ class ActionHandler:
                 if json_start >= 0 and json_end > json_start:
                     json_str = content[json_start:json_end]
                     parsed = json.loads(json_str)
+                    
+                    # Audit log: action LLM response
+                    audit_logger.log_action_llm_response(content, parsed.get("commands", []))
+                    
                     return parsed
                 else:
                     logger.error(f"No valid JSON found in LLM response: {content}")
+                    # Still log the response even if parsing failed
+                    audit_logger.log_action_llm_response(content, [])
                     return {"commands": []}
                 
         except Exception as e:
@@ -230,7 +244,12 @@ class ActionHandler:
         if not action_string or not action_string.strip():
             return
         
+        audit_logger = get_logger()
+        
         logger.info(f"🎯 Processing action: {action_string}")
+        
+        # Audit log: action received
+        audit_logger.log_action_received(action_string)
         
         try:
             # Parse action with LLM
@@ -252,6 +271,17 @@ class ActionHandler:
                     logger.warning(f"Command missing tool_name: {cmd}")
                     continue
                 
+                # Get state before command execution
+                state_before = None
+                if self.gateway:
+                    try:
+                        state_before = self.gateway.get_current_state_natural()
+                    except Exception as e:
+                        logger.warning(f"Failed to get state before command: {e}")
+                
+                # Audit log: command started
+                audit_logger.log_command_started(tool_name, parameters, state_before)
+                
                 # Check if this is a direct movement command
                 if self.gateway and tool_name in ["move_to", "move_smoothly_to", "move_cyclically"]:
                     logger.info(f"  ⚡ Executing direct movement: {tool_name} with {parameters}")
@@ -268,6 +298,7 @@ class ActionHandler:
                         parameters["method"] = method_map.get(parameters["method"].lower(), InterpolationTechnique.CARTOON)
                     
                     # Execute movement method in a thread to avoid blocking
+                    success = True
                     try:
                         if tool_name == "move_to":
                             await asyncio.to_thread(self.gateway.move_to, **parameters)
@@ -277,6 +308,18 @@ class ActionHandler:
                             await asyncio.to_thread(self.gateway.move_cyclically, **parameters)
                     except Exception as e:
                         logger.error(f"Error executing {tool_name}: {e}")
+                        success = False
+                    
+                    # Get state after command execution
+                    state_after = None
+                    if self.gateway:
+                        try:
+                            state_after = self.gateway.get_current_state_natural()
+                        except Exception as e:
+                            logger.warning(f"Failed to get state after command: {e}")
+                    
+                    # Audit log: command finished
+                    audit_logger.log_command_finished(tool_name, state_after, success=success)
                     continue
                 
                 # Build action string for actions_queue
@@ -294,7 +337,25 @@ class ActionHandler:
                     action_str = tool_name
                 
                 logger.info(f"  ⚡ Executing: {action_str}")
-                await self.actions_queue.enqueue_action(action_str)
+                
+                # Execute via actions queue
+                success = True
+                try:
+                    await self.actions_queue.enqueue_action(action_str)
+                except Exception as e:
+                    logger.error(f"Error executing {action_str}: {e}")
+                    success = False
+                
+                # Get state after command execution
+                state_after = None
+                if self.gateway:
+                    try:
+                        state_after = self.gateway.get_current_state_natural()
+                    except Exception as e:
+                        logger.warning(f"Failed to get state after command: {e}")
+                
+                # Audit log: command finished
+                audit_logger.log_command_finished(tool_name, state_after, success=success)
             
         except Exception as e:
             logger.error(f"❌ Error executing action: {e}")

@@ -47,6 +47,7 @@ from .conversation_parser import ConversationParser
 from .speech_handler import SpeechHandler
 from .action_handler import ActionHandler
 from .gateway import ReachyGateway
+from .logger import get_logger
 
 
 # Set up logging
@@ -328,6 +329,9 @@ class ConversationApp:
         Returns:
             The assistant's complete response
         """
+        import time
+        audit_logger = get_logger()
+        
         # Add user message to conversation
         self.messages.append({"role": "user", "content": user_message})
         
@@ -347,13 +351,26 @@ class ConversationApp:
         if self.action_handler:
             await self.action_handler.clear()
         
+        # Audit log: model request sent
+        audit_logger.log_model_request_sent(
+            messages=self.messages,
+            parameters={"max_tokens": 700, "temperature": AGENT_TEMPERATURE}
+        )
+        
         # Collect full response
         full_response = ""
+        response_started = False
+        response_start_time = time.time()
         
         logger.info("🤖 Processing response...")
         
         # Stream the response
         async for token in self.chat_completion_stream(messages=self.messages):
+            # Audit log: response started (first token only)
+            if not response_started:
+                audit_logger.log_model_response_started()
+                response_started = True
+            
             full_response += token
             # Parse the token for quotes and actions
             self.parser.parse_token(token)
@@ -363,6 +380,8 @@ class ConversationApp:
                 speech_text = self.parser.get_speech()
                 if speech_text and self.speech_handler:
                     logger.info(f'🗣️  Speaking: "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking: "{speech_text}"')
+                    # Audit log: parser cut (speech)
+                    audit_logger.log_parser_cut("speech", speech_text)
                     await self.speech_handler.speak(speech_text)
             
             # Process any action items that were just parsed
@@ -370,7 +389,13 @@ class ConversationApp:
                 action_text = self.parser.get_action()
                 if action_text and self.action_handler:
                     logger.info(f'⚡ Executing action: **{action_text}**')
+                    # Audit log: parser cut (action)
+                    audit_logger.log_parser_cut("action", action_text)
                     await self.action_handler.execute(action_text)
+        
+        # Audit log: model response finished
+        response_latency_ms = (time.time() - response_start_time) * 1000
+        audit_logger.log_model_response_finished(full_response, response_latency_ms)
         
         # Add assistant response to conversation history
         self.messages.append({"role": "assistant", "content": full_response})

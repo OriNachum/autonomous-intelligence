@@ -36,6 +36,7 @@ from reachy_mini.utils.interpolation import InterpolationTechnique
 from .vad_detector import VADDetector
 from .whisper_stt import WhisperSTT
 from .reachy_controller import ReachyController
+from .logger import get_logger
 
 # Set up logging
 logging.basicConfig(
@@ -369,11 +370,15 @@ class ReachyGateway:
     async def log_speech_event(self, event_type, duration=None, transcription=None):
         """Log and emit speech detection events"""
         current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        audit_logger = get_logger()
         
         if event_type == "start":
             self.speech_events += 1
             message = f"Speech started (Event #{self.speech_events})"
             logger.info(f"[{current_time}] {message} {transcription}")
+            
+            # Audit log: speech recording started
+            audit_logger.log_speech_recording_started(self.speech_events)
             
             await self.emit_event("speech_started", {
                 "event_number": self.speech_events,
@@ -388,6 +393,11 @@ class ReachyGateway:
                 message += f" - Transcription: '{transcription}'"
             
             logger.info(f"[{current_time}] {message}")
+            
+            # Audit log: speech recording finished
+            if duration is not None:
+                samples = len(self.speech_buffer) + len(self.post_speech_buffer)
+                audit_logger.log_speech_recording_finished(self.speech_events, duration, samples)
             
             await self.emit_event("speech_stopped", {
                 "event_number": self.speech_events,
@@ -630,6 +640,7 @@ class ReachyGateway:
     async def process_speech(self):
         """Process completed speech segment with STT transcription"""
         duration = time.time() - self.start_time
+        audit_logger = get_logger()
         
         all_audio_chunks = self.speech_buffer + self.post_speech_buffer
         audio_size = len(all_audio_chunks) * self.chunk_size * 2
@@ -646,14 +657,23 @@ class ReachyGateway:
             else:
                 logger.info("No DOA samples collected during speech segment")
         
+        # Audit log: transcription started
+        audit_logger.log_transcription_started(self.speech_events, audio_size)
+        
         # Perform STT transcription
         transcription = None
+        transcription_start_time = time.time()
         if all_audio_chunks:
             try:
                 transcription = await self.transcribe_audio(all_audio_chunks)
                 logger.info(f"Transcription result: '{transcription}'")
             except Exception as e:
                 logger.error(f"Error during transcription: {e}", exc_info=True)
+        
+        # Audit log: transcription finished
+        transcription_latency_ms = (time.time() - transcription_start_time) * 1000
+        if transcription:
+            audit_logger.log_transcription_finished(self.speech_events, transcription, transcription_latency_ms)
         
         if transcription and any(c.isalnum() for c in transcription):
             event_data = {

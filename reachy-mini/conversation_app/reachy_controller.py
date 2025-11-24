@@ -422,7 +422,7 @@ class ReachyController:
         Convert compass angle in degrees to nearest cardinal/intercardinal direction.
         
         Args:
-            degrees: Compass angle in degrees (0=North, 90=East, -90=West)
+            degrees: Compass angle in degrees (0=North, 90=West, -90=East)
         
         Returns:
             Compass direction string (e.g., "North", "North East", "East")
