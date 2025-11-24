@@ -231,6 +231,21 @@ class ActionHandler:
         # Create the user message
         user_message = f"Action: {action_string}"
         
+        # Inject current state if available
+        if self.gateway:
+            try:
+                roll, pitch, yaw, antennas, body_yaw = self.gateway.get_current_state()
+                state_str = (
+                    f"\nCurrent State: "
+                    f"roll={roll:.1f}, pitch={pitch:.1f}, yaw={yaw:.1f}, "
+                    f"antennas=[{antennas[0]:.1f}, {antennas[1]:.1f}], "
+                    f"body_yaw={body_yaw:.1f}"
+                )
+                user_message += state_str
+                logger.debug(f"Injected state into prompt: {state_str.strip()}")
+            except Exception as e:
+                logger.warning(f"Failed to get current state for prompt: {e}")
+        
         # Build messages for LLM
         messages = [
             {"role": "system", "content": self.system_prompt},

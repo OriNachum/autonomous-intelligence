@@ -220,22 +220,33 @@ class ReachyGateway:
         
         logger.info(f"Socket server listening on {self.socket_path}")
     
-    def move_to(self, duration=1.0, method=InterpolationTechnique.CARTOON, head_roll=0.0, head_pitch=0.0, head_yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def move_to(self, duration=1.0, method=InterpolationTechnique.CARTOON, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """Move the robot to a target head pose and/or antennas position and/or body direction."""
-        self.reachy_controller.move_to(duration=duration, method=method, roll=head_roll, pitch=head_pitch, yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
+        self.reachy_controller.move_to(duration=duration, method=method, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
 
-    def move_smoothly_to(self, duration=1.0, head_roll=0.0, head_pitch=0.0, head_yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def move_smoothly_to(self, duration=1.0, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """Move the robot smoothly to a target head pose and/or antennas position and/or body direction."""
-        self.reachy_controller.move_smoothly_to(duration=duration, roll=head_roll, pitch=head_pitch, yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
+        self.reachy_controller.move_smoothly_to(duration=duration, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
     
-    def move_cyclically(self, duration=1.0, repetitions=1, head_roll=0.0, head_pitch=0.0, head_yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def move_cyclically(self, duration=1.0, repetitions=1, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """Move the robot cyclicly to a target head pose and/or antennas position and/or body direction."""
-        self.reachy_controller.move_cyclically(duration=duration, repetitions=repetitions, roll=head_roll, pitch=head_pitch, yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
+        self.reachy_controller.move_cyclically(duration=duration, repetitions=repetitions, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
     
     def turn_off_smoothly(self):
         """Smoothly move the robot to a neutral position and then turn off compliance."""
         if self.reachy_controller:
             self.reachy_controller.turn_off_smoothly()
+
+    def get_current_state(self):
+        """
+        Get current robot state (pose and positions).
+        
+        Returns:
+            Tuple of (roll, pitch, yaw, antennas, body_yaw) all in degrees
+        """
+        if self.reachy_controller:
+            return self.reachy_controller._get_current_state()
+        return (0.0, 0.0, 0.0, [0.0, 0.0], 0.0)
     
     async def accept_clients(self):
         """Accept new client connections"""

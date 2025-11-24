@@ -313,8 +313,11 @@ class ReachyController:
 
         for _ in range(1):
             t = time.time()
-            self.move_smoothly_to(duration=duration/2, offset=0, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
-            self.move_smoothly_to(duration=duration/2, offset=1, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
+            # get state
+            original_roll, original_pitch, original_yaw, original_antennas, original_body_yaw = self._get_current_state()
+            self.move_smoothly_to(duration=duration, offset=0, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
+            # Use state from previous move
+            self.move_smoothly_to(duration=duration, offset=1, roll=original_roll, pitch=original_pitch, yaw=original_yaw, antennas=original_antennas, body_yaw=original_body_yaw)
 
         # Log final state
         final_roll, final_pitch, final_yaw, final_antennas, final_body_yaw = self._get_current_state()
