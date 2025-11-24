@@ -28,30 +28,37 @@ class ConversationLogger:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
+                    # Initialize critical attributes immediately to prevent race conditions
+                    cls._instance._write_lock = threading.Lock()
+                    cls._instance._initialized = False
         return cls._instance
     
     def __init__(self):
         """Initialize the conversation logger."""
         # Prevent re-initialization
-        if hasattr(self, '_initialized'):
+        if self._initialized:
             return
         
-        self._initialized = True
-        
-        # Use /app/logs in production (Docker), logs in current directory for development
-        if os.path.exists("/app"):
-            self.log_dir = Path("/app/logs")
-        else:
-            # Use logs directory relative to project root
-            project_root = Path(__file__).parent.parent
-            self.log_dir = project_root / "logs"
-        
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Thread-safe file writing
-        self._write_lock = threading.Lock()
-        
-        logger.info(f"ConversationLogger initialized. Log directory: {self.log_dir}")
+        # Use write lock to ensure thread-safe initialization
+        with self._write_lock:
+            # Double-check after acquiring lock
+            if self._initialized:
+                return
+            
+            # Use /app/logs in production (Docker), logs in current directory for development
+            if os.path.exists("/app"):
+                self.log_dir = Path("/app/logs")
+            else:
+                # Use logs directory relative to project root
+                project_root = Path(__file__).parent.parent
+                self.log_dir = project_root / "logs"
+            
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Mark as initialized
+            self._initialized = True
+            
+            logger.info(f"ConversationLogger initialized. Log directory: {self.log_dir}")
     
     def _get_log_file_path(self) -> Path:
         """Get the current day's log file path."""

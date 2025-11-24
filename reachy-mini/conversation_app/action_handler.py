@@ -271,15 +271,23 @@ class ActionHandler:
                     logger.warning(f"Command missing tool_name: {cmd}")
                     continue
                 
-                # Get state before command execution
+                # Get state before command execution (raw numeric values)
                 state_before = None
                 if self.gateway:
                     try:
-                        state_before = self.gateway.get_current_state_natural()
+                        # Get raw state in degrees: (roll, pitch, yaw, antennas, body_yaw)
+                        raw_state = self.gateway.get_current_state()
+                        state_before = {
+                            "roll": raw_state[0],
+                            "pitch": raw_state[1],
+                            "yaw": raw_state[2],
+                            "antennas": raw_state[3],
+                            "body_yaw": raw_state[4]
+                        }
                     except Exception as e:
                         logger.warning(f"Failed to get state before command: {e}")
                 
-                # Audit log: command started
+                # Audit log: command started with exact parameters
                 audit_logger.log_command_started(tool_name, parameters, state_before)
                 
                 # Check if this is a direct movement command
@@ -310,11 +318,19 @@ class ActionHandler:
                         logger.error(f"Error executing {tool_name}: {e}")
                         success = False
                     
-                    # Get state after command execution
+                    # Get state after command execution (raw numeric values)
                     state_after = None
                     if self.gateway:
                         try:
-                            state_after = self.gateway.get_current_state_natural()
+                            # Get raw state in degrees: (roll, pitch, yaw, antennas, body_yaw)
+                            raw_state = self.gateway.get_current_state()
+                            state_after = {
+                                "roll": raw_state[0],
+                                "pitch": raw_state[1],
+                                "yaw": raw_state[2],
+                                "antennas": raw_state[3],
+                                "body_yaw": raw_state[4]
+                            }
                         except Exception as e:
                             logger.warning(f"Failed to get state after command: {e}")
                     
@@ -346,11 +362,19 @@ class ActionHandler:
                     logger.error(f"Error executing {action_str}: {e}")
                     success = False
                 
-                # Get state after command execution
+                # Get state after command execution (raw numeric values)
                 state_after = None
                 if self.gateway:
                     try:
-                        state_after = self.gateway.get_current_state_natural()
+                        # Get raw state in degrees: (roll, pitch, yaw, antennas, body_yaw)
+                        raw_state = self.gateway.get_current_state()
+                        state_after = {
+                            "roll": raw_state[0],
+                            "pitch": raw_state[1],
+                            "yaw": raw_state[2],
+                            "antennas": raw_state[3],
+                            "body_yaw": raw_state[4]
+                        }
                     except Exception as e:
                         logger.warning(f"Failed to get state after command: {e}")
                 
