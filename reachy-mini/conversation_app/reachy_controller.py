@@ -103,8 +103,8 @@ class ReachyController:
         CARDINAL_VECTORS = {
             'north': (0, 1),
             'south': (0, -1),
-            'east': (1, 0),
-            'west': (-1, 0),
+            'west': (1, 0),
+            'east': (-1, 0),
         }
         
         # Normalize input: lowercase and remove extra spaces
@@ -434,13 +434,13 @@ class ReachyController:
         # Each direction spans 45°
         directions = [
             "North",      # 337.5-22.5 (wraps around 0)
-            "North East", # 22.5-67.5
-            "East",       # 67.5-112.5
-            "South East", # 112.5-157.5
+            "North West", # 22.5-67.5
+            "West",       # 67.5-112.5
+            "South West", # 112.5-157.5
             "South",      # 157.5-202.5
-            "South West", # 202.5-247.5
-            "West",       # 247.5-292.5
-            "North West"  # 292.5-337.5
+            "South East", # 202.5-247.5
+            "East",       # 247.5-292.5
+            "North East"  # 292.5-337.5
         ]
         
         # Convert to index (0-7)
@@ -522,16 +522,16 @@ class ReachyController:
             t = time.time()
             # get state
             original_roll, original_pitch, original_yaw, original_antennas, original_body_yaw = self._get_current_state()
-            self.move_smoothly_to(duration=duration, offset=0, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
+            self.move_smoothly_to(duration=duration, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
             # Use state from previous move
-            self.move_smoothly_to(duration=duration, offset=1, roll=original_roll, pitch=original_pitch, yaw=original_yaw, antennas=original_antennas, body_yaw=original_body_yaw)
+            self.move_smoothly_to(duration=duration, roll=original_roll, pitch=original_pitch, yaw=original_yaw, antennas=original_antennas, body_yaw=original_body_yaw)
 
         # Log final state
         final_roll, final_pitch, final_yaw, final_antennas, final_body_yaw = self._get_current_state()
         logger.info(f"Finished move_cyclically: roll={final_roll:.1f}, pitch={final_pitch:.1f}, yaw={final_yaw:.1f}, antennas={final_antennas}, body_yaw={final_body_yaw:.1f}")
 
         
-    def move_smoothly_to(self, duration=10.0, offset=0, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
+    def move_smoothly_to(self, duration=10.0, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """
         Move the robot smoothly to a single position.
         
@@ -540,9 +540,8 @@ class ReachyController:
         
         Supports compass directions for yaw and body_yaw (e.g., "North", "East", "West").
         """
-        def smooth_movement(t, max_angle, offset=0):
-            # offset=0: π/2 (quarter cycle), offset=1: π (half cycle)
-            phase = np.pi / 2 * (offset + 1) * t / duration
+        def smooth_movement(t, max_angle):
+            phase = np.pi / 2 * t / duration
             smooth_position = np.deg2rad(max_angle * np.sin(phase))
             # Apply 2 decimal points precision
             smooth_position = round(smooth_position, 2)
