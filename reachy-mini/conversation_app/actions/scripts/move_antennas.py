@@ -16,7 +16,8 @@ async def execute(make_request, create_head_pose, tts_queue, params):
         await tts_queue.enqueue_text(speech)
     
     if left is not None and right is not None:
-        antennas_array = [math.radians(left), math.radians(right)]
+        #antennas_array = [math.radians(left), math.radians(right)]
+        antennas_array = [left, right]
         payload = {'antennas': antennas_array, 'duration': params.get('duration', 2.0)}
         return await make_request('POST', '/api/move/goto', json_data=payload)
     else:

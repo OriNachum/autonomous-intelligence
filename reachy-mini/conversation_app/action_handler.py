@@ -16,6 +16,7 @@ import logging
 import os
 import json
 import httpx
+import asyncio
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from .actions_queue import AsyncActionsQueue
@@ -31,6 +32,7 @@ class ActionHandler:
     """Handles robot action execution with LLM-based parsing."""
     
     def __init__(self, 
+                 gateway=None,
                  reachy_base_url: Optional[str] = None,
                  tools_repository_path: Optional[Path] = None,
                  llm_url: Optional[str] = None):
@@ -38,10 +40,14 @@ class ActionHandler:
         Initialize the action handler.
         
         Args:
+            gateway: ReachyGateway instance for direct robot control (optional)
             reachy_base_url: URL for reachy-daemon (if None, uses REACHY_BASE_URL env var)
             tools_repository_path: Path to tools_repository directory
             llm_url: URL for LLM chat completions (if None, uses default)
         """
+        # Store gateway instance for direct robot control
+        self.gateway = gateway
+        
         # Get configuration from environment if not provided
         if reachy_base_url is None:
             reachy_base_url = os.environ.get("REACHY_BASE_URL", "http://localhost:8000")
@@ -68,13 +74,13 @@ class ActionHandler:
             logger.error(f"❌ Failed to load system prompt: {e}")
             raise
         
-        # Load tool definitions
-        try:
-            self.tools_definitions = self._load_tools_definitions()
-            logger.info(f"✓ Loaded {len(self.tools_definitions)} tool definitions")
-        except Exception as e:
-            logger.error(f"❌ Failed to load tool definitions: {e}")
-            raise
+#        # Load tool definitions
+#        try:
+#            self.tools_definitions = self._load_tools_definitions()
+#            logger.info(f"✓ Loaded {len(self.tools_definitions)} tool definitions")
+#        except Exception as e:
+#            logger.error(f"❌ Failed to load tool definitions: {e}")
+#            raise
         
         # Initialize actions queue
         try:
@@ -137,6 +143,40 @@ class ActionHandler:
         """
         context_parts = ["## Available Tools\n"]
         
+        # Add direct movement tools if gateway is available
+        if self.gateway:
+            context_parts.append("\n### move_to")
+            context_parts.append("Move the robot to a target head pose and/or antennas position using a specified interpolation method.")
+            context_parts.append("\n**Parameters:**")
+            context_parts.append("- `duration` (float): Duration of movement in seconds (default: 1.0)")
+            context_parts.append("- `method` (string): Interpolation method - 'linear', 'minjerk', 'ease', or 'cartoon' (default: 'cartoon')")
+            context_parts.append("- `roll` (float): Roll angle in degrees (default: 0.0)")
+            context_parts.append("- `pitch` (float): Pitch angle in degrees (default: 0.0)")
+            context_parts.append("- `yaw` (float): Yaw angle in degrees (default: 0.0)")
+            context_parts.append("- `antennas` (list): List of two antenna angles in degrees [left, right] (default: [0.0, 0.0])")
+            context_parts.append("- `body_yaw` (float): Body yaw angle in degrees (default: 0.0)")
+            
+            context_parts.append("\n### move_smoothly_to")
+            context_parts.append("Move the robot smoothly using sinusoidal interpolation to a target pose.")
+            context_parts.append("\n**Parameters:**")
+            context_parts.append("- `duration` (float): Duration of movement in seconds (default: 1.0)")
+            context_parts.append("- `roll` (float): Roll angle in degrees (default: 0.0)")
+            context_parts.append("- `pitch` (float): Pitch angle in degrees (default: 0.0)")
+            context_parts.append("- `yaw` (float): Yaw angle in degrees (default: 0.0)")
+            context_parts.append("- `antennas` (list): List of two antenna angles in degrees [left, right] (default: [0.0, 0.0])")
+            context_parts.append("- `body_yaw` (float): Body yaw angle in degrees (default: 0.0)")
+            
+            context_parts.append("\n### move_cyclically")
+            context_parts.append("Move the robot in a cyclical pattern (smooth movement there and back).")
+            context_parts.append("\n**Parameters:**")
+            context_parts.append("- `duration` (float): Total duration of cyclical movement in seconds (default: 1.0)")
+            context_parts.append("- `repetitions` (int): Number of repetitions (default: 1)")
+            context_parts.append("- `roll` (float): Roll angle in degrees (default: 0.0)")
+            context_parts.append("- `pitch` (float): Pitch angle in degrees (default: 0.0)")
+            context_parts.append("- `yaw` (float): Yaw angle in degrees (default: 0.0)")
+            context_parts.append("- `antennas` (list): List of two antenna angles in degrees [left, right] (default: [0.0, 0.0])")
+            context_parts.append("- `body_yaw` (float): Body yaw angle in degrees (default: 0.0)")
+        
         for tool in self.tools_definitions:
             name = tool.get("name", "unknown")
             description = tool.get("description", "No description")
@@ -186,14 +226,14 @@ class ActionHandler:
             }
         """
         # Build the context with available tools
-        tools_context = self._build_tools_context()
+        #tools_context = self._build_tools_context()
         
         # Create the user message
         user_message = f"Action: {action_string}"
         
         # Build messages for LLM
         messages = [
-            {"role": "system", "content": self.system_prompt + "\n\n" + tools_context},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": user_message}
         ]
         
@@ -259,7 +299,7 @@ class ActionHandler:
             if not commands:
                 logger.warning(f"No commands parsed from action: {action_string}")
                 return
-            
+            logger.info(f"✅ Parsed {len(commands)} command(s) from action")
             # Execute each command
             for cmd in commands:
                 tool_name = cmd.get("tool_name")
@@ -267,6 +307,33 @@ class ActionHandler:
                 
                 if not tool_name:
                     logger.warning(f"Command missing tool_name: {cmd}")
+                    continue
+                
+                # Check if this is a direct movement command
+                if self.gateway and tool_name in ["move_to", "move_smoothly_to", "move_cyclically"]:
+                    logger.info(f"  ⚡ Executing direct movement: {tool_name} with {parameters}")
+                    
+                    # Map method string to InterpolationTechnique enum if needed
+                    if "method" in parameters and isinstance(parameters["method"], str):
+                        from reachy_mini.utils.interpolation import InterpolationTechnique
+                        method_map = {
+                            "linear": InterpolationTechnique.LINEAR,
+                            "minjerk": InterpolationTechnique.MIN_JERK,
+                            #"ease": InterpolationTechnique.EASE,
+                            "cartoon": InterpolationTechnique.CARTOON
+                        }
+                        parameters["method"] = method_map.get(parameters["method"].lower(), InterpolationTechnique.CARTOON)
+                    
+                    # Execute movement method in a thread to avoid blocking
+                    try:
+                        if tool_name == "move_to":
+                            await asyncio.to_thread(self.gateway.move_to, **parameters)
+                        elif tool_name == "move_smoothly_to":
+                            await asyncio.to_thread(self.gateway.move_smoothly_to, **parameters)
+                        elif tool_name == "move_cyclically":
+                            await asyncio.to_thread(self.gateway.move_cyclically, **parameters)
+                    except Exception as e:
+                        logger.error(f"Error executing {tool_name}: {e}")
                     continue
                 
                 # Build action string for actions_queue

@@ -109,93 +109,44 @@ services:
       retries: 3
       start_period: 60s
 
-  reachy-daemon:
-    image: reachy-daemon-thor:r38.2.aarch64-cu130-24.04
-    container_name: reachy-mini-daemon
+  reachy-conversation:
+    build:
+      context: .
+      dockerfile: conversation_app/Dockerfile
+    container_name: reachy-conversation-app
     restart: unless-stopped
-    privileged: true  # Required for USB device access
-    network_mode: host  # To expose daemon on localhost:8000
+    network_mode: host  # To access localhost:8100 vLLM server and expose daemon on localhost:8000
+    privileged: true  # Required for USB and audio device access
     devices:
       - /dev/bus/usb:/dev/bus/usb  # USB devices for robot connection
+      - /dev/snd:/dev/snd  # Audio devices for microphone and TTS playback
     volumes:
-      - .:/app  # Mount project for requirements.txt
+      - .:/app  # Mount entire project
+      - ./data/whisper_models:/data/models/whisper  # Mount whisper models (read-only)
+      - /tmp/reachy_sockets:/tmp/reachy_sockets  # Shared socket directory (kept for compatibility)
+      - /dev/shm:/dev/shm  # Shared memory for audio buffers
       - /dev:/dev  # Device access
     working_dir: /app
     environment:
-      - PYTHONUNBUFFERED=1
-    stop_signal: SIGTERM  # Send SIGTERM for graceful shutdown
-    stop_grace_period: 15s  # Allow 15 seconds for graceful shutdown
-    command: ["/bin/bash", "/app/start_daemon.sh"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/daemon/status"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  reachy-hearing:
-    image: reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
-    container_name: reachy-hearing-service
-    restart: unless-stopped
-    privileged: true  # Required for audio device access
-    devices:
-      - /dev/snd:/dev/snd  # Audio devices
-    volumes:
-      - ./hearing_app:/app
-      - /tmp/reachy_sockets:/tmp/reachy_sockets  # Shared socket directory
-      - /dev/shm:/dev/shm  # Shared memory for audio buffers
-    working_dir: /app
-    environment:
-      - PULSE_SERVER=unix:/run/user/1000/pulse/native  # Optional: PulseAudio
-    command: >
-      sh -c "
-      apt-get update -qq &&
-      apt-get install -y -qq portaudio*-dev libgl1 libusb-1.0-0 git &&
-      pip install --no-cache-dir -q -r /app/requirements.txt &&
-      python3 hearing_event_emitter.py --device Reachy --language en
-      "
-    depends_on:
-      reachy-daemon:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "test", "-S", "/tmp/reachy_sockets/hearing.sock"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
-
-  reachy-conversation:
-    image: reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
-    container_name: reachy-conversation-app
-    restart: unless-stopped
-    network_mode: host  # To access localhost:8100 vLLM server
-    privileged: true  # Required for audio device access
-    devices:
-      - /dev/snd:/dev/snd  # Audio devices for TTS playback
-    volumes:
-      - .:/app  # Mount entire project
-      - /tmp/reachy_sockets:/tmp/reachy_sockets  # Shared socket directory
-    working_dir: /app
-    environment:
-      - SOCKET_PATH=/tmp/reachy_sockets/hearing.sock
       - PYTHONUNBUFFERED=1
       - REACHY_BASE_URL=http://localhost:8000  # Daemon URL (accessible via host network mode)
       - AUDIO_DEVICE=plughw:CARD=Audio,DEV=0  # Use Reachy Mini Audio for TTS output
       - MODEL_ID=${MODEL_ID}
       - VLLM_FRONT_URL=${VLLM_FRONT_URL}
       - VLLM_ACTION_URL=${VLLM_ACTION_URL}
+      - AUDIO_DEVICE_NAME=${AUDIO_DEVICE_NAME:-Reachy}
+      - LANGUAGE=${LANGUAGE:-en}
+      - PYTHONPATH=/app
+      - HF_TOKEN=${HF_TOKEN}
+      - WHISPER_MODEL_PATH=/data/models/whisper/large-v3  # Use local Whisper large-v3 model
     command: >
       sh -c "
-      apt-get update -qq &&
-      apt-get install -y -qq alsa-utils &&
-      pip install --no-cache-dir -q -r /app/conversation_app/requirements.txt &&
-      python3 -m conversation_app.app
+      hf auth login --token ${HF_TOKEN} --add-to-git-credential &&
+      hf download Systran/faster-whisper-large-v3 --local-dir /data/models/whisper/large-v3 &&
+      echo 'Whisper model downloaded' &&
+      exec python3 -m conversation_app.app
       "
     depends_on:
-      reachy-daemon:
-        condition: service_healthy
-      reachy-hearing:
-        condition: service_healthy
       vllm-server-front:
         condition: service_healthy
       vllm-server-action:
@@ -206,3 +157,4 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+

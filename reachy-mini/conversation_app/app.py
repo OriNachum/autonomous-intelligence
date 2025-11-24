@@ -34,18 +34,24 @@ import json
 import httpx
 import traceback
 import os
+import sys
 from pathlib import Path
 from typing import List, Dict, Any
 import logging
+from reachy_mini.utils.interpolation import InterpolationTechnique
 
-from .event_handler import EventHandler
+# Ensure gateway_app is importable
+sys.path.insert(0, '/app')
+
 from .conversation_parser import ConversationParser
 from .speech_handler import SpeechHandler
 from .action_handler import ActionHandler
+from .gateway import ReachyGateway
+
 
 # Set up logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Changed to DEBUG for detailed logging
+    level=logging.ERROR,  # Changed to DEBUG for detailed logging
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -58,12 +64,9 @@ AGENT_TEMPERATURE = 0.3
 class ConversationApp:
     """Conversation application with speech event integration."""
     
-    def __init__(self, socket_path: str = None):
+    def __init__(self):
         """
         Initialize the conversation application.
-        
-        Args:
-            socket_path: Path to the Unix Domain Socket for hearing events
         """
         self.messages = []
         
@@ -71,14 +74,10 @@ class ConversationApp:
         self.system_prompt = Path("/app/conversation_app/agents/reachy/reachy.system.md").read_text()
         
         # Initialize components
-        self.event_handler = EventHandler(socket_path)
+        self.gateway = None  # Will be initialized in initialize()
         self.parser = ConversationParser()
         self.speech_handler = None  # Will be initialized in initialize()
         self.action_handler = None  # Will be initialized in initialize()
-        
-        # Set up event callbacks
-        self.event_handler.set_speech_started_callback(self.on_speech_started)
-        self.event_handler.set_speech_stopped_callback(self.on_speech_stopped)
 
     async def initialize(self):
         """Initialize the application."""
@@ -91,6 +90,24 @@ class ConversationApp:
             {"role": "system", "content": self.system_prompt}
         ]
         
+        # Initialize ReachyGateway with callback
+        try:
+            device_name = os.getenv('AUDIO_DEVICE_NAME', 'Reachy')
+            language = os.getenv('LANGUAGE', 'en')
+            
+            self.gateway = ReachyGateway(
+                device_name=device_name,
+                language=language,
+                event_callback=self.on_gateway_event,
+                enable_socket_server=False  # Use callback mode only
+            )
+            logger.info("✓ Reachy Gateway initialized")
+            #self.gateway.move_cyclically(duration=10.0, repetitions=3, roll=0.0, pitch=10.0, yaw=10.0, antennas=[25.0, 25.0], body_yaw=0.0)
+            #self.gateway.move_smoothly_to(duration=2.0, roll=-0.3, pitch=-0.2, yaw=0.2, antennas=[1.0, 1.0], body_yaw=30.0)
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize gateway: {e}")
+            raise
+        
         # Initialize speech handler
         try:
             self.speech_handler = SpeechHandler()
@@ -102,9 +119,9 @@ class ConversationApp:
         
         # Initialize action handler
         try:
-            self.action_handler = ActionHandler()
+            self.action_handler = ActionHandler(gateway=self.gateway)
             # Warm up action handler in background
-            asyncio.create_task(self.action_handler.execute("nod head"))
+            #asyncio.create_task(self.action_handler.execute("nod head"))
 
             logger.info("✓ Action handler initialized")
         except Exception as e:
@@ -131,6 +148,27 @@ class ConversationApp:
         
         self.messages = [system_message] + recent_messages
         logger.debug(f"Trimmed conversation history to {len(self.messages)} messages")
+    
+    async def on_gateway_event(self, event_type: str, data: Dict[str, Any]):
+        """
+        Route gateway events to appropriate handlers.
+        
+        Args:
+            event_type: Type of event (speech_started, speech_stopped, etc.)
+            data: Event data
+        """
+        if event_type == "speech_started":
+            await self.on_speech_started(data)
+        elif event_type == "speech_stopped":
+            await self.on_speech_stopped(data)
+        elif event_type == "speech_ongoing":
+            # Optional: handle ongoing events
+            pass
+        elif event_type == "speech_partial":
+            # Optional: handle partial transcriptions
+            pass
+        else:
+            logger.debug(f"Unhandled event type: {event_type}")
     
     async def _warm_up_for_caching(self, last_assistant_response: str) -> str:
         """
@@ -198,14 +236,17 @@ class ConversationApp:
         """
         event_number = data.get("event_number")
         duration = data.get("duration")
-        
+        doa = data.get("doa")
+        angle_degrees = doa.get("angle_degrees")
+        angle_radians = doa.get("angle_radians")
+
         logger.info(f"💭 Processing speech event #{event_number}")
         
         # Create a user message representing the speech event
         # In a real system, this would be transcribed speech
         # For now, we'll create a generic message indicating user spoke
-        user_message = data.get("transcription", "")
-        
+        user_message = f"*Heard from {angle_degrees:.2f}° degrees* " +  f"\"{data.get("transcription", "")}\""
+        logger.info(f"User: {user_message}")
         # For a real implementation, you would:
         # 1. Get the audio file saved by hearing_event_emitter
         # 2. Transcribe it using Whisper or similar
@@ -340,29 +381,31 @@ class ConversationApp:
     async def run(self):
         """Run the conversation application."""
         logger.info("=" * 70)
-        logger.info("Conversation Application with Speech Events")
+        logger.info("Conversation Application with Integrated Gateway")
         logger.info("=" * 70)
         logger.info("")
         logger.info("This app will:")
-        logger.info("  1. Connect to hearing event emitter")
-        logger.info("  2. Listen for speech events")
+        logger.info("  1. Start Reachy Gateway (daemon + hearing)")
+        logger.info("  2. Listen for speech events via callbacks")
         logger.info("  3. Process speech through vLLM streaming chat")
         logger.info("  4. Parse responses into quotes and actions")
         logger.info("=" * 70)
         logger.info("")
     
-        # Connect to hearing service
-        logger.info("Step 1: Connecting to hearing service...")
-        await self.event_handler.connect()
-        logger.info("   ✓ Connection established")
+        # Start gateway in background
+        logger.info("Step 1: Starting Reachy Gateway...")
+        gateway_task = asyncio.create_task(self.gateway.run())
+        logger.info("   ✓ Gateway task started")
         
-        # Start event listener
-        logger.info("Step 2: Starting event listener loop...")
-        logger.info("👂 Listening for speech events...")
-        logger.info("   (Waiting for events from hearing_event_emitter.py)")
+        logger.info("Step 2: Listening for speech events...")
+        logger.info("👂 Ready for voice interaction...")
         logger.info("")
         
-        await self.event_handler.listen()
+        try:
+            # Wait for gateway task (runs indefinitely)
+            await gateway_task
+        except asyncio.CancelledError:
+            logger.info("Gateway task cancelled")
         
         logger.warning("Event listener has stopped")
     
@@ -376,7 +419,17 @@ class ConversationApp:
         if self.action_handler:
             self.action_handler.cleanup()
         
-        self.event_handler.close()
+        if self.gateway:
+            logger.info("Stopping gateway...")
+            # Turn off robot smoothly before shutting down
+            #try:
+            #    self.gateway.turn_off_smoothly()
+            #except Exception as e:
+            #    logger.error(f"Error turning off robot: {e}")
+            
+            self.gateway.shutdown_requested = True
+            await asyncio.sleep(0.5)  # Give it time to shutdown gracefully
+            self.gateway.cleanup()
         
         logger.info("   ✓ Cleanup complete")
 
@@ -388,22 +441,41 @@ async def main():
     logger.info("=" * 70)
     logger.info("")
     logger.info("Make sure:")
-    logger.info("  - Hearing event emitter is running")
     logger.info("  - vLLM server is running on http://localhost:8100")
+    logger.info("  - Robot is connected via USB")
     logger.info("=" * 70)
     logger.info("")
     
-    app = ConversationApp()
+    app = ConversationApp()  # No socket_path needed
+    
+    # Handle signals
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+    
+    def signal_handler():
+        logger.info("Signal received, initiating shutdown...")
+        stop_event.set()
+        
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, signal_handler)
     
     try:
         # Initialize app
         await app.initialize()
         
-        # Run conversation app
-        await app.run()
+        # Run conversation app in background
+        app_task = asyncio.create_task(app.run())
         
-    except KeyboardInterrupt:
-        logger.info("\n⚠️  Interrupted by user")
+        # Wait for stop signal
+        await stop_event.wait()
+        
+        logger.info("Shutdown signal received, cancelling app task...")
+        app_task.cancel()
+        try:
+            await app_task
+        except asyncio.CancelledError:
+            pass
+            
     except Exception as e:
         logger.error(f"\n❌ Error: {e}")
         traceback.print_exc()
@@ -414,4 +486,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    import signal
     asyncio.run(main())
