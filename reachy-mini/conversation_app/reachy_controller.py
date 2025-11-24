@@ -583,28 +583,28 @@ class ReachyController:
             
             # Apply smooth movement only to animated parameters, keep others constant
             if animate_body_yaw:
-                body_yaw_t = smooth_movement(tick_in_time, target_body_yaw, offset)
+                body_yaw_t = smooth_movement(tick_in_time, target_body_yaw)
             else:
                 body_yaw_t = np.deg2rad(curr_body_yaw)
             
             if animate_antennas:
-                antennas_t = [smooth_movement(tick_in_time, target_antennas[0], offset), 
-                             smooth_movement(tick_in_time, target_antennas[1], offset)]
+                antennas_t = [smooth_movement(tick_in_time, target_antennas[0]), 
+                             smooth_movement(tick_in_time, target_antennas[1])]
             else:
                 antennas_t = [np.deg2rad(curr_antennas[0]), np.deg2rad(curr_antennas[1])]
             
             if animate_pitch:
-                pitch_t = smooth_movement(tick_in_time, target_pitch, offset)
+                pitch_t = smooth_movement(tick_in_time, target_pitch)
             else:
                 pitch_t = np.deg2rad(curr_pitch)
             
             if animate_roll:
-                roll_t = smooth_movement(tick_in_time, target_roll, offset)
+                roll_t = smooth_movement(tick_in_time, target_roll)
             else:
                 roll_t = np.deg2rad(curr_roll)
             
             if animate_yaw:
-                yaw_t = smooth_movement(tick_in_time, target_yaw, offset)
+                yaw_t = smooth_movement(tick_in_time, target_yaw)
             else:
                 yaw_t = np.deg2rad(curr_yaw)
 
