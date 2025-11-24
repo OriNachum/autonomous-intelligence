@@ -152,9 +152,9 @@ class ActionHandler:
             context_parts.append("- `method` (string): Interpolation method - 'linear', 'minjerk', 'ease', or 'cartoon' (default: 'cartoon')")
             context_parts.append("- `roll` (float): Roll angle in degrees (default: 0.0)")
             context_parts.append("- `pitch` (float): Pitch angle in degrees (default: 0.0)")
-            context_parts.append("- `yaw` (float): Yaw angle in degrees (default: 0.0)")
+            context_parts.append("- `yaw` (float or string): Yaw angle in degrees OR compass direction (e.g., 'North', 'East', 'West', 'North East') (default: 0.0)")
             context_parts.append("- `antennas` (list): List of two antenna angles in degrees [left, right] (default: [0.0, 0.0])")
-            context_parts.append("- `body_yaw` (float): Body yaw angle in degrees (default: 0.0)")
+            context_parts.append("- `body_yaw` (float or string): Body yaw angle in degrees OR compass direction (e.g., 'North', 'East', 'West') (default: 0.0)")
             
             context_parts.append("\n### move_smoothly_to")
             context_parts.append("Move the robot smoothly using sinusoidal interpolation to a target pose.")
@@ -162,9 +162,9 @@ class ActionHandler:
             context_parts.append("- `duration` (float): Duration of movement in seconds (default: 1.0)")
             context_parts.append("- `roll` (float): Roll angle in degrees (default: 0.0)")
             context_parts.append("- `pitch` (float): Pitch angle in degrees (default: 0.0)")
-            context_parts.append("- `yaw` (float): Yaw angle in degrees (default: 0.0)")
+            context_parts.append("- `yaw` (float or string): Yaw angle in degrees OR compass direction (e.g., 'North', 'East', 'West', 'North East') (default: 0.0)")
             context_parts.append("- `antennas` (list): List of two antenna angles in degrees [left, right] (default: [0.0, 0.0])")
-            context_parts.append("- `body_yaw` (float): Body yaw angle in degrees (default: 0.0)")
+            context_parts.append("- `body_yaw` (float or string): Body yaw angle in degrees OR compass direction (e.g., 'North', 'East', 'West') (default: 0.0)")
             
             context_parts.append("\n### move_cyclically")
             context_parts.append("Move the robot in a cyclical pattern (smooth movement there and back).")
@@ -173,9 +173,9 @@ class ActionHandler:
             context_parts.append("- `repetitions` (int): Number of repetitions (default: 1)")
             context_parts.append("- `roll` (float): Roll angle in degrees (default: 0.0)")
             context_parts.append("- `pitch` (float): Pitch angle in degrees (default: 0.0)")
-            context_parts.append("- `yaw` (float): Yaw angle in degrees (default: 0.0)")
+            context_parts.append("- `yaw` (float or string): Yaw angle in degrees OR compass direction (e.g., 'North', 'East', 'West', 'North East') (default: 0.0)")
             context_parts.append("- `antennas` (list): List of two antenna angles in degrees [left, right] (default: [0.0, 0.0])")
-            context_parts.append("- `body_yaw` (float): Body yaw angle in degrees (default: 0.0)")
+            context_parts.append("- `body_yaw` (float or string): Body yaw angle in degrees OR compass direction (e.g., 'North', 'East', 'West') (default: 0.0)")
         
         for tool in self.tools_definitions:
             name = tool.get("name", "unknown")
@@ -234,15 +234,18 @@ class ActionHandler:
         # Inject current state if available
         if self.gateway:
             try:
-                roll, pitch, yaw, antennas, body_yaw = self.gateway.get_current_state()
+                # Get natural language state
+                state_natural = self.gateway.get_current_state_natural()
                 state_str = (
                     f"\nCurrent State: "
-                    f"roll={roll:.1f}, pitch={pitch:.1f}, yaw={yaw:.1f}, "
-                    f"antennas=[{antennas[0]:.1f}, {antennas[1]:.1f}], "
-                    f"body_yaw={body_yaw:.1f}"
+                    f"looking {state_natural['head_direction']}, "
+                    f"{state_natural['head_tilt']}, "
+                    f"{state_natural['head_roll']}, "
+                    f"antennas {state_natural['antennas']}, "
+                    f"body facing {state_natural['body_direction']}"
                 )
                 user_message += state_str
-                logger.debug(f"Injected state into prompt: {state_str.strip()}")
+                logger.debug(f"Injected natural state into prompt: {state_str.strip()}")
             except Exception as e:
                 logger.warning(f"Failed to get current state for prompt: {e}")
         

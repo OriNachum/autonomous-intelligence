@@ -248,6 +248,37 @@ class ReachyGateway:
             return self.reachy_controller._get_current_state()
         return (0.0, 0.0, 0.0, [0.0, 0.0], 0.0)
     
+    def get_current_state_natural(self):
+        """
+        Get current robot state expressed in natural language (compass directions).
+        
+        Returns:
+            Dictionary with natural language descriptions
+        """
+        if self.reachy_controller:
+            return self.reachy_controller.get_current_state_natural()
+        return {
+            "head_direction": "North",
+            "head_tilt": "level",
+            "head_roll": "upright",
+            "antennas": "neutral",
+            "body_direction": "North"
+        }
+    
+    def _degrees_to_compass(self, degrees: float) -> str:
+        """
+        Convert compass angle in degrees to nearest cardinal/intercardinal direction.
+        
+        Args:
+            degrees: Compass angle in degrees (0=North, 90=East, -90=West)
+        
+        Returns:
+            Compass direction string (e.g., "North", "North East", "East")
+        """
+        if self.reachy_controller:
+            return self.reachy_controller._degrees_to_compass(degrees)
+        return "North"
+    
     async def accept_clients(self):
         """Accept new client connections"""
         if not self.enable_socket_server:

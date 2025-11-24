@@ -242,10 +242,13 @@ class ConversationApp:
 
         logger.info(f"💭 Processing speech event #{event_number}")
         
-        # Create a user message representing the speech event
-        # In a real system, this would be transcribed speech
-        # For now, we'll create a generic message indicating user spoke
-        user_message = f"*Heard from {angle_degrees:.2f}° degrees* " +  f"\"{data.get("transcription", "")}\""
+        # Convert DOA angle to compass direction
+        # DOA angle: 0° = front, 90° = right, -90° = left
+        # Map to compass: North = 0°, East = 90°, West = -90°
+        doa_compass = self.gateway._degrees_to_compass(angle_degrees)
+        
+        # Create a user message representing the speech event with compass direction
+        user_message = f"*Heard from {doa_compass} ({angle_degrees:.1f}°)* " + f"\"{data.get('transcription', '')}\""
         logger.info(f"User: {user_message}")
         # For a real implementation, you would:
         # 1. Get the audio file saved by hearing_event_emitter
