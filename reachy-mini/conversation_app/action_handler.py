@@ -21,6 +21,7 @@ from typing import Optional, Dict, Any, List
 from pathlib import Path
 from .actions_queue import AsyncActionsQueue
 from .logger import get_logger
+from . import mappings
 
 logger = logging.getLogger(__name__)
 
@@ -236,25 +237,53 @@ class ActionHandler:
     
     def _normalize_parameters(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Normalize parameters by converting compass directions to numeric degrees.
+        Normalize parameters by converting named values to numeric values.
+        
+        Handles all parameter types:
+        - pitch: names like 'up', 'down', 'neutral' -> degrees
+        - roll: names like 'left', 'right', 'neutral' -> degrees
+        - yaw: compass directions like 'North', 'East' -> degrees
+        - body_yaw: compass directions -> degrees
+        - antennas: names like 'happy', 'sad', 'neutral' -> [right, left] degrees
+        - duration: names like 'fast', 'slow', 'normal' -> seconds
+        
+        Falls back to numeric values if already provided (backward compatibility).
         
         Args:
-            parameters: Original parameters that may contain compass strings
+            parameters: Original parameters that may contain named or numeric values
             
         Returns:
             Normalized parameters with numeric values
         """
-        normalized = parameters.copy()
+        normalized = {}
         
-        # Convert compass direction strings to numeric degrees
-        if self.gateway:
-            for key in ['yaw', 'body_yaw']:
-                if key in normalized and isinstance(normalized[key], str):
-                    try:
-                        # Use gateway's parse method to convert compass to degrees
-                        normalized[key] = self.gateway.parse_compass_direction(normalized[key])
-                    except Exception as e:
-                        logger.warning(f"Failed to convert {key}='{normalized[key]}' to degrees: {e}")
+        for key, value in parameters.items():
+            # Skip None values
+            if value is None:
+                normalized[key] = value
+                continue
+            
+            # Try to convert using mappings module
+            try:
+                # Special handling for parameters that might need conversion
+                if key in ['pitch', 'roll', 'yaw', 'body_yaw', 'antennas', 'duration']:
+                    # If already numeric, pass through
+                    if isinstance(value, (int, float)):
+                        normalized[key] = value
+                    elif isinstance(value, list):
+                        # Likely antennas already in numeric form
+                        normalized[key] = value
+                    else:
+                        # Try to convert name to value
+                        normalized[key] = mappings.name_to_value(key, value)
+                        logger.debug(f"Converted {key}='{value}' to {normalized[key]}")
+                else:
+                    # Pass through other parameters unchanged
+                    normalized[key] = value
+            except ValueError as e:
+                # If conversion fails, try to pass through as-is
+                logger.warning(f"Failed to convert parameter {key}='{value}': {e}")
+                normalized[key] = value
         
         return normalized
     
