@@ -14,6 +14,7 @@ from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
 from reachy_mini.utils.interpolation import InterpolationTechnique, minimum_jerk
 from scipy.spatial.transform import Rotation
+from .safety_manager import SafetyManager, SafetyConfig
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,10 @@ class ReachyController:
         
         # Track body yaw state (not directly readable from ReachyMini)
         self._current_body_yaw = 0.0
+        
+        # Initialize safety manager with default configuration
+        self.safety_config = SafetyConfig()
+        self.safety_manager = SafetyManager(self.safety_config)
         
         logger.info(f"DOA Detector initialized with smoothing_alpha={smoothing_alpha}")
     
@@ -548,97 +553,79 @@ class ReachyController:
 
     def apply_safety_to_movement(self, roll, pitch, yaw, antennas, body_yaw):
         """
-        Apply safety limits to robot movements.
+        Apply safety limits to robot movements using the SafetyManager.
         
-        - Head yaw is limited to ±40 degrees
-        - Overflow beyond ±40 degrees is redirected to body_yaw
-        - Body yaw is limited to ±25 degrees
-        - Overflow beyond ±25 degrees is redirected to head yaw
-        - Difference between yaw and body_yaw never exceeds 45 degrees
-        - If they move in opposite directions and would exceed 45°, they are averaged proportionally
-        - Head pitch is limited to ±20 degrees
-        - Head roll is limited to ±25 degrees
+        Delegates to external safety module for head-priority collision avoidance.
+        The head is treated as "self" and the body adjusts to accommodate head movements.
+        
+        Args:
+            roll, pitch, yaw: Head angles in radians
+            antennas: Antenna positions in radians
+            body_yaw: Body yaw angle in radians
+            
+        Returns:
+            Tuple of (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw)
         """
-        HEAD_YAW_LIMIT = np.deg2rad(40.0)  # 40 degrees in radians
-        HEAD_PITCH_LIMIT = np.deg2rad(20.0)  # 20 degrees in radians
-        HEAD_ROLL_LIMIT = np.deg2rad(25.0)  # 25 degrees in radians
-        BODY_YAW_LIMIT = np.deg2rad(25.0)  # 25 degrees in radians
-        MAX_YAW_DIFFERENCE = np.deg2rad(30.0)  # 45 degrees in radians
+        # Get current state
+        current_roll, current_pitch, current_yaw, current_antennas, current_body_yaw = self._get_current_state()
         
+        # Convert to degrees for SafetyManager
+        current_state_deg = (
+            current_roll,
+            current_pitch, 
+            current_yaw,
+            current_body_yaw
+        )
+        
+        target_state_deg = (
+            np.degrees(roll),
+            np.degrees(pitch),
+            np.degrees(yaw),
+            np.degrees(body_yaw)
+        )
+        
+        # Validate movement with safety manager
+        safe_roll_deg, safe_pitch_deg, safe_yaw_deg, safe_body_yaw_deg = self.safety_manager.validate_movement(
+            current_state=current_state_deg,
+            target_state=target_state_deg
+        )
+        
+        # Convert back to radians
+        safe_roll = np.deg2rad(safe_roll_deg)
+        safe_pitch = np.deg2rad(safe_pitch_deg)
+        safe_yaw = np.deg2rad(safe_yaw_deg)
+        safe_body_yaw = np.deg2rad(safe_body_yaw_deg)
+        
+        # Antennas pass through unchanged
         safe_antennas = antennas
         
-        # Handle head roll limit
-        if abs(roll) > HEAD_ROLL_LIMIT:
-            safe_roll = np.sign(roll) * HEAD_ROLL_LIMIT
-            logger.debug(f"Head roll limited: requested={np.degrees(roll):.1f}°, "
-                        f"safe_roll={np.degrees(safe_roll):.1f}°")
-        else:
-            safe_roll = roll
-        
-        # Handle head pitch limit
-        if abs(pitch) > HEAD_PITCH_LIMIT:
-            safe_pitch = np.sign(pitch) * HEAD_PITCH_LIMIT
-            logger.debug(f"Head pitch limited: requested={np.degrees(pitch):.1f}°, "
-                        f"safe_pitch={np.degrees(safe_pitch):.1f}°")
-        else:
-            safe_pitch = pitch
-        
-        # Start with requested values
-        safe_yaw = yaw
-        safe_body_yaw = body_yaw
-        
-        # Handle head yaw overflow by redirecting to body_yaw
-        if abs(yaw) > HEAD_YAW_LIMIT:
-            # Calculate overflow amount
-            overflow = yaw - np.sign(yaw) * HEAD_YAW_LIMIT
-            safe_yaw = np.sign(yaw) * HEAD_YAW_LIMIT  # FIX: Clamp to limit
-            # Add overflow to body_yaw
-            safe_body_yaw = body_yaw + overflow
-            
-            logger.debug(f"Head yaw limited: requested={np.degrees(yaw):.1f}°, "
-                        f"safe_yaw={np.degrees(safe_yaw):.1f}°, "
-                        f"overflow={np.degrees(overflow):.1f}° redirected to body_yaw")
-        
-        # Handle body yaw overflow by redirecting to head yaw
-        if abs(safe_body_yaw) > BODY_YAW_LIMIT:
-            # Calculate overflow amount
-            body_overflow = safe_body_yaw - np.sign(safe_body_yaw) * BODY_YAW_LIMIT
-            safe_body_yaw = np.sign(safe_body_yaw) * BODY_YAW_LIMIT  # FIX: Clamp to limit
-            # Add overflow to head yaw
-            safe_yaw = safe_yaw + body_overflow
-            
-            logger.debug(f"Body yaw limited: requested={np.degrees(body_yaw):.1f}°, "
-                        f"safe_body_yaw={np.degrees(safe_body_yaw):.1f}°, "
-                        f"overflow={np.degrees(body_overflow):.1f}° redirected to head yaw")
-        
-        # Ensure difference between yaw and body_yaw never exceeds 45 degrees
-        yaw_difference = abs(safe_yaw - safe_body_yaw)
-        
-        if yaw_difference > MAX_YAW_DIFFERENCE:
-            # They are too far apart - need to bring them closer
-            # Average them proportionally based on how much each contributes
-            
-            # Calculate the midpoint
-            total_angle = safe_yaw + safe_body_yaw
-            
-            # Calculate how much we need to adjust
-            excess = yaw_difference - MAX_YAW_DIFFERENCE
-            
-            # Proportionally reduce the difference
-            # Move each one toward the other by half the excess
-            if safe_yaw > safe_body_yaw:
-                safe_yaw -= excess / 2
-                safe_body_yaw += excess / 2
-            else:
-                safe_yaw += excess / 2
-                safe_body_yaw -= excess / 2
-            
-            logger.debug(f"Yaw difference exceeded 45°: original_diff={np.degrees(yaw_difference):.1f}°, "
-                        f"adjusted yaw={np.degrees(safe_yaw):.1f}°, "
-                        f"adjusted body_yaw={np.degrees(safe_body_yaw):.1f}°, "
-                        f"new_diff={np.degrees(abs(safe_yaw - safe_body_yaw)):.1f}°")
-
         return (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw)
+    
+    def update_safety_config(self, **config_params):
+        """
+        Update safety configuration parameters at runtime.
+        
+        Allows fine-tuning of collision zones, margins, and limits.
+        
+        Args:
+            **config_params: Safety config parameters to update
+                (e.g., SAFE_MARGINS=10, BODY_RETREAT_ANGLE=15)
+        
+        Example:
+            controller.update_safety_config(
+                SAFE_MARGINS=10.0,
+                BODY_RETREAT_ANGLE=15.0,
+                HEAD_ROLL_LIMIT=30.0
+            )
+        """
+        for param, value in config_params.items():
+            if hasattr(self.safety_config, param):
+                setattr(self.safety_config, param, value)
+                logger.info(f"Updated safety config: {param}={value}")
+            else:
+                logger.warning(f"Unknown safety config parameter: {param}")
+        
+        logger.info(f"Safety configuration updated with {len(config_params)} parameters")
 
     def turn_off_smoothly(self):
         """
