@@ -31,6 +31,10 @@ class SafetyConfig:
     BODY_YAW_LIMIT: float = 25.0
     MAX_YAW_DIFFERENCE: float = 30.0
     
+    # Tilt safety parameters
+    TILT_SAFETY_THRESHOLD: float = 15.0  # When |head_roll| > this, apply stricter yaw limits
+    TILT_MAX_YAW_DIFFERENCE: float = 0.0  # Stricter yaw difference when head is tilted
+    
     # Collision avoidance parameters
     SAFE_MARGINS: float = 5.0  # Buffer zone in degrees
     BODY_RETREAT_ANGLE: float = 10.0  # How much body retreats when head tilts
@@ -118,9 +122,9 @@ class SafetyManager:
         )
         safe_body_yaw_rad = np.deg2rad(safe_body_yaw_rad)
         
-        # Step 3: Ensure yaw difference constraint
+        # Step 3: Ensure yaw difference constraint (stricter when head is tilted)
         safe_yaw_rad, safe_body_yaw_rad = self._enforce_yaw_difference(
-            safe_yaw_rad, safe_body_yaw_rad
+            safe_yaw_rad, safe_body_yaw_rad, np.degrees(safe_roll_rad)
         )
         
         # Convert back to degrees
@@ -262,7 +266,8 @@ class SafetyManager:
         """
         Calculate safe body position when head is tilting.
         
-        The body should move AWAY from the tilt direction to create space.
+        The body should be positioned relative to head yaw, offset by BODY_RETREAT_ANGLE
+        in the direction away from the tilt.
         
         Args:
             head_roll: Head roll angle in degrees (positive = tilt left)
@@ -273,10 +278,13 @@ class SafetyManager:
         Returns:
             Safe body_yaw in degrees
         """
-        # If head tilts left (positive roll), body should move right (negative yaw)
-        # If head tilts right (negative roll), body should move left (positive yaw)
+        # If head tilts left (positive roll), body should be offset to the right (negative)
+        # If head tilts right (negative roll), body should be offset to the left (positive)
         retreat_direction = -np.sign(head_roll)
-        safe_body_yaw = retreat_direction * self.config.BODY_RETREAT_ANGLE
+        retreat_offset = retreat_direction * self.config.BODY_RETREAT_ANGLE
+        
+        # Body yaw is relative to head yaw
+        safe_body_yaw = head_yaw + retreat_offset
         
         # Clamp to body limits
         BODY_YAW_LIMIT = self.config.BODY_YAW_LIMIT
@@ -317,19 +325,29 @@ class SafetyManager:
     def _enforce_yaw_difference(
         self,
         yaw: float,
-        body_yaw: float
+        body_yaw: float,
+        head_roll: float = 0.0
     ) -> Tuple[float, float]:
         """
         Ensure difference between head yaw and body yaw doesn't exceed limit.
+        When head is tilted beyond threshold, apply stricter yaw difference limit.
         
         Args:
             yaw: Head yaw in radians
             body_yaw: Body yaw in radians
+            head_roll: Head roll angle in degrees (for tilt detection)
             
         Returns:
             Adjusted (yaw, body_yaw) in radians
         """
-        MAX_YAW_DIFFERENCE_RAD = np.deg2rad(self.config.MAX_YAW_DIFFERENCE)
+        # Determine which max yaw difference to use based on head tilt
+        if abs(head_roll) > self.config.TILT_SAFETY_THRESHOLD:
+            MAX_YAW_DIFFERENCE_RAD = np.deg2rad(self.config.TILT_MAX_YAW_DIFFERENCE)
+            limit_type = "tilted"
+        else:
+            MAX_YAW_DIFFERENCE_RAD = np.deg2rad(self.config.MAX_YAW_DIFFERENCE)
+            limit_type = "normal"
+        
         yaw_difference = abs(yaw - body_yaw)
         
         if yaw_difference > MAX_YAW_DIFFERENCE_RAD:
@@ -343,7 +361,7 @@ class SafetyManager:
                 yaw += excess / 2
                 body_yaw -= excess / 2
             
-            logger.debug(f"Yaw difference adjusted: "
+            logger.info(f"Yaw difference adjusted ({limit_type} limit, head_roll={head_roll:.1f}°): "
                         f"diff={np.degrees(yaw_difference):.1f}° "
                         f"→ {np.degrees(abs(yaw - body_yaw)):.1f}°")
         
