@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-Reachy Gateway - Unified service for daemon management and hearing event emission
+Reachy Gateway - Unified service for daemon management, hearing, and vision event emission
 
 This service:
 1. Manages the reachy-mini-daemon lifecycle (spawn and cleanup)
 2. Runs hearing logic (VAD, STT, DOA)
-3. Emits events via Unix Domain Socket
-4. Handles graceful shutdown via signals
-5. Continuously records audio and saves to WAV files
-6. Points robot head at speaker based on DOA
+3. Runs vision logic (video frame capture and processing)
+4. Emits events via Unix Domain Socket
+5. Handles graceful shutdown via signals
+6. Continuously records audio and saves to WAV files
+7. Continuously captures video frames and saves to image files
+8. Points robot head at speaker based on DOA
 
 Usage:
     python3 gateway.py --device Reachy --language en
@@ -30,6 +32,7 @@ from reachy_mini.utils.interpolation import InterpolationTechnique
 
 # Import our custom modules
 from .gateway_audio import GatewayAudio
+from .gateway_video import GatewayVideo
 from .reachy_controller import ReachyController
 
 # Set up logging
@@ -78,6 +81,15 @@ class ReachyGateway:
             language=self.language
         )
         logger.info("✅ Audio processing component initialized")
+        
+        # Initialize video processing component
+        logger.info("Initializing video processing component...")
+        frame_interval = int(os.getenv('VIDEO_FRAME_INTERVAL', '100'))
+        self.gateway_video = GatewayVideo(
+            event_callback=self.emit_event,
+            frame_interval=frame_interval
+        )
+        logger.info("✅ Video processing component initialized")
         
         # Socket setup (conditional)
         self.server_socket = None
@@ -260,6 +272,7 @@ class ReachyGateway:
         logger.info(f"Device: {self.device_name}")
         logger.info(f"Socket: {self.socket_path}")
         logger.info(f"DOA Detection: {'Enabled' if self.reachy_controller else 'Disabled'}")
+        logger.info(f"Video Capture: Enabled (frame interval: {self.gateway_video.frame_interval})")
         
         # Set up signal handlers
         self.setup_signal_handlers()
@@ -288,6 +301,13 @@ class ReachyGateway:
             doa_task = asyncio.create_task(self.gateway_audio.sample_doa())
             tasks.append(doa_task)
             logger.info("DOA sampling task started")
+        
+        # Start video capture
+        logger.info("Starting video capture...")
+        self.gateway_video.start()
+        video_task = asyncio.create_task(self.gateway_video.run_gst_loop())
+        tasks.append(video_task)
+        logger.info("✅ Video capture task started")
         
         try:
             
@@ -324,6 +344,14 @@ class ReachyGateway:
                 logger.info("Recording stopped via ReachyMini")
             except Exception as e:
                 logger.error(f"Error stopping recording: {e}")
+        
+        # Cleanup video capture
+        if hasattr(self, 'gateway_video') and self.gateway_video:
+            try:
+                self.gateway_video.cleanup()
+                logger.info("Video capture cleaned up")
+            except Exception as e:
+                logger.error(f"Error cleaning up video capture: {e}")
         
         # Cleanup DOA detector (this will also stop the daemon)
         if self.reachy_controller:

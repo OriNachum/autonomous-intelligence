@@ -79,6 +79,10 @@ class ConversationApp:
         self.parser = ConversationParser()
         self.speech_handler = None  # Will be initialized in initialize()
         self.action_handler = None  # Will be initialized in initialize()
+        
+        # Video frame memory - store recent frame paths
+        self.recent_frames = []  # List of recent frame file paths
+        self.max_frames_in_memory = int(os.getenv('MAX_FRAMES_IN_MEMORY', '10'))
 
     async def initialize(self):
         """Initialize the application."""
@@ -168,6 +172,8 @@ class ConversationApp:
         elif event_type == "speech_partial":
             # Optional: handle partial transcriptions
             pass
+        elif event_type == "video_frame_captured":
+            await self.on_video_frame_captured(data)
         else:
             logger.debug(f"Unhandled event type: {event_type}")
     
@@ -227,6 +233,28 @@ class ConversationApp:
         if self.action_handler:
             logger.info("🚫 User started speaking - clearing action queue")
             await self.action_handler.clear()
+    
+    async def on_video_frame_captured(self, data: Dict[str, Any]):
+        """
+        Callback for video frame captured events.
+        
+        Args:
+            data: Event data containing frame_number, file_path, timestamp, etc.
+        """
+        frame_number = data.get("frame_number")
+        file_path = data.get("file_path")
+        total_frames = data.get("total_frames")
+        
+        logger.info(f"🎥 Video frame captured: #{frame_number} (total: {total_frames}) - {file_path}")
+        
+        # Store frame path in memory
+        self.recent_frames.append(file_path)
+        
+        # Keep only the most recent frames in memory
+        if len(self.recent_frames) > self.max_frames_in_memory:
+            self.recent_frames = self.recent_frames[-self.max_frames_in_memory:]
+        
+        logger.debug(f"Stored frame path in memory. Total frames in memory: {len(self.recent_frames)}")
     
     async def on_speech_stopped(self, data: Dict[str, Any]):
         """
