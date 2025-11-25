@@ -25,54 +25,26 @@ Move to a target pose using specified interpolation.
   - Full circle: 3up to 60 degrees, but avoid that much.
 - `body_yaw` (string or float): Compass direction (e.g., "North", "East", "West") OR angle in degrees for body rotation (default: maintain current position) 
 
-### move_cyclically
-
-For a repeated movement like nodding, sharking head, antennas back and forth, shy movements, and even dancing moves!
-It will end at original position.
-
-- `duration` (float): Total cycle duration in seconds (default: 10.0)
-  - *IMPORTANT* Make sure duration is long enough to make the movements safe
-- `repetitions` (int): Number of cycles (default: 1)
-- `duration` (float): Movement duration in seconds (default: 10.0) 
-  - *IMPORTANT* Make sure duration is long enough to make the movements safe
-- `yaw` (string or float): Compass direction (e.g., "North", "East", "West", "North East") OR angle in degrees for rotating head around the vertical axis (default: maintain current position)
-- `pitch` (float): rotate head around the horizontal axis angle in degrees, allows nodding (default: maintain current position)
-- `roll` (float): rotate head around the frontal axis angle in degrees, reflects curiosity (default: maintain current position)
-- `antennas` (list): [right, left] antenna angles in degrees (if not provided: maintain current position)
-  - Full circle: 3up to 60 degrees, but avoid that much.
-- `body_yaw` (string or float): Compass direction (e.g., "North", "East", "West") OR angle in degrees for body rotation (default: maintain current position)
-
-
-
-### move_to
-
-Snappy movement - when you are suprised or shocked.
-
-- `duration` (float): Movement duration in seconds (default: 10.0) 
-  - *IMPORTANT* Make sure duration is long enough to make the movements safe
-- `method` (string): 'linear', 'minjerk', 'ease', or 'cartoon' (default: 'ease')
-- `yaw` (string or float): Compass direction (e.g., "North", "East", "West", "North East") OR angle in degrees for rotating head around the vertical axis (default: maintain current position)
-- `pitch` (float): rotate head around the horizontal axis angle in degrees, allows nodding (default: maintain current position)
-- `roll` (float): rotate head around the frontal axis angle in degrees, reflects curiosity (default: maintain current position)
-- `antennas` (list): [right, left] antenna angles in degrees (if not provided: maintain current position)
-  - Full circle: 3up to 60 degrees, but avoid that much.
-- `body_yaw` (string or float): Compass direction (e.g., "North", "East", "West") OR angle in degrees for body rotation (default: maintain current position)
-
-
 ## Common Movement Patterns
 
 ### Nodding (Yes)
 ```json
-{"commands": [{"tool_name": "move_cyclically", "parameters": {"pitch": 15.0, "duration": 5.0, "repetitions": 1}}]}
-```S
+{"commands": [
+  {"tool_name": "move_smoothly_to", "parameters": {"pitch": 15.0, "duration": 1.0}},
+  {"tool_name": "move_smoothly_to", "parameters": {"pitch": 0.0, "duration": 1.0}}
+]}
+```
 
 ### Shaking Head (No)
 ```json
 {"commands": [
-  {"tool_name": "move_cyclically", "parameters": {"yaw": "East", "duration": 1.0}},
-  {"tool_name": "move_cyclically", "parameters": {"yaw": "West", "duration": 1.0}},
-  {"tool_name": "move_cyclically", "parameters": {"yaw": "East", "duration": 1.0}},
-  {"tool_name": "move_cyclically", "parameters": {"yaw": "West", "duration": 1.0}}
+  {"tool_name": "move_smoothly_to", "parameters": {"yaw": "East", "duration": 0.7}},
+  {"tool_name": "move_smoothly_to", "parameters": {"yaw": "West", "duration": 1.5}},  
+  {"tool_name": "move_smoothly_to", "parameters": {"yaw": "East", "duration": 1.5}},
+  {"tool_name": "move_smoothly_to", "parameters": {"yaw": "West", "duration": 1.5}},
+  {"tool_name": "move_smoothly_to", "parameters": {"yaw": "East", "duration": 1.5}},
+  {"tool_name": "move_smoothly_to", "parameters": {"yaw": "West", "duration": 1.5}},
+  {"tool_name": "move_smoothly_to", "parameters": {"yaw": "North", "duration": 1.0}}
 ]}
 ```
 
@@ -84,16 +56,37 @@ Snappy movement - when you are suprised or shocked.
 ### Looking Around
 ```json
 {"commands": [
-  {"tool_name": "move_to", "parameters": {"yaw": "East", "duration": 2.8}},
-  {"tool_name": "move_to", "parameters": {"yaw": "West", "duration": 2.8}},
-  {"tool_name": "move_to", "parameters": {"yaw": "North", "duration": 2.5}}
+  {"tool_name": "move_smoothly_to", "parameters": {"yaw": "East", "duration": 1.5}},
+  {"tool_name": "move_smoothly_to", "parameters": {"yaw": "West", "duration": 3.0}},
+  {"tool_name": "move_smoothly_to", "parameters": {"yaw": "North", "duration": 1.5}}
 ]}
 ```
 
 ### Antenna Wiggle (Playful)
 ```json
-{"commands": [{"tool_name": "move_cyclically", "parameters": {"antennas": [180.0, 180.0], "duration": 6.0, "repetitions": 2}}]}
+{"commands": [
+  {"tool_name": "move_smoothly_to", "parameters": {"antennas": [45.0, 45.0], "duration": 0.6}},
+  {"tool_name": "move_smoothly_to", "parameters": {"antennas": [-45.0, -45.0], "duration": 1.2}},
+  {"tool_name": "move_smoothly_to", "parameters": {"antennas": [45.0, 45.0], "duration": 1.2}},
+  {"tool_name": "move_smoothly_to", "parameters": {"antennas": [-45.0, -45.0], "duration": 1.2}},
+  {"tool_name": "move_smoothly_to", "parameters": {"antennas": [0.0, 0.0], "duration": 0.6}}
+]}
 ```
+
+### Antenna ^ shape (Cute)
+```json
+{"commands": [
+  {"tool_name": "move_smoothly_to", "parameters": {"antennas": [45.0, -45.0], "duration": 1.0}},
+]}
+```
+
+### Antenna V shape (Joking)
+```json
+{"commands": [
+  {"tool_name": "move_smoothly_to", "parameters": {"antennas": [-45.0, 45.0], "duration": 1.0}},
+]}
+```
+
 
 ## Response Format
 
@@ -102,8 +95,8 @@ Always respond with a JSON object containing a `commands` list:
 ```json
 {
   "commands": [
-    {"tool_name": "move_to", "parameters": {"pitch": 10.0, "duration": 1.0}},
-    {"tool_name": "move_cyclically", "parameters": {"yaw": 20.0, "duration": 5.0}}
+    {"tool_name": "move_smoothly_to", "parameters": {"pitch": 10.0, "duration": 1.0}},
+    {"tool_name": "move_smoothly_to", "parameters": {"yaw": "East", "duration": 5.0}}
   ]
 }
 ```

@@ -234,6 +234,30 @@ class ActionHandler:
             logger.error(f"Action string: {action_string}")
             return {"commands": []}
     
+    def _normalize_parameters(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize parameters by converting compass directions to numeric degrees.
+        
+        Args:
+            parameters: Original parameters that may contain compass strings
+            
+        Returns:
+            Normalized parameters with numeric values
+        """
+        normalized = parameters.copy()
+        
+        # Convert compass direction strings to numeric degrees
+        if self.gateway:
+            for key in ['yaw', 'body_yaw']:
+                if key in normalized and isinstance(normalized[key], str):
+                    try:
+                        # Use gateway's parse method to convert compass to degrees
+                        normalized[key] = self.gateway.parse_compass_direction(normalized[key])
+                    except Exception as e:
+                        logger.warning(f"Failed to convert {key}='{normalized[key]}' to degrees: {e}")
+        
+        return normalized
+    
     async def execute(self, action_string: str):
         """
         Parse and execute an action using LLM.
@@ -287,33 +311,20 @@ class ActionHandler:
                     except Exception as e:
                         logger.warning(f"Failed to get state before command: {e}")
                 
-                # Audit log: command started with exact parameters
-                audit_logger.log_command_started(tool_name, parameters, state_before)
+                # Normalize parameters (convert compass strings to degrees)
+                normalized_params = self._normalize_parameters(parameters)
+                
+                # Audit log: command started with exact numeric parameters
+                audit_logger.log_command_started(tool_name, normalized_params, state_before)
                 
                 # Check if this is a direct movement command
-                if self.gateway and tool_name in ["move_to", "move_smoothly_to", "move_cyclically"]:
+                if self.gateway and tool_name in ["move_smoothly_to"]:
                     logger.info(f"  ⚡ Executing direct movement: {tool_name} with {parameters}")
-                    
-                    # Map method string to InterpolationTechnique enum if needed
-                    if "method" in parameters and isinstance(parameters["method"], str):
-                        from reachy_mini.utils.interpolation import InterpolationTechnique
-                        method_map = {
-                            "linear": InterpolationTechnique.LINEAR,
-                            "minjerk": InterpolationTechnique.MIN_JERK,
-                            #"ease": InterpolationTechnique.EASE,
-                            "cartoon": InterpolationTechnique.CARTOON
-                        }
-                        parameters["method"] = method_map.get(parameters["method"].lower(), InterpolationTechnique.CARTOON)
-                    
+                                        
                     # Execute movement method in a thread to avoid blocking
                     success = True
                     try:
-                        if tool_name == "move_to":
-                            await asyncio.to_thread(self.gateway.move_to, **parameters)
-                        elif tool_name == "move_smoothly_to":
-                            await asyncio.to_thread(self.gateway.move_smoothly_to, **parameters)
-                        elif tool_name == "move_cyclically":
-                            await asyncio.to_thread(self.gateway.move_cyclically, **parameters)
+                        await asyncio.to_thread(self.gateway.move_smoothly_to, **parameters)
                     except Exception as e:
                         logger.error(f"Error executing {tool_name}: {e}")
                         success = False
