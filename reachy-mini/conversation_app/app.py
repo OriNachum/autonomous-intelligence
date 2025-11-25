@@ -47,6 +47,7 @@ from .conversation_parser import ConversationParser
 from .speech_handler import SpeechHandler
 from .action_handler import ActionHandler
 from .gateway import ReachyGateway
+from .logger import get_logger
 
 
 # Set up logging
@@ -242,10 +243,13 @@ class ConversationApp:
 
         logger.info(f"💭 Processing speech event #{event_number}")
         
-        # Create a user message representing the speech event
-        # In a real system, this would be transcribed speech
-        # For now, we'll create a generic message indicating user spoke
-        user_message = f"*Heard from {angle_degrees:.2f}° degrees* " +  f"\"{data.get("transcription", "")}\""
+        # Convert DOA angle to compass direction
+        # DOA angle: 0° = front, 90° = right, -90° = left
+        # Map to compass: North = 0°, East = 90°, West = -90°
+        doa_compass = self.gateway._degrees_to_compass(angle_degrees)
+        
+        # Create a user message representing the speech event with compass direction
+        user_message = f"*Heard from {doa_compass} ({angle_degrees:.1f}°)* " + f"\"{data.get('transcription', '')}\""
         logger.info(f"User: {user_message}")
         # For a real implementation, you would:
         # 1. Get the audio file saved by hearing_event_emitter
@@ -325,6 +329,9 @@ class ConversationApp:
         Returns:
             The assistant's complete response
         """
+        import time
+        audit_logger = get_logger()
+        
         # Add user message to conversation
         self.messages.append({"role": "user", "content": user_message})
         
@@ -344,13 +351,26 @@ class ConversationApp:
         if self.action_handler:
             await self.action_handler.clear()
         
+        # Audit log: model request sent
+        audit_logger.log_model_request_sent(
+            messages=self.messages,
+            parameters={"max_tokens": 700, "temperature": AGENT_TEMPERATURE}
+        )
+        
         # Collect full response
         full_response = ""
+        response_started = False
+        response_start_time = time.time()
         
         logger.info("🤖 Processing response...")
         
         # Stream the response
         async for token in self.chat_completion_stream(messages=self.messages):
+            # Audit log: response started (first token only)
+            if not response_started:
+                audit_logger.log_model_response_started()
+                response_started = True
+            
             full_response += token
             # Parse the token for quotes and actions
             self.parser.parse_token(token)
@@ -360,6 +380,8 @@ class ConversationApp:
                 speech_text = self.parser.get_speech()
                 if speech_text and self.speech_handler:
                     logger.info(f'🗣️  Speaking: "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking: "{speech_text}"')
+                    # Audit log: parser cut (speech)
+                    audit_logger.log_parser_cut("speech", speech_text)
                     await self.speech_handler.speak(speech_text)
             
             # Process any action items that were just parsed
@@ -367,7 +389,13 @@ class ConversationApp:
                 action_text = self.parser.get_action()
                 if action_text and self.action_handler:
                     logger.info(f'⚡ Executing action: **{action_text}**')
+                    # Audit log: parser cut (action)
+                    audit_logger.log_parser_cut("action", action_text)
                     await self.action_handler.execute(action_text)
+        
+        # Audit log: model response finished
+        response_latency_ms = (time.time() - response_start_time) * 1000
+        audit_logger.log_model_response_finished(full_response, response_latency_ms)
         
         # Add assistant response to conversation history
         self.messages.append({"role": "assistant", "content": full_response})

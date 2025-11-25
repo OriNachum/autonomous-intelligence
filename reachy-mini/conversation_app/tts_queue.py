@@ -24,6 +24,7 @@ import threading
 from queue import Queue, Empty
 import os
 from dotenv import load_dotenv
+from .logger import get_logger
 
 # Load environment variables from .env file if available
 load_dotenv()
@@ -127,6 +128,9 @@ class TTSQueue:
     
     def _playback_worker(self):
         """Background worker that processes the audio queue."""
+        import time
+        audit_logger = get_logger()
+        
         while not self.should_stop:
             try:
                 # Get next audio file from queue (with timeout to allow checking should_stop)
@@ -135,8 +139,20 @@ class TTSQueue:
                 if audio_file is None:  # Poison pill to stop
                     break
                 
-                # Play the audio file
+                # Extract text from metadata (stored with audio file)
+                # For now, we'll just use audio file name
+                text_for_log = audio_file  # Could be improved to store actual text
+                
+                # Audit log: TTS started
+                audit_logger.log_tts_started(text_for_log, audio_file)
+                
+                # Play the audio file (with timing)
+                playback_start_time = time.time()
                 self._play_audio(audio_file)
+                playback_duration_ms = (time.time() - playback_start_time) * 1000
+                
+                # Audit log: TTS finished
+                audit_logger.log_tts_finished(text_for_log, playback_duration_ms)
                 
                 # Clean up the temporary file
                 try:
@@ -276,6 +292,8 @@ class TTSQueue:
         Args:
             text: Text that may contain quoted segments to vocalize, or plain text
         """
+        audit_logger = get_logger()
+        
         # Extract quoted segments
         quoted_texts = self.extract_quoted_text(text)
         
@@ -289,13 +307,16 @@ class TTSQueue:
         print(f"🔊 Enqueueing {len(quoted_texts)} TTS segment(s)...")
         
         for quoted_text in quoted_texts:
+            # Audit log: TTS request queued
+            audit_logger.log_tts_request_queued(quoted_text)
+            
             # Convert to speech
             audio_file = self.text_to_speech(quoted_text)
             
             if audio_file:
                 # Add to playback queue
                 self.audio_queue.put(audio_file)
-                print(f"   ✓ Queued: \"{quoted_text[:50]}...\"" if len(quoted_text) > 50 else f"   ✓ Queued: \"{quoted_text}\"")
+                print(f'   ✓ Queued: "{quoted_text[:50]}..."' if len(quoted_text) > 50 else f'   ✓ Queued: "{quoted_text}"')
     
     def clear_queue(self):
         """Clear all pending audio from the queue."""

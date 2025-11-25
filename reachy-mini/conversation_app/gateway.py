@@ -36,6 +36,7 @@ from reachy_mini.utils.interpolation import InterpolationTechnique
 from .vad_detector import VADDetector
 from .whisper_stt import WhisperSTT
 from .reachy_controller import ReachyController
+from .logger import get_logger
 
 # Set up logging
 logging.basicConfig(
@@ -220,22 +221,56 @@ class ReachyGateway:
         
         logger.info(f"Socket server listening on {self.socket_path}")
     
-    def move_to(self, duration=1.0, method=InterpolationTechnique.CARTOON, head_roll=0.0, head_pitch=0.0, head_yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
-        """Move the robot to a target head pose and/or antennas position and/or body direction."""
-        self.reachy_controller.move_to(duration=duration, method=method, roll=head_roll, pitch=head_pitch, yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
-
-    def move_smoothly_to(self, duration=1.0, head_roll=0.0, head_pitch=0.0, head_yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
+    def move_smoothly_to(self, duration=1.0, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """Move the robot smoothly to a target head pose and/or antennas position and/or body direction."""
-        self.reachy_controller.move_smoothly_to(duration=duration, roll=head_roll, pitch=head_pitch, yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
-    
-    def move_cyclically(self, duration=1.0, repetitions=1, head_roll=0.0, head_pitch=0.0, head_yaw=0.0, antennas=[0.0, 0.0], body_yaw=0.0):
-        """Move the robot cyclicly to a target head pose and/or antennas position and/or body direction."""
-        self.reachy_controller.move_cyclically(duration=duration, repetitions=repetitions, roll=head_roll, pitch=head_pitch, yaw=head_yaw, antennas=antennas, body_yaw=body_yaw)
+        self.reachy_controller.move_smoothly_to(duration=duration, roll=roll, pitch=pitch, yaw=yaw, antennas=antennas, body_yaw=body_yaw)
     
     def turn_off_smoothly(self):
         """Smoothly move the robot to a neutral position and then turn off compliance."""
         if self.reachy_controller:
             self.reachy_controller.turn_off_smoothly()
+
+    def get_current_state(self):
+        """
+        Get current robot state (pose and positions).
+        
+        Returns:
+            Tuple of (roll, pitch, yaw, antennas, body_yaw) all in degrees
+        """
+        if self.reachy_controller:
+            return self.reachy_controller._get_current_state()
+        return (0.0, 0.0, 0.0, [0.0, 0.0], 0.0)
+    
+    def get_current_state_natural(self):
+        """
+        Get current robot state expressed in natural language (compass directions).
+        
+        Returns:
+            Dictionary with natural language descriptions
+        """
+        if self.reachy_controller:
+            return self.reachy_controller.get_current_state_natural()
+        return {
+            "head_direction": "North",
+            "head_tilt": "level",
+            "head_roll": "upright",
+            "antennas": "neutral",
+            "body_direction": "North"
+        }
+    
+    def _degrees_to_compass(self, degrees: float) -> str:
+        """
+        Convert compass angle in degrees to nearest cardinal/intercardinal direction.
+        
+        Args:
+            degrees: Compass angle in degrees (0=North, 90=East, -90=West)
+        
+        Returns:
+            Compass direction string (e.g., "North", "North East", "East")
+        """
+        if self.reachy_controller:
+            return self.reachy_controller._degrees_to_compass(degrees)
+        return "North"
     
     async def accept_clients(self):
         """Accept new client connections"""
@@ -327,11 +362,15 @@ class ReachyGateway:
     async def log_speech_event(self, event_type, duration=None, transcription=None):
         """Log and emit speech detection events"""
         current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        audit_logger = get_logger()
         
         if event_type == "start":
             self.speech_events += 1
             message = f"Speech started (Event #{self.speech_events})"
             logger.info(f"[{current_time}] {message} {transcription}")
+            
+            # Audit log: speech recording started
+            audit_logger.log_speech_recording_started(self.speech_events)
             
             await self.emit_event("speech_started", {
                 "event_number": self.speech_events,
@@ -346,6 +385,11 @@ class ReachyGateway:
                 message += f" - Transcription: '{transcription}'"
             
             logger.info(f"[{current_time}] {message}")
+            
+            # Audit log: speech recording finished
+            if duration is not None:
+                samples = len(self.speech_buffer) + len(self.post_speech_buffer)
+                audit_logger.log_speech_recording_finished(self.speech_events, duration, samples)
             
             await self.emit_event("speech_stopped", {
                 "event_number": self.speech_events,
@@ -588,6 +632,7 @@ class ReachyGateway:
     async def process_speech(self):
         """Process completed speech segment with STT transcription"""
         duration = time.time() - self.start_time
+        audit_logger = get_logger()
         
         all_audio_chunks = self.speech_buffer + self.post_speech_buffer
         audio_size = len(all_audio_chunks) * self.chunk_size * 2
@@ -604,14 +649,23 @@ class ReachyGateway:
             else:
                 logger.info("No DOA samples collected during speech segment")
         
+        # Audit log: transcription started
+        audit_logger.log_transcription_started(self.speech_events, audio_size)
+        
         # Perform STT transcription
         transcription = None
+        transcription_start_time = time.time()
         if all_audio_chunks:
             try:
                 transcription = await self.transcribe_audio(all_audio_chunks)
                 logger.info(f"Transcription result: '{transcription}'")
             except Exception as e:
                 logger.error(f"Error during transcription: {e}", exc_info=True)
+        
+        # Audit log: transcription finished
+        transcription_latency_ms = (time.time() - transcription_start_time) * 1000
+        if transcription:
+            audit_logger.log_transcription_finished(self.speech_events, transcription, transcription_latency_ms)
         
         if transcription and any(c.isalnum() for c in transcription):
             event_data = {

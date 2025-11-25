@@ -20,6 +20,7 @@ import asyncio
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from .actions_queue import AsyncActionsQueue
+from .logger import get_logger
 
 logger = logging.getLogger(__name__)
 
@@ -133,82 +134,7 @@ class ActionHandler:
                 logger.warning(f"Failed to load {definition_file}: {e}")
         
         return tools
-    
-    def _build_tools_context(self) -> str:
-        """
-        Build a context string describing all available tools.
         
-        Returns:
-            Formatted string with tool names, descriptions, and parameters
-        """
-        context_parts = ["## Available Tools\n"]
-        
-        # Add direct movement tools if gateway is available
-        if self.gateway:
-            context_parts.append("\n### move_to")
-            context_parts.append("Move the robot to a target head pose and/or antennas position using a specified interpolation method.")
-            context_parts.append("\n**Parameters:**")
-            context_parts.append("- `duration` (float): Duration of movement in seconds (default: 1.0)")
-            context_parts.append("- `method` (string): Interpolation method - 'linear', 'minjerk', 'ease', or 'cartoon' (default: 'cartoon')")
-            context_parts.append("- `roll` (float): Roll angle in degrees (default: 0.0)")
-            context_parts.append("- `pitch` (float): Pitch angle in degrees (default: 0.0)")
-            context_parts.append("- `yaw` (float): Yaw angle in degrees (default: 0.0)")
-            context_parts.append("- `antennas` (list): List of two antenna angles in degrees [left, right] (default: [0.0, 0.0])")
-            context_parts.append("- `body_yaw` (float): Body yaw angle in degrees (default: 0.0)")
-            
-            context_parts.append("\n### move_smoothly_to")
-            context_parts.append("Move the robot smoothly using sinusoidal interpolation to a target pose.")
-            context_parts.append("\n**Parameters:**")
-            context_parts.append("- `duration` (float): Duration of movement in seconds (default: 1.0)")
-            context_parts.append("- `roll` (float): Roll angle in degrees (default: 0.0)")
-            context_parts.append("- `pitch` (float): Pitch angle in degrees (default: 0.0)")
-            context_parts.append("- `yaw` (float): Yaw angle in degrees (default: 0.0)")
-            context_parts.append("- `antennas` (list): List of two antenna angles in degrees [left, right] (default: [0.0, 0.0])")
-            context_parts.append("- `body_yaw` (float): Body yaw angle in degrees (default: 0.0)")
-            
-            context_parts.append("\n### move_cyclically")
-            context_parts.append("Move the robot in a cyclical pattern (smooth movement there and back).")
-            context_parts.append("\n**Parameters:**")
-            context_parts.append("- `duration` (float): Total duration of cyclical movement in seconds (default: 1.0)")
-            context_parts.append("- `repetitions` (int): Number of repetitions (default: 1)")
-            context_parts.append("- `roll` (float): Roll angle in degrees (default: 0.0)")
-            context_parts.append("- `pitch` (float): Pitch angle in degrees (default: 0.0)")
-            context_parts.append("- `yaw` (float): Yaw angle in degrees (default: 0.0)")
-            context_parts.append("- `antennas` (list): List of two antenna angles in degrees [left, right] (default: [0.0, 0.0])")
-            context_parts.append("- `body_yaw` (float): Body yaw angle in degrees (default: 0.0)")
-        
-        for tool in self.tools_definitions:
-            name = tool.get("name", "unknown")
-            description = tool.get("description", "No description")
-            parameters = tool.get("parameters", {})
-            
-            context_parts.append(f"\n### {name}")
-            context_parts.append(f"{description}")
-            
-            # Add required parameters
-            required = parameters.get("required", [])
-            if required:
-                context_parts.append("\n**Required parameters:**")
-                for param in required:
-                    param_name = param.get("name")
-                    param_type = param.get("type")
-                    param_desc = param.get("description", "")
-                    context_parts.append(f"- `{param_name}` ({param_type}): {param_desc}")
-            
-            # Add optional parameters
-            optional = parameters.get("optional", [])
-            if optional:
-                context_parts.append("\n**Optional parameters:**")
-                for param in optional:
-                    param_name = param.get("name")
-                    param_type = param.get("type")
-                    param_default = param.get("default")
-                    param_desc = param.get("description", "")
-                    default_str = f" (default: {param_default})" if param_default is not None else ""
-                    context_parts.append(f"- `{param_name}` ({param_type}){default_str}: {param_desc}")
-        
-        return "\n".join(context_parts)
-    
     async def _parse_action_with_llm(self, action_string: str) -> Dict[str, Any]:
         """
         Use LLM to parse action string into structured tool calls.
@@ -225,11 +151,33 @@ class ActionHandler:
                 ]
             }
         """
+        audit_logger = get_logger()
+        
         # Build the context with available tools
         #tools_context = self._build_tools_context()
         
         # Create the user message
         user_message = f"Action: {action_string}"
+        
+        # Inject current state if available
+        current_state = None
+        if self.gateway:
+            try:
+                # Get natural language state
+                state_natural = self.gateway.get_current_state_natural()
+                current_state = state_natural
+                state_str = (
+                    f"\nCurrent State: "
+                    f"looking {state_natural['head_direction']}, "
+                    f"{state_natural['head_tilt']}, "
+                    f"{state_natural['head_roll']}, "
+                    f"antennas {state_natural['antennas']}, "
+                    f"body facing {state_natural['body_direction']}"
+                )
+                user_message += state_str
+                logger.debug(f"Injected natural state into prompt: {state_str.strip()}")
+            except Exception as e:
+                logger.warning(f"Failed to get current state for prompt: {e}")
         
         # Build messages for LLM
         messages = [
@@ -238,6 +186,9 @@ class ActionHandler:
         ]
         
         logger.debug(f"Sending action to LLM for parsing: {action_string}")
+        
+        # Audit log: action LLM request
+        audit_logger.log_action_llm_request(user_message, current_state)
         
         try:
             # Make request to LLM
@@ -267,15 +218,45 @@ class ActionHandler:
                 if json_start >= 0 and json_end > json_start:
                     json_str = content[json_start:json_end]
                     parsed = json.loads(json_str)
+                    
+                    # Audit log: action LLM response
+                    audit_logger.log_action_llm_response(content, parsed.get("commands", []))
+                    
                     return parsed
                 else:
                     logger.error(f"No valid JSON found in LLM response: {content}")
+                    # Still log the response even if parsing failed
+                    audit_logger.log_action_llm_response(content, [])
                     return {"commands": []}
                 
         except Exception as e:
             logger.error(f"Error parsing action with LLM: {e}")
             logger.error(f"Action string: {action_string}")
             return {"commands": []}
+    
+    def _normalize_parameters(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize parameters by converting compass directions to numeric degrees.
+        
+        Args:
+            parameters: Original parameters that may contain compass strings
+            
+        Returns:
+            Normalized parameters with numeric values
+        """
+        normalized = parameters.copy()
+        
+        # Convert compass direction strings to numeric degrees
+        if self.gateway:
+            for key in ['yaw', 'body_yaw']:
+                if key in normalized and isinstance(normalized[key], str):
+                    try:
+                        # Use gateway's parse method to convert compass to degrees
+                        normalized[key] = self.gateway.parse_compass_direction(normalized[key])
+                    except Exception as e:
+                        logger.warning(f"Failed to convert {key}='{normalized[key]}' to degrees: {e}")
+        
+        return normalized
     
     async def execute(self, action_string: str):
         """
@@ -287,7 +268,12 @@ class ActionHandler:
         if not action_string or not action_string.strip():
             return
         
+        audit_logger = get_logger()
+        
         logger.info(f"🎯 Processing action: {action_string}")
+        
+        # Audit log: action received
+        audit_logger.log_action_received(action_string)
         
         try:
             # Parse action with LLM
@@ -309,31 +295,58 @@ class ActionHandler:
                     logger.warning(f"Command missing tool_name: {cmd}")
                     continue
                 
-                # Check if this is a direct movement command
-                if self.gateway and tool_name in ["move_to", "move_smoothly_to", "move_cyclically"]:
-                    logger.info(f"  ⚡ Executing direct movement: {tool_name} with {parameters}")
-                    
-                    # Map method string to InterpolationTechnique enum if needed
-                    if "method" in parameters and isinstance(parameters["method"], str):
-                        from reachy_mini.utils.interpolation import InterpolationTechnique
-                        method_map = {
-                            "linear": InterpolationTechnique.LINEAR,
-                            "minjerk": InterpolationTechnique.MIN_JERK,
-                            #"ease": InterpolationTechnique.EASE,
-                            "cartoon": InterpolationTechnique.CARTOON
-                        }
-                        parameters["method"] = method_map.get(parameters["method"].lower(), InterpolationTechnique.CARTOON)
-                    
-                    # Execute movement method in a thread to avoid blocking
+                # Get state before command execution (raw numeric values)
+                state_before = None
+                if self.gateway:
                     try:
-                        if tool_name == "move_to":
-                            await asyncio.to_thread(self.gateway.move_to, **parameters)
-                        elif tool_name == "move_smoothly_to":
-                            await asyncio.to_thread(self.gateway.move_smoothly_to, **parameters)
-                        elif tool_name == "move_cyclically":
-                            await asyncio.to_thread(self.gateway.move_cyclically, **parameters)
+                        # Get raw state in degrees: (roll, pitch, yaw, antennas, body_yaw)
+                        raw_state = self.gateway.get_current_state()
+                        state_before = {
+                            "roll": raw_state[0],
+                            "pitch": raw_state[1],
+                            "yaw": raw_state[2],
+                            "antennas": raw_state[3],
+                            "body_yaw": raw_state[4]
+                        }
+                    except Exception as e:
+                        logger.warning(f"Failed to get state before command: {e}")
+                
+                # Normalize parameters (convert compass strings to degrees)
+                normalized_params = self._normalize_parameters(parameters)
+                
+                # Audit log: command started with exact numeric parameters
+                audit_logger.log_command_started(tool_name, normalized_params, state_before)
+                
+                # Check if this is a direct movement command
+                if self.gateway and tool_name in ["move_smoothly_to"]:
+                    logger.info(f"  ⚡ Executing direct movement: {tool_name} with {parameters}")
+                                        
+                    # Execute movement method in a thread to avoid blocking
+                    success = True
+                    try:
+                        await asyncio.to_thread(self.gateway.move_smoothly_to, **parameters)
                     except Exception as e:
                         logger.error(f"Error executing {tool_name}: {e}")
+                        success = False
+                    
+                    # Get state after command execution (raw numeric values)
+                    state_after = None
+                    if self.gateway:
+                        try:
+                            # Get raw state in degrees: (roll, pitch, yaw, antennas, body_yaw)
+                            raw_state = self.gateway.get_current_state()
+                            state_after = {
+                                "roll": raw_state[0],
+                                "pitch": raw_state[1],
+                                "yaw": raw_state[2],
+                                "antennas": raw_state[3],
+                                "body_yaw": raw_state[4]
+                            }
+                        except Exception as e:
+                            logger.warning(f"Failed to get state after command: {e}")
+                    
+                    # Audit log: command finished
+                    audit_logger.log_command_finished(tool_name, state_after, success=success)
                     continue
                 
                 # Build action string for actions_queue
@@ -351,7 +364,33 @@ class ActionHandler:
                     action_str = tool_name
                 
                 logger.info(f"  ⚡ Executing: {action_str}")
-                await self.actions_queue.enqueue_action(action_str)
+                
+                # Execute via actions queue
+                success = True
+                try:
+                    await self.actions_queue.enqueue_action(action_str)
+                except Exception as e:
+                    logger.error(f"Error executing {action_str}: {e}")
+                    success = False
+                
+                # Get state after command execution (raw numeric values)
+                state_after = None
+                if self.gateway:
+                    try:
+                        # Get raw state in degrees: (roll, pitch, yaw, antennas, body_yaw)
+                        raw_state = self.gateway.get_current_state()
+                        state_after = {
+                            "roll": raw_state[0],
+                            "pitch": raw_state[1],
+                            "yaw": raw_state[2],
+                            "antennas": raw_state[3],
+                            "body_yaw": raw_state[4]
+                        }
+                    except Exception as e:
+                        logger.warning(f"Failed to get state after command: {e}")
+                
+                # Audit log: command finished
+                audit_logger.log_command_finished(tool_name, state_after, success=success)
             
         except Exception as e:
             logger.error(f"❌ Error executing action: {e}")
