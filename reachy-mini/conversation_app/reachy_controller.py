@@ -15,38 +15,13 @@ from reachy_mini.utils import create_head_pose
 from reachy_mini.utils.interpolation import InterpolationTechnique, minimum_jerk
 from scipy.spatial.transform import Rotation
 from .safety_manager import SafetyManager, SafetyConfig
+from . import mappings
 
 logger = logging.getLogger(__name__)
 
 
 class ReachyController:
     """Direction of Audio Detector using ReachyMini"""
-    
-    # Natural language mappings for robot movements
-    NATURAL_MAPPINGS = {
-        # Pitch (nodding): up/down movements
-        'pitch': {
-            'up': 15.0,
-            'down': -15.0,
-            'slight up': 8.0,
-            'slight down': -8.0,
-        },
-        # Roll (tilting): side tilt movements
-        'roll': {
-            'left': 20.0,
-            'right': -20.0,
-            'slight left': 10.0,
-            'slight right': -10.0,
-        },
-        # Antennas: expressive movements
-        'antennas': {
-            'wiggle': [180.0, 180.0],
-            'up': [30.0, 30.0],
-            'down': [-30.0, -30.0],
-            'curious': [45.0, 45.0],
-            'neutral': [0.0, 0.0],
-        }
-    }
     
     def __init__(self, smoothing_alpha: float = 0.1, log_level: int = logging.DEBUG):
         """
@@ -89,14 +64,7 @@ class ReachyController:
     def parse_compass_direction(self, direction_str: str) -> float:
         """
         Parse compass direction string and convert to Reachy yaw angle in degrees.
-        
-        Uses vector addition to handle arbitrary compass strings like "North East".
-        Reachy's yaw is limited to ±45°, where:
-        - North (0°) = forward = 0° in Reachy
-        - East (90°) = right = -45° in Reachy (max right)
-        - West (-90°) = left = +45° in Reachy (max left)
-        
-        Formula: reachy_yaw = -1 * (compass_angle / 2)
+        Delegates to mappings module for consistency.
         
         Args:
             direction_str: Compass direction (e.g., "North", "East", "North East")
@@ -104,53 +72,7 @@ class ReachyController:
         Returns:
             Yaw angle in degrees for Reachy, clamped to ±45°
         """
-        # Define unit vectors for cardinal directions
-        CARDINAL_VECTORS = {
-            'north': (0, 1),
-            'south': (0, -1),
-            'west': (1, 0),
-            'east': (-1, 0),
-        }
-        
-        # Normalize input: lowercase and remove extra spaces
-        direction_str = direction_str.lower().strip()
-        
-        # Tokenize the input (split on spaces and common separators)
-        tokens = direction_str.replace('-', ' ').replace('_', ' ').split()
-        
-        # Sum the vectors
-        total_x, total_y = 0.0, 0.0
-        
-        for token in tokens:
-            if token in CARDINAL_VECTORS:
-                x, y = CARDINAL_VECTORS[token]
-                total_x += x
-                total_y += y
-        
-        # If no valid tokens found, default to North (forward)
-        if total_x == 0 and total_y == 0:
-            logger.warning(f"No valid compass direction in '{direction_str}', defaulting to North (0°)")
-            return 0.0
-        
-        # Calculate the angle of the resulting vector relative to North
-        # atan2 gives angle from East (positive x-axis), we need from North (positive y-axis)
-        compass_angle_rad = np.arctan2(total_x, total_y)  # Note: swapped x and y for North=0
-        compass_angle_deg = np.degrees(compass_angle_rad)
-        
-        # Map compass angle to Reachy yaw
-        # Compass: East=90°, West=-90° (or 270°)
-        # Reachy: Max Right=-45°, Max Left=+45°
-        # Formula: reachy_yaw = -1 * (compass_angle / 2)
-        reachy_yaw = -1.0 * (compass_angle_deg / 2.0)
-        
-        # Clamp to safety limits (±45°)
-        MAX_YAW = 45.0
-        reachy_yaw = np.clip(reachy_yaw, -MAX_YAW, MAX_YAW)
-        
-        logger.debug(f"Parsed compass direction '{direction_str}': compass_angle={compass_angle_deg:.1f}°, "
-                    f"reachy_yaw={reachy_yaw:.1f}°")
-        
-        return float(reachy_yaw)
+        return mappings.parse_compass_direction(direction_str)
     
     def get_current_doa(self) -> Tuple[float, bool]:
         """
@@ -363,56 +285,26 @@ class ReachyController:
     
     def get_current_state_natural(self) -> Dict[str, str]:
         """
-        Get current robot state expressed in natural language (compass directions).
+        Get current robot state expressed in natural language.
         
         Returns:
             Dictionary with natural language descriptions:
             {
                 "head_direction": "East" or "North" or "West" etc.,
-                "head_tilt": "looking up" or "looking down" or "level",
-                "head_roll": "tilted left" or "tilted right" or "upright",
-                "antennas": "wiggling" or "neutral" or "up",
+                "head_tilt": "up" or "down" or "neutral",
+                "head_roll": "left" or "right" or "neutral",
+                "antennas": "happy" or "neutral" or "sad" etc.,
                 "body_direction": "East" or "North" or "West" etc.
             }
         """
         roll, pitch, yaw, antennas, body_yaw = self._get_current_state()
         
-        # Convert yaw to compass direction
-        # Inverse of parse_compass_direction: reachy_yaw = -1 * (compass_angle / 2)
-        # So: compass_angle = -2 * reachy_yaw
-        compass_angle_yaw = -2.0 * yaw
-        head_direction = self._degrees_to_compass(compass_angle_yaw)
-        
-        # Convert body_yaw to compass direction
-        compass_angle_body = -2.0 * body_yaw
-        body_direction = self._degrees_to_compass(compass_angle_body)
-        
-        # Pitch to natural language
-        if pitch > 5.0:
-            head_tilt = "looking up"
-        elif pitch < -5.0:
-            head_tilt = "looking down"
-        else:
-            head_tilt = "level"
-        
-        # Roll to natural language
-        if roll > 5.0:
-            head_roll = "tilted left"
-        elif roll < -5.0:
-            head_roll = "tilted right"
-        else:
-            head_roll = "upright"
-        
-        # Antennas (simple classification)
-        avg_antenna = sum(antennas) / 2.0
-        if abs(avg_antenna) < 5.0:
-            antennas_desc = "neutral"
-        elif avg_antenna > 20.0:
-            antennas_desc = "up"
-        elif avg_antenna < -20.0:
-            antennas_desc = "down"
-        else:
-            antennas_desc = "neutral"
+        # Use mappings module to convert values to names
+        head_direction = mappings.value_to_name('yaw', yaw)
+        body_direction = mappings.value_to_name('body_yaw', body_yaw)
+        head_tilt = mappings.value_to_name('pitch', pitch)
+        head_roll = mappings.value_to_name('roll', roll)
+        antennas_desc = mappings.value_to_name('antennas', antennas)
         
         return {
             "head_direction": head_direction,
@@ -425,6 +317,7 @@ class ReachyController:
     def _degrees_to_compass(self, degrees: float) -> str:
         """
         Convert compass angle in degrees to nearest cardinal/intercardinal direction.
+        Delegates to mappings module for consistency.
         
         Args:
             degrees: Compass angle in degrees (0=North, 90=West, -90=East)
@@ -432,27 +325,7 @@ class ReachyController:
         Returns:
             Compass direction string (e.g., "North", "North East", "East")
         """
-        # Normalize to [0, 360)
-        degrees = degrees % 360.0
-        
-        # Quantize to 8 directions (N, NE, E, SE, S, SW, W, NW)
-        # Each direction spans 45°
-        directions = [
-            "North",      # 337.5-22.5 (wraps around 0)
-            "North West", # 22.5-67.5
-            "West",       # 67.5-112.5
-            "South West", # 112.5-157.5
-            "South",      # 157.5-202.5
-            "South East", # 202.5-247.5
-            "East",       # 247.5-292.5
-            "North East"  # 292.5-337.5
-        ]
-        
-        # Convert to index (0-7)
-        # Add 22.5 to shift boundaries, divide by 45 to get direction
-        index = int((degrees + 22.5) / 45.0) % 8
-        
-        return directions[index]
+        return mappings.degrees_to_compass(degrees)
             
     def move_smoothly_to(self, duration=10.0, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """
