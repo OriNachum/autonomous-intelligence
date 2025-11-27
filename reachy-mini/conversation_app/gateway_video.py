@@ -18,18 +18,22 @@ from collections import deque
 from typing import Optional, Callable
 import numpy as np
 
-import gi
-from gst_signalling.utils import find_producer_peer_id_by_name
-
-gi.require_version("Gst", "1.0")
-from gi.repository import GLib, Gst
+# Try to import gi (GStreamer) - required for video capture
+try:
+    import gi
+    from gst_signalling.utils import find_producer_peer_id_by_name
+    gi.require_version("Gst", "1.0")
+    from gi.repository import GLib, Gst
+    HAS_GST = True
+except ImportError:
+    HAS_GST = False
+    logger.warning("PyGObject (gi) not available - video capture will be disabled")
 
 # Try to import cv2, fallback to PIL if not available
 try:
     import cv2
     HAS_CV2 = True
 except ImportError:
-    from PIL import Image
     HAS_CV2 = False
 
 logger = logging.getLogger(__name__)
@@ -47,6 +51,13 @@ class GatewayVideo:
             frame_interval: Capture and save every nth frame (default: 100)
         """
         logger.info("Initializing Gateway Video")
+        
+        # Check if GST dependencies are available
+        if not HAS_GST:
+            raise ImportError(
+                "PyGObject (gi) is required for video capture but not installed. "
+                "Set ENABLE_VISION=false to disable video processing."
+            )
         
         self.emit_event = event_callback
         self.frame_interval = frame_interval

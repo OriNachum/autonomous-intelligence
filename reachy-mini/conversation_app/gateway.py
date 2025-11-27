@@ -32,7 +32,8 @@ from reachy_mini.utils.interpolation import InterpolationTechnique
 
 # Import our custom modules
 from .gateway_audio import GatewayAudio
-from .gateway_video import GatewayVideo
+#from .gateway_video import GatewayVideo
+
 from .reachy_controller import ReachyController
 
 # Set up logging
@@ -82,14 +83,25 @@ class ReachyGateway:
         )
         logger.info("✅ Audio processing component initialized")
         
-        # Initialize video processing component
-        logger.info("Initializing video processing component...")
-        frame_interval = int(os.getenv('VIDEO_FRAME_INTERVAL', '100'))
-        self.gateway_video = GatewayVideo(
-            event_callback=self.emit_event,
-            frame_interval=frame_interval
-        )
-        logger.info("✅ Video processing component initialized")
+        # Initialize video processing component (conditionally)
+        self.gateway_video = None
+        enable_vision = os.getenv('ENABLE_VISION', 'false').lower() in ('true', '1', 'yes')
+        
+        if enable_vision:
+            try:
+                from .gateway_video import GatewayVideo
+                logger.info("Initializing video processing component...")
+                frame_interval = int(os.getenv('VIDEO_FRAME_INTERVAL', '100'))
+                self.gateway_video = GatewayVideo(
+                    event_callback=self.emit_event,
+                    frame_interval=frame_interval
+                )
+                logger.info("✅ Video processing component initialized")
+            except ImportError as e:
+                logger.warning(f"Video processing disabled - dependencies not available: {e}")
+                self.gateway_video = None
+        else:
+            logger.info("Video processing component: Disabled (ENABLE_VISION=false)")
         
         # Socket setup (conditional)
         self.server_socket = None
@@ -272,7 +284,11 @@ class ReachyGateway:
         logger.info(f"Device: {self.device_name}")
         logger.info(f"Socket: {self.socket_path}")
         logger.info(f"DOA Detection: {'Enabled' if self.reachy_controller else 'Disabled'}")
-        logger.info(f"Video Capture: Enabled (frame interval: {self.gateway_video.frame_interval})")
+        
+        if self.gateway_video:
+            logger.info(f"Video Capture: Enabled (frame interval: {self.gateway_video.frame_interval})")
+        else:
+            logger.info("Video Capture: Disabled")
         
         # Set up signal handlers
         self.setup_signal_handlers()
@@ -302,12 +318,13 @@ class ReachyGateway:
             tasks.append(doa_task)
             logger.info("DOA sampling task started")
         
-        # Start video capture
-        logger.info("Starting video capture...")
-        self.gateway_video.start()
-        video_task = asyncio.create_task(self.gateway_video.run_gst_loop())
-        tasks.append(video_task)
-        logger.info("✅ Video capture task started")
+        # Start video capture (if enabled)
+        if self.gateway_video:
+            logger.info("Starting video capture...")
+            self.gateway_video.start()
+            video_task = asyncio.create_task(self.gateway_video.run_gst_loop())
+            tasks.append(video_task)
+            logger.info("✅ Video capture task started")
         
         try:
             
@@ -345,7 +362,7 @@ class ReachyGateway:
             except Exception as e:
                 logger.error(f"Error stopping recording: {e}")
         
-        # Cleanup video capture
+        # Cleanup video capture (if enabled)
         if hasattr(self, 'gateway_video') and self.gateway_video:
             try:
                 self.gateway_video.cleanup()
