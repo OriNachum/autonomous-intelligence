@@ -353,7 +353,7 @@ class ActionHandler:
                     # Execute movement method in a thread to avoid blocking
                     success = True
                     try:
-                        await asyncio.to_thread(self.gateway.move_smoothly_to, **parameters)
+                        await asyncio.to_thread(self.gateway.move_smoothly_to, **normalized_params)
                     except Exception as e:
                         logger.error(f"Error executing {tool_name}: {e}")
                         success = False

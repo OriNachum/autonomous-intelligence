@@ -356,6 +356,11 @@ class ReachyController:
             body_yaw = self.parse_compass_direction(body_yaw)
             logger.info(f"Parsed body_yaw compass direction to {body_yaw:.1f}°")
         
+        # Parse duration if provided as string (defensive handling)
+        if isinstance(duration, str):
+            duration = mappings.name_to_value('duration', duration)
+            logger.info(f"Parsed duration name to {duration}s")
+            
         # Determine which parameters to animate vs keep constant
         # For None parameters, we use current values and mark them as constant
         animate_roll = roll is not None
