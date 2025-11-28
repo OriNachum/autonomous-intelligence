@@ -133,7 +133,11 @@ class ConversationApp:
         
         # Initialize action handler
         try:
-            self.action_handler = ActionHandler(gateway=self.gateway)
+            self.action_handler = ActionHandler(
+                gateway=self.gateway,
+                event_callback=self.on_action_event,
+                tts_queue=self.speech_handler.tts_queue if self.speech_handler else None
+            )
             # Warm up action handler in background
             #asyncio.create_task(self.action_handler.execute("nod head"))
 
@@ -226,6 +230,75 @@ class ConversationApp:
                 raise
 
 
+    async def on_action_event(self, event_type: str, data: Dict[str, Any]):
+        """
+        Handle action execution events for model context update.
+        
+        This callback is invoked from the actions queue background thread,
+        so we need to be thread-safe when updating conversation history.
+        
+        Args:
+            event_type: Type of event (action_started, action_completed, action_failed)
+            data: Event data
+        """
+        import asyncio
+        import threading
+        
+        # Get the current event loop (main loop)
+        try:
+            main_loop = asyncio.get_event_loop()
+        except RuntimeError:
+            logger.warning("No event loop available for action event callback")
+            return
+        
+        # Define async handler for event
+        async def handle_event():
+            if event_type == "action_started":
+                action = data.get("action")
+                logger.info(f"📍 Action started: {action}")
+            
+            elif event_type == "action_completed":
+                action = data.get("action")
+                result = data.get("result", {})
+                
+                # Don't add system messages for speak actions to avoid cluttering context
+                if action != "speak":
+                    # Format system message for conversation context
+                    system_msg = f"[System] Action '{action}' completed successfully."
+                    
+                    # Append to conversation history so model knows what happened
+                    self.messages.append({
+                        "role": "system",
+                        "content": system_msg
+                    })
+                    
+                    logger.info(f"✅ Action completed: {action} (added to context)")
+                else:
+                    logger.info(f"✅ Speech completed: {result.get('text', '')[:50]}...")
+            
+            elif event_type == "action_failed":
+                action = data.get("action")
+                error = data.get("error", "Unknown error")
+                
+                # Format system message for conversation context
+                system_msg = f"[System] Action '{action}' failed: {error}"
+                
+                # Append to conversation history
+                self.messages.append({
+                    "role": "system",
+                    "content": system_msg
+                })
+                
+                logger.error(f"❌ Action failed: {action} - {error} (added to context)")
+        
+        # Schedule the async handler on the main event loop
+        if threading.current_thread() != threading.main_thread():
+            # Called from background thread - schedule on main loop
+            asyncio.run_coroutine_threadsafe(handle_event(), main_loop)
+        else:
+            # Already on main thread - can run directly
+            await handle_event()
+    
     async def on_speech_started(self, data: Dict[str, Any]):
         """
         Callback for speech started events.

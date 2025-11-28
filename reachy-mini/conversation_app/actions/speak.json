@@ -1,0 +1,19 @@
+{
+    "type": "function",
+    "function": {
+        "name": "speak",
+        "description": "Speak text aloud through text-to-speech. Use this to vocalize responses to the user.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "The text to speak aloud"
+                }
+            },
+            "required": [
+                "text"
+            ]
+        }
+    }
+}

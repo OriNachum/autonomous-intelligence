@@ -38,15 +38,21 @@ class ActionsQueue:
     """Manages robot action execution queue."""
     
     def __init__(self, reachy_base_url: Optional[str] = None, 
-                 tools_repository_path: Optional[Path] = None):
+                 tools_repository_path: Optional[Path] = None,
+                 event_callback: Optional[callable] = None,
+                 tts_queue: Optional[Any] = None):
         """
         Initialize actions queue.
         
         Args:
             reachy_base_url: URL for reachy-daemon (default: http://localhost:8000)
             tools_repository_path: Path to tools_repository directory
+            event_callback: Callback function for action execution events
+            tts_queue: TTS queue for speech synthesis (for speak action)
         """
         self.reachy_base_url = reachy_base_url or os.getenv("REACHY_BASE_URL", DEFAULT_REACHY_BASE_URL)
+        self.event_callback = event_callback
+        self.tts_queue = tts_queue
         
         # Default to tools_repository in parent directory
         if tools_repository_path is None:
@@ -119,6 +125,7 @@ class ActionsQueue:
         Args:
             action_data: Dictionary with 'action' (name) and 'params' (parameters)
         """
+        action_name = None
         try:
             self.is_executing = True
             action_name = action_data.get('action')
@@ -126,17 +133,46 @@ class ActionsQueue:
             
             logger.info(f"🤖 Executing action: {action_name} with params: {params}")
             
+            # Emit action_started event
+            if self.event_callback:
+                try:
+                    self.event_callback("action_started", {"action": action_name, "params": params})
+                except Exception as e:
+                    logger.error(f"Error in event_callback (action_started): {e}")
+            
             # Load and execute the action script
             result = await self._load_and_execute_script(action_name, params)
             
             if result.get('status') == 'failed' or 'error' in result:
-                logger.error(f"   ❌ Action failed: {result.get('error', 'Unknown error')}")
+                error_msg = result.get('error', 'Unknown error')
+                logger.error(f"   ❌ Action failed: {error_msg}")
+                
+                # Emit action_failed event
+                if self.event_callback:
+                    try:
+                        self.event_callback("action_failed", {"action": action_name, "error": error_msg})
+                    except Exception as e:
+                        logger.error(f"Error in event_callback (action_failed): {e}")
             else:
                 logger.info(f"   ✓ Action completed successfully")
+                
+                # Emit action_completed event
+                if self.event_callback:
+                    try:
+                        self.event_callback("action_completed", {"action": action_name, "result": result})
+                    except Exception as e:
+                        logger.error(f"Error in event_callback (action_completed): {e}")
             
         except Exception as e:
             logger.error(f"⚠️  Error executing action '{action_data.get('action')}': {e}")
             traceback.print_exc()
+            
+            # Emit action_failed event
+            if self.event_callback and action_name:
+                try:
+                    self.event_callback("action_failed", {"action": action_name, "error": str(e)})
+                except Exception as e2:
+                    logger.error(f"Error in event_callback (action_failed): {e2}")
         finally:
             self.is_executing = False
     
@@ -173,7 +209,7 @@ class ActionsQueue:
             result = await module.execute(
                 self._make_request,
                 self._create_head_pose,
-                None,  # tts_queue is handled separately
+                self.tts_queue,  # Pass actual tts_queue instead of None
                 params
             )
             
@@ -368,15 +404,24 @@ class AsyncActionsQueue:
     """Async wrapper for ActionsQueue."""
     
     def __init__(self, reachy_base_url: Optional[str] = None,
-                 tools_repository_path: Optional[Path] = None):
+                 tools_repository_path: Optional[Path] = None,
+                 event_callback: Optional[callable] = None,
+                 tts_queue: Optional[Any] = None):
         """
         Initialize async actions queue.
         
         Args:
             reachy_base_url: URL for reachy-daemon
             tools_repository_path: Path to tools_repository directory
+            event_callback: Callback function for action execution events
+            tts_queue: TTS queue for speech synthesis (for speak action)
         """
-        self.actions_queue = ActionsQueue(reachy_base_url, tools_repository_path)
+        self.actions_queue = ActionsQueue(
+            reachy_base_url, 
+            tools_repository_path,
+            event_callback,
+            tts_queue
+        )
     
     async def enqueue_action(self, action_string: str):
         """Enqueue action for execution (async version)."""

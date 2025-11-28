@@ -38,7 +38,9 @@ class ActionHandler:
                  gateway=None,
                  reachy_base_url: Optional[str] = None,
                  tools_repository_path: Optional[Path] = None,
-                 llm_url: Optional[str] = None):
+                 llm_url: Optional[str] = None,
+                 event_callback: Optional[callable] = None,
+                 tts_queue: Optional[Any] = None):
         """
         Initialize the action handler.
         
@@ -47,9 +49,13 @@ class ActionHandler:
             reachy_base_url: URL for reachy-daemon (if None, uses REACHY_BASE_URL env var)
             tools_repository_path: Path to tools_repository directory
             llm_url: URL for LLM chat completions (if None, uses default)
+            event_callback: Callback function for action execution events
+            tts_queue: TTS queue for speech synthesis (for speak action)
         """
         # Store gateway instance for direct robot control
         self.gateway = gateway
+        self.event_callback = event_callback
+        self.tts_queue = tts_queue
         
         # Get configuration from environment if not provided
         if reachy_base_url is None:
@@ -89,7 +95,9 @@ class ActionHandler:
         try:
             self.actions_queue = AsyncActionsQueue(
                 reachy_base_url=reachy_base_url,
-                tools_repository_path=tools_repository_path
+                tools_repository_path=tools_repository_path,
+                event_callback=self.event_callback,
+                tts_queue=self.tts_queue
             )
             logger.info("✓ Action handler initialized")
         except Exception as e:
