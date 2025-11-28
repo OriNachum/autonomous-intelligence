@@ -80,7 +80,7 @@ class GatewayAudio:
         self.post_speech_buffer = []
         
         # Recording state with pre-roll buffer
-        self.pre_roll_duration = float(os.getenv('PRE_ROLL_DURATION', '1.0'))  # seconds of audio before speech
+        self.pre_roll_duration = float(os.getenv('PRE_ROLL_DURATION', '2.0'))  # seconds of audio before speech
         self.pre_roll_buffer = deque(maxlen=int(self.rate * self.pre_roll_duration / self.chunk_size))
         self.recording_samples = []
         self.recording_active = False  # Track if we're currently recording speech

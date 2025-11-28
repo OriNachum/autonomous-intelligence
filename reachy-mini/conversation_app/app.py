@@ -385,7 +385,7 @@ class ConversationApp:
     async def chat_completion_stream(
         self,
         messages: List[Dict[str, Any]],
-        max_tokens: int = 700
+        max_tokens: int = 2000
     ):
         """
         Make a streaming chat completion request with tool calling support.
@@ -504,6 +504,7 @@ class ConversationApp:
         tool_calls_accumulated = {}  # Track tool calls by index
         response_started = False
         response_start_time = time.time()
+        is_json_response = False  # Flag to detect JSON responses
         
         logger.info("🤖 Processing response...")
         logger.debug(f"Request includes {len(self.tools)} tools")
@@ -524,17 +525,24 @@ class ConversationApp:
                 full_response += token
                 logger.debug(f"Content token: {repr(token[:50])}")
                 
-                # Parse the token for quotes (speech only now, no actions)
-                self.parser.parse_token(token)
+                # Detect JSON early (first content token that starts with {)
+                if not is_json_response and full_response.strip().startswith('{'):
+                    is_json_response = True
+                    logger.debug("Detected JSON response format")
                 
-                # Process any speech items that were just parsed
-                while self.parser.has_speech():
-                    speech_text = self.parser.get_speech()
-                    if speech_text and self.speech_handler:
-                        logger.info(f'🗣️  Speaking: "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking: "{speech_text}"')
-                        # Audit log: parser cut (speech)
-                        audit_logger.log_parser_cut("speech", speech_text)
-                        await self.speech_handler.speak(speech_text)
+                # Only use ConversationParser for non-JSON responses
+                if not is_json_response:
+                    # Parse the token for quotes (speech only now, no actions)
+                    self.parser.parse_token(token)
+                    
+                    # Process any speech items that were just parsed
+                    while self.parser.has_speech():
+                        speech_text = self.parser.get_speech()
+                        if speech_text and self.speech_handler:
+                            logger.info(f'🗣️  Speaking: "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking: "{speech_text}"')
+                            # Audit log: parser cut (speech)
+                            audit_logger.log_parser_cut("speech", speech_text)
+                            await self.speech_handler.speak(speech_text)
             
             elif chunk_type == "tool_calls":
                 # Handle tool call deltas
@@ -575,6 +583,7 @@ class ConversationApp:
                 tool_args_str = tool_call["function"]["arguments"]
                 
                 try:
+                    full_response += tool_args_str
                     # Parse arguments JSON
                     tool_args = json.loads(tool_args_str) if tool_args_str else {}
                 except json.JSONDecodeError as e:
@@ -593,6 +602,26 @@ class ConversationApp:
                     await self.action_handler.execute_tool(tool_name, tool_args)
         else:
             logger.info("No tool calls in response")
+        
+        # Handle JSON responses: extract and queue speech field
+        if is_json_response and full_response.strip():
+            try:
+                response_json = json.loads(full_response.strip())
+                speech_text = response_json.get('speech', '')
+                if speech_text and self.speech_handler:
+                    logger.info(f'🗣️  Speaking (from JSON): "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking (from JSON): "{speech_text}"')
+                    # Audit log: parser cut (speech from JSON)
+                    audit_logger.log_parser_cut("speech", speech_text)
+                    await self.speech_handler.speak(speech_text)
+                elif not speech_text:
+                    logger.debug("JSON response has no 'speech' field")
+            except json.JSONDecodeError as e:
+                logger.warning(f"Response looked like JSON but failed to parse: {e}")
+                logger.debug(f"Response content: {full_response[:100]}...")
+                # ConversationParser already handled it during streaming (if not JSON)
+                # If it was detected as JSON but invalid, we may have lost speech - log warning
+                if is_json_response:
+                    logger.warning("⚠️  Invalid JSON response detected - speech may have been lost!")
         
         # Audit log: model response finished
         response_latency_ms = (time.time() - response_start_time) * 1000
