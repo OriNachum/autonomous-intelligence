@@ -83,6 +83,9 @@ class ConversationApp:
         # Video frame memory - store recent frame paths
         self.recent_frames = []  # List of recent frame file paths
         self.max_frames_in_memory = int(os.getenv('MAX_FRAMES_IN_MEMORY', '10'))
+        
+        # DOA from most recent speech event (for parameterized actions)
+        self.current_doa = None  # Dict with angle_degrees and angle_radians
 
     async def initialize(self):
         """Initialize the application."""
@@ -265,9 +268,19 @@ class ConversationApp:
         """
         event_number = data.get("event_number")
         duration = data.get("duration")
-        doa = data.get("doa")
-        angle_degrees = doa.get("angle_degrees")
-        angle_radians = doa.get("angle_radians")
+        doa_average = data.get("doa_average")  # Get the average DOA from speech segment
+        
+        # Store DOA for action handler to use with "DOA" parameter
+        if doa_average:
+            self.current_doa = {
+                "angle_degrees": doa_average.get("angle_degrees"),
+                "angle_radians": doa_average.get("angle_radians")
+            }
+            angle_degrees = doa_average.get("angle_degrees")
+        else:
+            # Fallback if no DOA average available
+            self.current_doa = None
+            angle_degrees = 0.0
 
         logger.info(f"💭 Processing speech event #{event_number}")
         
@@ -370,6 +383,11 @@ class ConversationApp:
 
         # Reset parser state
         self.parser.reset()
+        
+        # Pass current DOA to action handler for parameterized actions
+        if self.action_handler and self.current_doa:
+            self.action_handler.set_doa(self.current_doa)
+            logger.debug(f"DOA passed to action handler: {self.current_doa['angle_degrees']:.1f}°")
         
         # Clear any pending speech when new user input arrives
         if self.speech_handler:

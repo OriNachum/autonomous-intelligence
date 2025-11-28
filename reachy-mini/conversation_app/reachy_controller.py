@@ -249,7 +249,7 @@ class ReachyController:
             logger.error(f"Error getting audio sample: {e}", exc_info=True)
             return None
     
-    def _get_current_state(self) -> Tuple[float, float, float, list, float]:
+    def get_current_state(self) -> Tuple[float, float, float, list, float]:
         """
         Get current robot state (pose and positions).
         
@@ -297,7 +297,7 @@ class ReachyController:
                 "body_direction": "East" or "North" or "West" etc.
             }
         """
-        roll, pitch, yaw, antennas, body_yaw = self._get_current_state()
+        roll, pitch, yaw, antennas, body_yaw = self.get_current_state()
         
         # Use mappings module to convert values to names
         head_direction = mappings.value_to_name('yaw', yaw)
@@ -344,7 +344,7 @@ class ReachyController:
             return smooth_position
         
         # Get current state
-        curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self._get_current_state()
+        curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self.get_current_state()
         logger.info(f"Starting move_smoothly_to: roll={curr_roll:.1f}, pitch={curr_pitch:.1f}, yaw={curr_yaw:.1f}, antennas={curr_antennas}, body_yaw={curr_body_yaw:.1f}")
         
         # Parse compass directions if provided as strings
@@ -426,7 +426,7 @@ class ReachyController:
             t = time.time()
         
         # Log final state
-        final_roll, final_pitch, final_yaw, final_antennas, final_body_yaw = self._get_current_state()
+        final_roll, final_pitch, final_yaw, final_antennas, final_body_yaw = self.get_current_state()
         logger.info(f"Finished move_smoothly_to: roll={final_roll:.1f}, pitch={final_pitch:.1f}, yaw={final_yaw:.1f}, antennas={final_antennas}, body_yaw={final_body_yaw:.1f}")
 
     def apply_safety_to_movement(self, roll, pitch, yaw, antennas, body_yaw):
@@ -445,7 +445,7 @@ class ReachyController:
             Tuple of (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw)
         """
         # Get current state
-        current_roll, current_pitch, current_yaw, current_antennas, current_body_yaw = self._get_current_state()
+        current_roll, current_pitch, current_yaw, current_antennas, current_body_yaw = self.get_current_state()
         
         # Convert to degrees for SafetyManager
         current_state_deg = (

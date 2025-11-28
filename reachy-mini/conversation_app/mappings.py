@@ -61,7 +61,7 @@ CARDINAL_VECTORS = {
 }
 
 
-def name_to_value(parameter_name: str, name: Union[str, float, List]) -> Union[float, List[float]]:
+def name_to_value(parameter_name: str, name: Union[str, float, List]) -> Union[float, List[float], str]:
     """
     Convert a named parameter to its numeric value.
     
@@ -70,7 +70,7 @@ def name_to_value(parameter_name: str, name: Union[str, float, List]) -> Union[f
         name: Named value (e.g., 'up', 'happy', 'fast') or already numeric value or compass direction
         
     Returns:
-        Numeric value(s) for the parameter
+        Numeric value(s) for the parameter, or special string value for dynamic resolution
         
     Raises:
         ValueError: If the name is not recognized for the given parameter
@@ -81,6 +81,13 @@ def name_to_value(parameter_name: str, name: Union[str, float, List]) -> Union[f
     
     if isinstance(name, list):
         return name
+    
+    # Handle special parameter values that require dynamic resolution
+    if isinstance(name, str):
+        normalized_name = name.lower().strip()
+        if normalized_name in ['return', 'back', 'doa']:
+            # Pass through as-is for action_handler to resolve dynamically
+            return normalized_name
     
     # Handle compass directions for yaw/body_yaw
     if parameter_name in ['yaw', 'body_yaw'] and isinstance(name, str):

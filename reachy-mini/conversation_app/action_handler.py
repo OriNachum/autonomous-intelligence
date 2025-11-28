@@ -17,6 +17,7 @@ import os
 import json
 import httpx
 import asyncio
+import numpy as np
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from .actions_queue import AsyncActionsQueue
@@ -94,6 +95,97 @@ class ActionHandler:
         except Exception as e:
             logger.error(f"❌ Failed to initialize actions queue: {e}")
             raise
+        
+        # State tracking for "return" and "back" parameters
+        self._initial_state = None  # State at start of command sequence
+        self._state_history = []  # Stack of states for "back" functionality
+        self._current_doa = None  # Current DOA for "DOA" parameter resolution
+    
+    def set_doa(self, doa_dict: Optional[Dict[str, float]]):
+        """
+        Set the current DOA for use with "DOA" parameter.
+        
+        Args:
+            doa_dict: Dictionary with 'angle_degrees' and 'angle_radians' keys, or None
+        """
+        self._current_doa = doa_dict
+        if doa_dict:
+            logger.debug(f"DOA set for action handler: {doa_dict['angle_degrees']:.1f}°")
+    
+    def _resolve_parameter(self, param_name: str, param_value: Any, current_state: Dict[str, Any]) -> Any:
+        """
+        Resolve special parameter values like 'return', 'back', and 'doa'.
+        
+        Args:
+            param_name: Parameter name ('roll', 'pitch', 'yaw', 'body_yaw', 'antennas', 'duration')
+            param_value: Parameter value (could be 'return', 'back', 'doa', or actual value)
+            current_state: Current robot state for fallback
+        
+        Returns:
+            Resolved parameter value (numeric or list)
+        """
+        # If not a string, already resolved
+        if not isinstance(param_value, str):
+            return param_value
+        
+        value_lower = param_value.lower().strip()
+        
+        # Handle "return" - go back to initial state
+        if value_lower == 'return':
+            if self._initial_state and param_name in self._initial_state:
+                resolved = self._initial_state[param_name]
+                logger.info(f"  Resolved '{param_name}=return' to {resolved} (initial state)")
+                return resolved
+            else:
+                logger.warning(f"  No initial state for '{param_name}', using current state")
+                return current_state.get(param_name)
+        
+        # Handle "back" - go to previous state in history
+        if value_lower == 'back':
+            if self._state_history:
+                # Get last state from history
+                prev_state = self._state_history[-1]
+                if param_name in prev_state:
+                    resolved = prev_state[param_name]
+                    logger.info(f"  Resolved '{param_name}=back' to {resolved} (previous state)")
+                    return resolved
+            # Fallback to initial state if no history
+            if self._initial_state and param_name in self._initial_state:
+                resolved = self._initial_state[param_name]
+                logger.info(f"  Resolved '{param_name}=back' to {resolved} (no history, using initial)")
+                return resolved
+            logger.warning(f"  No state history for '{param_name}', using current state")
+            return current_state.get(param_name)
+        
+        # Handle "DOA" - direction of audio
+        if value_lower == 'doa':
+            if param_name in ['yaw', 'body_yaw']:
+                if self._current_doa:
+                    # Convert DOA angle to robot yaw
+                    # DOA is in compass coordinates, need to convert to robot yaw
+                    doa_degrees = self._current_doa['angle_degrees']
+                    # Use mappings to convert compass to robot yaw
+                    # The DOA is already in the right coordinate system (matches compass)
+                    # Robot yaw formula: reachy_yaw = -1 * (compass_angle / 2)
+                    robot_yaw = -1.0 * (doa_degrees / 2.0)
+                    # Clamp to ±45°
+                    robot_yaw = np.clip(robot_yaw, -45.0, 45.0)
+                    logger.info(f"  Resolved '{param_name}=DOA' to {robot_yaw:.1f}° (from DOA {doa_degrees:.1f}°)")
+                    return robot_yaw
+                else:
+                    logger.warning(f"  No DOA available for '{param_name}', using current state")
+                    return current_state.get(param_name)
+            elif param_name == 'antennas':
+                # For antennas, use "alert" pose when oriented toward sound
+                resolved = mappings.name_to_value('antennas', 'alert')
+                logger.info(f"  Resolved 'antennas=DOA' to 'alert' pose: {resolved}")
+                return resolved
+            else:
+                logger.warning(f"  DOA not applicable to '{param_name}', using current state")
+                return current_state.get(param_name)
+        
+        # Not a special value, return as-is
+        return param_value
     
     def _load_tools_definitions(self) -> List[Dict[str, Any]]:
         """
@@ -305,6 +397,24 @@ class ActionHandler:
         audit_logger.log_action_received(action_string)
         
         try:
+            # Capture initial state at start of command sequence
+            if self.gateway:
+                try:
+                    raw_state = self.gateway.get_current_state()
+                    self._initial_state = {
+                        "roll": raw_state[0],
+                        "pitch": raw_state[1],
+                        "yaw": raw_state[2],
+                        "antennas": raw_state[3],
+                        "body_yaw": raw_state[4]
+                    }
+                    # Reset state history for new command sequence
+                    self._state_history = []
+                    logger.debug(f"Captured initial state: {self._initial_state}")
+                except Exception as e:
+                    logger.warning(f"Failed to capture initial state: {e}")
+                    self._initial_state = None
+            
             # Parse action with LLM
             parsed = await self._parse_action_with_llm(action_string)
             
@@ -337,6 +447,13 @@ class ActionHandler:
                             "antennas": raw_state[3],
                             "body_yaw": raw_state[4]
                         }
+                        
+                        # Resolve special parameter values BEFORE normalization
+                        resolved_params = {}
+                        for key, value in parameters.items():
+                            resolved_params[key] = self._resolve_parameter(key, value, state_before)
+                        parameters = resolved_params
+                        
                     except Exception as e:
                         logger.warning(f"Failed to get state before command: {e}")
                 
@@ -371,6 +488,13 @@ class ActionHandler:
                                 "antennas": raw_state[3],
                                 "body_yaw": raw_state[4]
                             }
+                            
+                            # Push state_before to history for "back" functionality
+                            # We push the state BEFORE the move, so "back" returns to it
+                            if state_before:
+                                self._state_history.append(state_before)
+                                logger.debug(f"Pushed state to history (depth: {len(self._state_history)})")
+                            
                         except Exception as e:
                             logger.warning(f"Failed to get state after command: {e}")
                     
@@ -415,6 +539,12 @@ class ActionHandler:
                             "antennas": raw_state[3],
                             "body_yaw": raw_state[4]
                         }
+                        
+                        # Push state_before to history for "back" functionality
+                        if state_before:
+                            self._state_history.append(state_before)
+                            logger.debug(f"Pushed state to history (depth: {len(self._state_history)})")
+                        
                     except Exception as e:
                         logger.warning(f"Failed to get state after command: {e}")
                 
