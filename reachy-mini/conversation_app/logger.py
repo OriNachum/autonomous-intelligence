@@ -229,6 +229,27 @@ class ConversationLogger:
             "tool_name": tool_name,
             "parameters": parameters
         })
+    
+    def log_tool_output(self, tool_name: str, tool_call_id: str, output: Any, 
+                       duration_ms: float, success: bool, error: Optional[str] = None):
+        """Log tool execution output and result.
+        
+        Args:
+            tool_name: Name of the tool that was executed
+            tool_call_id: ID of the tool call for correlation
+            output: The output/result from the tool execution
+            duration_ms: Execution time in milliseconds
+            success: Whether the tool execution succeeded
+            error: Error message if execution failed
+        """
+        self._write_log("tool_output", {
+            "tool_name": tool_name,
+            "tool_call_id": tool_call_id,
+            "output": output,
+            "duration_ms": duration_ms,
+            "success": success,
+            "error": error
+        })
 
 
 # Singleton instance accessor

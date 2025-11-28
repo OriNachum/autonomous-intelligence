@@ -612,7 +612,7 @@ class ActionHandler:
             logger.error(f"❌ Error executing tool: {e}")
 
     
-    async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]):
+    async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute a tool with structured parameters (bypasses LLM parsing).
         
@@ -621,10 +621,13 @@ class ActionHandler:
         Args:
             tool_name: Name of the tool/action to execute
             parameters: Dictionary of parameters for the tool
+            
+        Returns:
+            Dictionary with execution result and status
         """
         if not tool_name:
             logger.warning("execute_tool called with empty tool_name")
-            return
+            return {"status": "error", "error": "Empty tool_name"}
         
         audit_logger = get_logger()
         logger.info(f"🎯 Processing tool call: {tool_name}({parameters})")
@@ -647,8 +650,21 @@ class ActionHandler:
         # Execute via actions queue directly
         try:
             await self.actions_queue.enqueue_action(action_str)
+            return {
+                "status": "success",
+                "action": action_str,
+                "tool_name": tool_name,
+                "parameters": parameters
+            }
         except Exception as e:
             logger.error(f"Error executing {action_str}: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "action": action_str,
+                "tool_name": tool_name,
+                "parameters": parameters
+            }
 
 
 

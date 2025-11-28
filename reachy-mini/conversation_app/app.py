@@ -261,18 +261,9 @@ class ConversationApp:
                 action = data.get("action")
                 result = data.get("result", {})
                 
-                # Don't add system messages for speak actions to avoid cluttering context
+                # Don't add system messages - tool results are now added as 'tool' role messages in process_message
                 if action != "speak":
-                    # Format system message for conversation context
-                    system_msg = f"[System] Action '{action}' completed successfully."
-                    
-                    # Append to conversation history so model knows what happened
-                    self.messages.append({
-                        "role": "system",
-                        "content": system_msg
-                    })
-                    
-                    logger.info(f"✅ Action completed: {action} (added to context)")
+                    logger.info(f"✅ Action completed: {action}")
                 else:
                     logger.info(f"✅ Speech completed: {result.get('text', '')[:50]}...")
             
@@ -280,16 +271,8 @@ class ConversationApp:
                 action = data.get("action")
                 error = data.get("error", "Unknown error")
                 
-                # Format system message for conversation context
-                system_msg = f"[System] Action '{action}' failed: {error}"
-                
-                # Append to conversation history
-                self.messages.append({
-                    "role": "system",
-                    "content": system_msg
-                })
-                
-                logger.error(f"❌ Action failed: {action} - {error} (added to context)")
+                # Don't add system messages - tool errors are logged in audit trail
+                logger.error(f"❌ Action failed: {action} - {error}")
         
         # Schedule the async handler on the main event loop
         if threading.current_thread() != threading.main_thread():
@@ -575,16 +558,17 @@ class ConversationApp:
                             tool_calls_accumulated[index]["function"]["arguments"] += func_delta["arguments"]
         
         # Execute accumulated tool calls
+        tool_results = {}  # Store results by tool_call_id
         if tool_calls_accumulated:
             logger.info(f"🔧 Executing {len(tool_calls_accumulated)} tool call(s)...")
             for index in sorted(tool_calls_accumulated.keys()):
                 tool_call = tool_calls_accumulated[index]
                 tool_name = tool_call["function"]["name"]
                 tool_args_str = tool_call["function"]["arguments"]
+                tool_call_id = tool_call["id"]
                 
                 try:
-                    full_response += tool_args_str
-                    # Parse arguments JSON
+                    # Parse arguments JSON (DO NOT append to full_response)
                     tool_args = json.loads(tool_args_str) if tool_args_str else {}
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse tool arguments: {e}")
@@ -596,10 +580,43 @@ class ConversationApp:
                 # Audit log: tool call execution
                 audit_logger.log_tool_call_executed(tool_name, tool_args)
                 
+                # Measure tool execution time
+                tool_start_time = time.time()
+                tool_success = True
+                tool_error = None
+                tool_result = None
+                
                 # Execute tool via action_handler
                 if self.action_handler:
-                    # Call new execute_tool method that accepts structured commands
-                    await self.action_handler.execute_tool(tool_name, tool_args)
+                    try:
+                        # Call execute_tool method that accepts structured commands
+                        tool_result = await self.action_handler.execute_tool(tool_name, tool_args)
+                        logger.info(f"✅ Tool {tool_name} executed successfully")
+                    except Exception as e:
+                        tool_success = False
+                        tool_error = str(e)
+                        logger.error(f"❌ Tool {tool_name} failed: {e}")
+                        tool_result = {"error": tool_error}
+                
+                # Calculate execution time
+                tool_duration_ms = (time.time() - tool_start_time) * 1000
+                
+                # Audit log: tool output
+                audit_logger.log_tool_output(
+                    tool_name=tool_name,
+                    tool_call_id=tool_call_id,
+                    output=tool_result,
+                    duration_ms=tool_duration_ms,
+                    success=tool_success,
+                    error=tool_error
+                )
+                
+                # Store result for history
+                tool_results[tool_call_id] = {
+                    "result": tool_result,
+                    "success": tool_success,
+                    "error": tool_error
+                }
         else:
             logger.info("No tool calls in response")
         
@@ -632,8 +649,37 @@ class ConversationApp:
         if not full_response and not tool_calls_accumulated:
             logger.warning("⚠️  Model returned empty response (no content and no tool calls)")
         
-        # Add assistant response to conversation history
-        self.messages.append({"role": "assistant", "content": full_response})
+        # Add assistant response to conversation history with proper tool_calls field
+        assistant_msg = {
+            "role": "assistant",
+            "content": full_response if full_response else None
+        }
+        
+        # Add tool_calls field if there were any tool calls
+        if tool_calls_accumulated:
+            assistant_msg["tool_calls"] = [
+                {
+                    "id": tool_calls_accumulated[index]["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tool_calls_accumulated[index]["function"]["name"],
+                        "arguments": tool_calls_accumulated[index]["function"]["arguments"]
+                    }
+                }
+                for index in sorted(tool_calls_accumulated.keys())
+            ]
+        
+        self.messages.append(assistant_msg)
+        
+        # Add tool response messages using 'tool' role (standard format)
+        for tool_call_id, result_data in tool_results.items():
+            tool_response_msg = {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": json.dumps(result_data["result"]) if result_data["result"] else json.dumps({"status": "completed"})
+            }
+            self.messages.append(tool_response_msg)
+            logger.debug(f"Added tool response to history for tool_call_id: {tool_call_id}")
         
         logger.info(f"✓ Full response received: {full_response[:50]}")
         # Run warm-up for caching in background
