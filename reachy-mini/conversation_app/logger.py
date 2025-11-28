@@ -222,6 +222,13 @@ class ConversationLogger:
             "success": success,
             "error": error
         })
+    
+    def log_tool_call_executed(self, tool_name: str, parameters: Dict[str, Any]):
+        """Log when a tool call is executed from function calling."""
+        self._write_log("tool_call_executed", {
+            "tool_name": tool_name,
+            "parameters": parameters
+        })
 
 
 # Singleton instance accessor

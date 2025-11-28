@@ -333,6 +333,9 @@ class ConversationApp:
             "tools": self.tools,
             "tool_choice": "auto"  # Let model decide when to use tools
         }
+        
+        logger.debug(f"Sending request with {len(self.tools)} tools")
+        logger.debug(f"Tool names: {[t['function']['name'] for t in self.tools]}")
                 
         async with httpx.AsyncClient(timeout=60.0) as client:
             try:
@@ -355,6 +358,10 @@ class ConversationApp:
                                     content = delta.get("content", "")
                                     tool_calls = delta.get("tool_calls", [])
                                     
+                                    # Debug logging
+                                    if content or tool_calls:
+                                        logger.debug(f"Stream delta - content: {repr(content[:30])}, tool_calls: {len(tool_calls)} items")
+                                    
                                     # Yield content tokens
                                     if content:
                                         yield {"type": "content", "content": content}
@@ -362,6 +369,8 @@ class ConversationApp:
                                     # Yield tool call deltas
                                     if tool_calls:
                                         yield {"type": "tool_calls", "tool_calls": tool_calls}
+                                else:
+                                    logger.debug(f"Empty choices in stream data: {data}")
                                         
                             except json.JSONDecodeError:
                                 continue
@@ -424,6 +433,8 @@ class ConversationApp:
         response_start_time = time.time()
         
         logger.info("🤖 Processing response...")
+        logger.debug(f"Request includes {len(self.tools)} tools")
+        
         
         # Stream the response
         async for chunk in self.chat_completion_stream(messages=self.messages):
@@ -438,6 +449,7 @@ class ConversationApp:
                 # Handle content (speech)
                 token = chunk.get("content", "")
                 full_response += token
+                logger.debug(f"Content token: {repr(token[:50])}")
                 
                 # Parse the token for quotes (speech only now, no actions)
                 self.parser.parse_token(token)
@@ -454,6 +466,7 @@ class ConversationApp:
             elif chunk_type == "tool_calls":
                 # Handle tool call deltas
                 tool_call_deltas = chunk.get("tool_calls", [])
+                logger.debug(f"Tool call deltas: {tool_call_deltas}")
                 
                 for tc_delta in tool_call_deltas:
                     index = tc_delta.get("index", 0)
@@ -498,14 +511,24 @@ class ConversationApp:
                 
                 logger.info(f"⚡ Executing tool: {tool_name} with args: {tool_args}")
                 
+                # Audit log: tool call execution
+                audit_logger.log_tool_call_executed(tool_name, tool_args)
+                
                 # Execute tool via action_handler
                 if self.action_handler:
                     # Call new execute_tool method that accepts structured commands
                     await self.action_handler.execute_tool(tool_name, tool_args)
+        else:
+            logger.info("No tool calls in response")
         
         # Audit log: model response finished
         response_latency_ms = (time.time() - response_start_time) * 1000
         audit_logger.log_model_response_finished(full_response, response_latency_ms)
+        
+        # Log summary of what was received
+        logger.info(f"✅ Response complete: {len(full_response)} chars, {len(tool_calls_accumulated)} tool calls, {response_latency_ms:.0f}ms")
+        if not full_response and not tool_calls_accumulated:
+            logger.warning("⚠️  Model returned empty response (no content and no tool calls)")
         
         # Add assistant response to conversation history
         self.messages.append({"role": "assistant", "content": full_response})
