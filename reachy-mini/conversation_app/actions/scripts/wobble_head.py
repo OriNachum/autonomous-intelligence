@@ -1,3 +1,4 @@
+
 """Script for wobbling the robot's head in circles."""
 import asyncio
 import math
@@ -13,9 +14,24 @@ async def execute(make_request, create_head_pose, tts_queue, params):
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with duration, radius, and speed parameters
     """
-    duration = params.get('duration', 2.0)
-    radius = params.get('radius', 15.0)  # degrees
-    speed = params.get('speed', 1.0)  # circles per second
+    try:
+        duration = float(params.get('duration', 2.0))
+    except (ValueError, TypeError):
+        duration = 2.0
+        
+    try:
+        radius = float(params.get('radius', 15.0))
+    except (ValueError, TypeError):
+        radius = 15.0
+        
+    # If radius is 0, default to 15.0 (likely LLM hallucination or parsing issue)
+    if radius == 0:
+        radius = 15.0
+        
+    try:
+        speed = float(params.get('speed', 1.0))
+    except (ValueError, TypeError):
+        speed = 1.0
     speech = params.get('speech')
     
     # Handle speech if provided

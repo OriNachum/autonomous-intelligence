@@ -12,8 +12,16 @@ async def execute(make_request, create_head_pose, tts_queue, params):
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with duration and angle parameters
     """
-    duration = params.get('duration', 1.0)
-    angle = params.get('angle', 15.0)
+    try:
+        duration = float(params.get('duration', 1.0))
+    except (ValueError, TypeError):
+        duration = 1.0
+        
+    try:
+        angle = float(params.get('angle', 15.0))
+    except (ValueError, TypeError):
+        angle = 15.0
+        
     speech = params.get('speech')
     
     # Handle speech if provided

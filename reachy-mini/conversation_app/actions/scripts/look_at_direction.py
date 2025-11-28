@@ -13,6 +13,11 @@ async def execute(make_request, create_head_pose, tts_queue, params):
     if speech and tts_queue:
         await tts_queue.enqueue_text(speech)
     
+    # Validate direction parameter
+    valid_directions = ['up', 'down', 'left', 'right', 'forward']
+    if direction not in valid_directions:
+        direction = 'forward'
+    
     if direction == 'up':
         pose = create_head_pose(pitch=-30, degrees=True)
     elif direction == 'down':
@@ -24,7 +29,12 @@ async def execute(make_request, create_head_pose, tts_queue, params):
     else:
         pose = create_head_pose()
     
-    payload = {'head_pose': pose, 'duration': params.get('duration', 2.0)}
+    try:
+        duration = float(params.get('duration', 2.0))
+    except (ValueError, TypeError):
+        duration = 2.0
+    
+    payload = {'head_pose': pose, 'duration': duration}
     return await make_request('POST', '/api/move/goto', json_data=payload)
 
 

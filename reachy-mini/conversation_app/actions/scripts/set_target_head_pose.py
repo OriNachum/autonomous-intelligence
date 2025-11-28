@@ -12,11 +12,27 @@ async def execute(make_request, create_head_pose, tts_queue, params):
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with roll, pitch, yaw, duration parameters
     """
-    # Get parameters with defaults
-    roll = params.get('roll', 0.0)
-    pitch = params.get('pitch', 0.0)
-    yaw = params.get('yaw', 0.0)
-    duration = params.get('duration', 1.0)
+    # Robust parameter parsing with defaults
+    try:
+        roll = float(params.get('roll', 0.0))
+    except (ValueError, TypeError):
+        roll = 0.0
+        
+    try:
+        pitch = float(params.get('pitch', 0.0))
+    except (ValueError, TypeError):
+        pitch = 0.0
+        
+    try:
+        yaw = float(params.get('yaw', 0.0))
+    except (ValueError, TypeError):
+        yaw = 0.0
+        
+    try:
+        duration = float(params.get('duration', 1.0))
+    except (ValueError, TypeError):
+        duration = 1.0
+        
     speech = params.get('speech')
     
     # Handle speech if provided
