@@ -336,13 +336,21 @@ class ReachyController:
         
         Supports compass directions for yaw and body_yaw (e.g., "North", "East", "West").
         """
-        def smooth_movement(t, max_angle):
-            phase = np.pi / 2 * t / duration
-            smooth_position = np.deg2rad(max_angle * np.sin(phase))
-            # Apply 2 decimal points precision
-            smooth_position = round(smooth_position, 2)
-            return smooth_position
-        
+        def smooth_movement(t, target_angle, cycle_duration=2.0):
+            """
+            Smooth oscillating movement with constant speed.
+            
+            Longer duration = more repetitions, not slower movement.
+            cycle_duration controls how fast one oscillation is.
+            """
+            # Repeat the motion: t loops within each cycle
+            t_in_cycle = t % cycle_duration
+            
+            # Cosine ease-in-out within each cycle
+            ease = (1.0 - np.cos(np.pi * t_in_cycle / cycle_duration)) / 2.0
+            position_deg = target_angle * ease
+            return round(np.deg2rad(position_deg), 4)
+
         # Get current state
         curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self.get_current_state()
         logger.info(f"Starting move_smoothly_to: roll={curr_roll:.1f}, pitch={curr_pitch:.1f}, yaw={curr_yaw:.1f}, antennas={curr_antennas}, body_yaw={curr_body_yaw:.1f}")

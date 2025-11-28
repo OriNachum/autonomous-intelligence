@@ -550,9 +550,101 @@ class ActionHandler:
                 
                 # Audit log: command finished
                 audit_logger.log_command_finished(tool_name, state_after, success=success)
+                return
+            
+            # Build action string for actions_queue
+            if normalized_params:
+                # Convert parameters to action string format
+                param_strs = []
+                for key, value in normalized_params.items():
+                    if isinstance(value, str):
+                        param_strs.append(f"{key}='{value}'")
+                    else:
+                        param_strs.append(f"{key}={value}")
+                
+                action_str = f"{tool_name}({', '.join(param_strs)})"
+            else:
+                action_str = tool_name
+            
+            logger.info(f"  ⚡ Executing: {action_str}")
+            
+            # Execute via actions queue
+            success = True
+            try:
+                await self.actions_queue.enqueue_action(action_str)
+            except Exception as e:
+                logger.error(f"Error executing {action_str}: {e}")
+                success = False
+            
+            # Get state after command execution
+            state_after = None
+            if self.gateway:
+                try:
+                    raw_state = self.gateway.get_current_state()
+                    state_after = {
+                        "roll": raw_state[0],
+                        "pitch": raw_state[1],
+                        "yaw": raw_state[2],
+                        "antennas": raw_state[3],
+                        "body_yaw": raw_state[4]
+                    }
+                    
+                    # Push state_before to history for "back" functionality
+                    if state_before:
+                        self._state_history.append(state_before)
+                        logger.debug(f"Pushed state to history (depth: {len(self._state_history)})")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to get state after command: {e}")
+            
+            # Audit log: command finished
+            audit_logger.log_command_finished(tool_name, state_after, success=success)
             
         except Exception as e:
-            logger.error(f"❌ Error executing action: {e}")
+            logger.error(f"❌ Error executing tool: {e}")
+
+    
+    async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]):
+        """
+        Execute a tool with structured parameters (bypasses LLM parsing).
+        
+        This is called directly from the front model's function calling output.
+        
+        Args:
+            tool_name: Name of the tool/action to execute
+            parameters: Dictionary of parameters for the tool
+        """
+        if not tool_name:
+            logger.warning("execute_tool called with empty tool_name")
+            return
+        
+        audit_logger = get_logger()
+        logger.info(f"🎯 Processing tool call: {tool_name}({parameters})")
+        
+        # Build action string for actions_queue from structured tool call
+        if parameters:
+            param_strs = []
+            for key, value in parameters.items():
+                if isinstance(value, str):
+                    param_strs.append(f"{key}='{value}'")
+                else:
+                    param_strs.append(f"{key}={value}")
+            
+            action_str = f"{tool_name}({', '.join(param_strs)})"
+        else:
+            action_str = tool_name
+        
+        logger.info(f"  ⚡ Executing: {action_str}")
+        
+        # Execute via actions queue directly
+        try:
+            await self.actions_queue.enqueue_action(action_str)
+        except Exception as e:
+            logger.error(f"Error executing {action_str}: {e}")
+
+
+
+
 
     
     async def clear(self):

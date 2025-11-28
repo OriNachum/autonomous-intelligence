@@ -48,6 +48,7 @@ from .speech_handler import SpeechHandler
 from .action_handler import ActionHandler
 from .gateway import ReachyGateway
 from .logger import get_logger
+from .tool_loader import load_tool_definitions
 
 
 # Set up logging
@@ -74,6 +75,11 @@ class ConversationApp:
         # Load the system prompt
         self.system_prompt = Path("/app/conversation_app/agents/reachy/reachy.system.md").read_text()
         
+        # Load tool definitions for function calling
+        actions_path = Path("/app/conversation_app/actions")
+        self.tools = load_tool_definitions(actions_path)
+        logger.info(f"Loaded {len(self.tools)} tools for function calling")
+        
         # Initialize components
         self.gateway = None  # Will be initialized in initialize()
         self.parser = ConversationParser()
@@ -81,7 +87,7 @@ class ConversationApp:
         self.action_handler = None  # Will be initialized in initialize()
         
         # Video frame memory - store recent frame paths
-        self.recent_frames = []  # List of recent frame file paths
+        self.recent_frames = []  # List of recent frame paths
         self.max_frames_in_memory = int(os.getenv('MAX_FRAMES_IN_MEMORY', '10'))
         
         # DOA from most recent speech event (for parameterized actions)
@@ -309,21 +315,23 @@ class ConversationApp:
         max_tokens: int = 700
     ):
         """
-        Make a streaming chat completion request.
+        Make a streaming chat completion request with tool calling support.
         
         Args:
             messages: Conversation history
             max_tokens: Maximum tokens to generate
             
         Yields:
-            Content tokens from the streaming response
+            Dictionary with either 'content' (text token) or 'tool_call' (tool call delta)
         """
         payload = {
             "model": MODEL_NAME,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": AGENT_TEMPERATURE,
-            "stream": True
+            "stream": True,
+            "tools": self.tools,
+            "tool_choice": "auto"  # Let model decide when to use tools
         }
                 
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -345,9 +353,15 @@ class ConversationApp:
                                 if choices:
                                     delta = choices[0].get("delta", {})
                                     content = delta.get("content", "")
+                                    tool_calls = delta.get("tool_calls", [])
                                     
+                                    # Yield content tokens
                                     if content:
-                                        yield content
+                                        yield {"type": "content", "content": content}
+                                    
+                                    # Yield tool call deltas
+                                    if tool_calls:
+                                        yield {"type": "tool_calls", "tool_calls": tool_calls}
                                         
                             except json.JSONDecodeError:
                                 continue
@@ -403,41 +417,91 @@ class ConversationApp:
             parameters={"max_tokens": 700, "temperature": AGENT_TEMPERATURE}
         )
         
-        # Collect full response
+        # Collect full response and tool calls
         full_response = ""
+        tool_calls_accumulated = {}  # Track tool calls by index
         response_started = False
         response_start_time = time.time()
         
         logger.info("🤖 Processing response...")
         
         # Stream the response
-        async for token in self.chat_completion_stream(messages=self.messages):
-            # Audit log: response started (first token only)
+        async for chunk in self.chat_completion_stream(messages=self.messages):
+            # Audit log: response started (first chunk only)
             if not response_started:
                 audit_logger.log_model_response_started()
                 response_started = True
             
-            full_response += token
-            # Parse the token for quotes and actions
-            self.parser.parse_token(token)
+            chunk_type = chunk.get("type")
             
-            # Process any speech items that were just parsed
-            while self.parser.has_speech():
-                speech_text = self.parser.get_speech()
-                if speech_text and self.speech_handler:
-                    logger.info(f'🗣️  Speaking: "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking: "{speech_text}"')
-                    # Audit log: parser cut (speech)
-                    audit_logger.log_parser_cut("speech", speech_text)
-                    await self.speech_handler.speak(speech_text)
+            if chunk_type == "content":
+                # Handle content (speech)
+                token = chunk.get("content", "")
+                full_response += token
+                
+                # Parse the token for quotes (speech only now, no actions)
+                self.parser.parse_token(token)
+                
+                # Process any speech items that were just parsed
+                while self.parser.has_speech():
+                    speech_text = self.parser.get_speech()
+                    if speech_text and self.speech_handler:
+                        logger.info(f'🗣️  Speaking: "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking: "{speech_text}"')
+                        # Audit log: parser cut (speech)
+                        audit_logger.log_parser_cut("speech", speech_text)
+                        await self.speech_handler.speak(speech_text)
             
-            # Process any action items that were just parsed
-            while self.parser.has_action():
-                action_text = self.parser.get_action()
-                if action_text and self.action_handler:
-                    logger.info(f'⚡ Executing action: **{action_text}**')
-                    # Audit log: parser cut (action)
-                    audit_logger.log_parser_cut("action", action_text)
-                    await self.action_handler.execute(action_text)
+            elif chunk_type == "tool_calls":
+                # Handle tool call deltas
+                tool_call_deltas = chunk.get("tool_calls", [])
+                
+                for tc_delta in tool_call_deltas:
+                    index = tc_delta.get("index", 0)
+                    
+                    # Initialize tool call accumulator if needed
+                    if index not in tool_calls_accumulated:
+                        tool_calls_accumulated[index] = {
+                            "id": "",
+                            "type": "function",
+                            "function": {
+                                "name": "",
+                                "arguments": ""
+                            }
+                        }
+                    
+                    # Accumulate tool call data
+                    if "id" in tc_delta:
+                        tool_calls_accumulated[index]["id"] = tc_delta["id"]
+                    
+                    if "function" in tc_delta:
+                        func_delta = tc_delta["function"]
+                        if "name" in func_delta:
+                            tool_calls_accumulated[index]["function"]["name"] += func_delta["name"]
+                        if "arguments" in func_delta:
+                            tool_calls_accumulated[index]["function"]["arguments"] += func_delta["arguments"]
+        
+        # Execute accumulated tool calls
+        if tool_calls_accumulated:
+            logger.info(f"🔧 Executing {len(tool_calls_accumulated)} tool call(s)...")
+            for index in sorted(tool_calls_accumulated.keys()):
+                tool_call = tool_calls_accumulated[index]
+                tool_name = tool_call["function"]["name"]
+                tool_args_str = tool_call["function"]["arguments"]
+                
+                try:
+                    # Parse arguments JSON
+                    tool_args = json.loads(tool_args_str) if tool_args_str else {}
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse tool arguments: {e}")
+                    logger.error(f"Arguments string: {tool_args_str}")
+                    continue
+                
+                logger.info(f"⚡ Executing tool: {tool_name} with args: {tool_args}")
+                
+                # Execute tool via action_handler
+                if self.action_handler:
+                    # Call new execute_tool method that accepts structured commands
+                    await self.action_handler.execute_tool(tool_name, tool_args)
         
         # Audit log: model response finished
         response_latency_ms = (time.time() - response_start_time) * 1000

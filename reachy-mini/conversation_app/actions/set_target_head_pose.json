@@ -1,0 +1,43 @@
+{
+    "name": "set_target_head_pose",
+    "description": "Move the robot's head to a specific target pose.\n\nThis moves the head to specified roll, pitch, and yaw angles.",
+    "parameters": {
+        "required": [],
+        "optional": [
+            {
+                "name": "roll",
+                "type": "number",
+                "default": 0.0,
+                "description": "Roll angle in degrees (tilt left/right)"
+            },
+            {
+                "name": "pitch",
+                "type": "number",
+                "default": 0.0,
+                "description": "Pitch angle in degrees (tilt up/down)"
+            },
+            {
+                "name": "yaw",
+                "type": "number",
+                "default": 0.0,
+                "description": "Yaw angle in degrees (turn left/right)"
+            },
+            {
+                "name": "duration",
+                "type": "number",
+                "default": 1.0,
+                "description": "Duration of movement in seconds"
+            },
+            {
+                "name": "speech",
+                "type": "string",
+                "default": null,
+                "description": "Optional text to speak via TTS during movement"
+            }
+        ]
+    },
+    "execution": {
+        "type": "script",
+        "script_file": "set_target_head_pose.py"
+    }
+}
