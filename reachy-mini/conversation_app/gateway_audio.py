@@ -52,7 +52,7 @@ class GatewayAudio:
         self.chunk_size = int(self.rate * self.chunk_duration_ms / 1000)
         
         # VAD configuration - DISABLED, using DOA speech detection instead
-        self.use_vad = os.getenv('USE_VAD', 'false').lower() == 'true'
+        self.use_vad = os.getenv('USE_VAD', 'true').lower() == 'true'
         if self.use_vad:
             vad_aggressiveness = int(os.getenv('VAD_AGGRESSIVENESS', '3'))
             self.vad = VADDetector(aggressiveness=vad_aggressiveness, sample_rate=self.rate)
@@ -78,6 +78,9 @@ class GatewayAudio:
         self.audio_buffer = deque(maxlen=buffer_size)
         self.speech_buffer = []
         self.post_speech_buffer = []
+        
+        # Incoming buffer for exact chunk sizing (VAD requirement)
+        self.incoming_buffer = np.array([], dtype=np.int16)
         
         # Recording state with pre-roll buffer
         self.pre_roll_duration = float(os.getenv('PRE_ROLL_DURATION', '2.0'))  # seconds of audio before speech
@@ -188,73 +191,83 @@ class GatewayAudio:
                     logger.warning(f"Unexpected audio data type: {sample.dtype}, attempting conversion")
                     np_data = sample.astype(np.int16)
                 
-                # Add to audio buffer for speech processing
+                # Add incoming samples to buffer
                 async with self.processing_lock:
-                    self.audio_buffer.append(np_data)
+                    self.incoming_buffer = np.concatenate([self.incoming_buffer, np_data])
                 
-                # === Pre-roll Buffer Recording Logic ===
-                # Check current speech detection status from DOA
-                is_speech_now = False
-                if self.current_doa is not None:
-                    is_speech_now = self.current_doa[1]  # is_speech_detected flag
-                
-                if not self.recording_active:
-                    # Not recording: maintain pre-roll buffer (rolling window)
-                    async with self.processing_lock:
-                        self.pre_roll_buffer.append(np_data)
+                # Process chunks of exact size for VAD
+                while len(self.incoming_buffer) >= self.chunk_size:
+                    # Extract exact chunk
+                    chunk = self.incoming_buffer[:self.chunk_size]
+                    self.incoming_buffer = self.incoming_buffer[self.chunk_size:]
                     
-                    # Track consecutive speech detections
-                    if is_speech_now:
-                        self.consecutive_speech_count += 1
-                        logger.debug(f"Speech detection {self.consecutive_speech_count}/{self.min_speech_start_count}")
-                        
-                        # Start recording only after consecutive detections
-                        if self.consecutive_speech_count >= self.min_speech_start_count:
-                            logger.info(f"Speech confirmed after {self.consecutive_speech_count} detections - starting recording (with {len(self.pre_roll_buffer)} pre-roll samples)")
-                            self.recording_active = True
-                            self.recording_start_time = time.time()
-                            # Copy pre-roll buffer to recording samples
-                            async with self.processing_lock:
-                                self.recording_samples = list(self.pre_roll_buffer)
-                                # Add current sample
-                                self.recording_samples.append(np_data)
-                            # Reset speech counter
-                            self.consecutive_speech_count = 0
-                    else:
-                        # Reset counter if no speech detected
-                        if self.consecutive_speech_count > 0:
-                            logger.debug(f"Speech detection interrupted at {self.consecutive_speech_count}/{self.min_speech_start_count}")
-                        self.consecutive_speech_count = 0
-                
-                else:
-                    # Currently recording
-                    if is_speech_now:
-                        # Speech detected - continue recording and reset gap counter
-                        self.consecutive_non_speech_count = 0
+                    # Add to audio buffer for speech processing
+                    async with self.processing_lock:
+                        self.audio_buffer.append(chunk)
+                    
+                    # === Pre-roll Buffer Recording Logic ===
+                    # Check current speech detection status from DOA
+                    is_speech_now = False
+                    if self.current_doa is not None:
+                        is_speech_now = self.current_doa[1]  # is_speech_detected flag
+                    
+                    if not self.recording_active:
+                        # Not recording: maintain pre-roll buffer (rolling window)
                         async with self.processing_lock:
-                            self.recording_samples.append(np_data)
-                    else:
-                        # No speech detected - increment counter and add to recording buffer (extra frames)
-                        self.consecutive_non_speech_count += 1
-                        async with self.processing_lock:
-                            self.recording_samples.append(np_data)
+                            self.pre_roll_buffer.append(chunk)
                         
-                        # Check if we've exceeded the gap tolerance
-                        if self.consecutive_non_speech_count > self.speech_gap_tolerance:
-                            # Gap too long - end recording (with extra frame already included)
-                            logger.info(f"Speech ended after {self.consecutive_non_speech_count} non-speech readings - saving recording ({len(self.recording_samples)} total samples)")
-                            await self.save_recording()
-                            # Reset recording state
-                            self.recording_active = False
-                            self.recording_samples = []
-                            self.recording_start_time = None
-                            self.consecutive_non_speech_count = 0
-                            # Current sample goes into pre-roll buffer for next recording
-                            async with self.processing_lock:
-                                self.pre_roll_buffer.append(np_data)
+                        # Track consecutive speech detections
+                        if is_speech_now:
+                            self.consecutive_speech_count += 1
+                            logger.debug(f"Speech detection {self.consecutive_speech_count}/{self.min_speech_start_count}")
+                            
+                            # Start recording only after consecutive detections
+                            if self.consecutive_speech_count >= self.min_speech_start_count:
+                                logger.info(f"Speech confirmed after {self.consecutive_speech_count} detections - starting recording (with {len(self.pre_roll_buffer)} pre-roll samples)")
+                                self.recording_active = True
+                                self.recording_start_time = time.time()
+                                # Copy pre-roll buffer to recording samples
+                                async with self.processing_lock:
+                                    self.recording_samples = list(self.pre_roll_buffer)
+                                    # Add current sample
+                                    self.recording_samples.append(chunk)
+                                # Reset speech counter
+                                self.consecutive_speech_count = 0
                         else:
-                            # Within tolerance - continue recording through the gap
-                            logger.debug(f"Non-speech reading {self.consecutive_non_speech_count}/{self.speech_gap_tolerance} - continuing recording")
+                            # Reset counter if no speech detected
+                            if self.consecutive_speech_count > 0:
+                                logger.debug(f"Speech detection interrupted at {self.consecutive_speech_count}/{self.min_speech_start_count}")
+                            self.consecutive_speech_count = 0
+                    
+                    else:
+                        # Currently recording
+                        if is_speech_now:
+                            # Speech detected - continue recording and reset gap counter
+                            self.consecutive_non_speech_count = 0
+                            async with self.processing_lock:
+                                self.recording_samples.append(chunk)
+                        else:
+                            # No speech detected - increment counter and add to recording buffer (extra frames)
+                            self.consecutive_non_speech_count += 1
+                            async with self.processing_lock:
+                                self.recording_samples.append(chunk)
+                            
+                            # Check if we've exceeded the gap tolerance
+                            if self.consecutive_non_speech_count > self.speech_gap_tolerance:
+                                # Gap too long - end recording (with extra frame already included)
+                                logger.info(f"Speech ended after {self.consecutive_non_speech_count} non-speech readings - saving recording ({len(self.recording_samples)} total samples)")
+                                await self.save_recording()
+                                # Reset recording state
+                                self.recording_active = False
+                                self.recording_samples = []
+                                self.recording_start_time = None
+                                self.consecutive_non_speech_count = 0
+                                # Current sample goes into pre-roll buffer for next recording
+                                async with self.processing_lock:
+                                    self.pre_roll_buffer.append(chunk)
+                            else:
+                                # Within tolerance - continue recording through the gap
+                                logger.debug(f"Non-speech reading {self.consecutive_non_speech_count}/{self.speech_gap_tolerance} - continuing recording")
                     
             except Exception as e:
                 if not self.shutdown_requested:

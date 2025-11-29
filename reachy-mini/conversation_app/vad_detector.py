@@ -48,7 +48,7 @@ class VADDetector:
             #logger.debug(f"VAD result: {'SPEECH' if result else 'SILENCE'}")
             return result
         except Exception as e:
-            logger.error(f"Error in VAD processing: {e}")
+            logger.error(f"Error in VAD processing: {e} (audio_data length: {len(audio_data)} bytes, expected: {self.sample_rate * 30 // 1000 * 2} bytes for 30ms)")
             return False
     
     def set_aggressiveness(self, aggressiveness: int):
