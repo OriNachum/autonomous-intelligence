@@ -1,0 +1,1 @@
+jetson-containers build --name  reachy-conversation python opencv ctranslate2 faster-whisper sound-utils
