@@ -167,8 +167,18 @@ class WhisperSTT:
                 )
                 
                 # Transcribe the temporary file
-                return self.transcribe(temp_wav_path, language, beam_size)
-                
+                result = self.transcribe(temp_wav_path, language, beam_size)
+
+                # WebRTC VAD sometimes makes mistakes, and whisper mis-transcribes it
+                if result in ["Thank you for watching.", 
+                    "Thank you.", 
+                    "Okay.", 
+                    "Thanks for watching.",
+                    "I'll see you next time.",
+                    "We'll be right back.",
+                    "Thanks for watching!"]:
+                    result = ""
+                return result
             finally:
                 # Clean up temporary file
                 try:

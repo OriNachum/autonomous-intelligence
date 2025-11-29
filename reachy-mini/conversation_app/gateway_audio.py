@@ -22,6 +22,7 @@ import soundfile as sf
 
 # Import our custom modules
 from .vad_detector import VADDetector
+from .silero_vad import SileroVAD
 from .whisper_stt import WhisperSTT
 from .logger import get_logger
 
@@ -51,12 +52,22 @@ class GatewayAudio:
         self.chunk_duration_ms = int(os.getenv('CHUNK_DURATION_MS', '30'))
         self.chunk_size = int(self.rate * self.chunk_duration_ms / 1000)
         
-        # VAD configuration - DISABLED, using DOA speech detection instead
+        # VAD configuration - DISABLED by default, using DOA speech detection instead
         self.use_vad = os.getenv('USE_VAD', 'true').lower() == 'true'
         if self.use_vad:
-            vad_aggressiveness = int(os.getenv('VAD_AGGRESSIVENESS', '3'))
-            self.vad = VADDetector(aggressiveness=vad_aggressiveness, sample_rate=self.rate)
-            logger.info("Using VAD for speech detection")
+            # VAD type selection: 'webrtc' or 'silero'
+            vad_type = os.getenv('VAD_TYPE', 'silero').lower()
+            
+            if vad_type == 'silero':
+                # Silero VAD configuration
+                silero_threshold = float(os.getenv('SILERO_VAD_THRESHOLD', '0.5'))
+                self.vad = SileroVAD(threshold=silero_threshold, sample_rate=self.rate)
+                logger.info(f"Using Silero VAD for speech detection (threshold={silero_threshold})")
+            else:
+                # WebRTC VAD configuration (default)
+                vad_aggressiveness = int(os.getenv('VAD_AGGRESSIVENESS', '3'))
+                self.vad = VADDetector(aggressiveness=vad_aggressiveness, sample_rate=self.rate)
+                logger.info("Using WebRTC VAD for speech detection")
         else:
             self.vad = None
             logger.info("VAD disabled - will use DOA speech detection")
