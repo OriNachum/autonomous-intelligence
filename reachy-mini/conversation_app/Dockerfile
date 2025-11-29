@@ -1,4 +1,5 @@
-FROM reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
+#FROM reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
+FROM reachy-conversation-full:r38.2.arm64-sbsa-cu130-24.04
 
 WORKDIR /app
 
