@@ -2,13 +2,12 @@
 import asyncio
 
 
-async def execute(make_request, create_head_pose, tts_queue, params):
+async def execute(controller, tts_queue, params):
     """
     Move the robot's head to a specific pose (roll, pitch, yaw).
     
     Args:
-        make_request: Function to make HTTP requests
-        create_head_pose: Function to create head pose
+        controller: ReachyGateway instance for robot control
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with roll, pitch, yaw, duration parameters
     """
@@ -39,20 +38,10 @@ async def execute(make_request, create_head_pose, tts_queue, params):
     if speech and tts_queue:
         await tts_queue.enqueue_text(speech)
     
-    # Create head pose with specified angles
-    pose = create_head_pose(roll=roll, pitch=pitch, yaw=yaw, degrees=True)
-
-    
-    # Send movement command
-    result = await make_request(
-        "POST", 
-        "/api/move/goto", 
-        json_data={"head_pose": pose, "duration": duration}
-    )
+    # Move head using controller
+    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, roll=roll, pitch=pitch, yaw=yaw)
     
     # Wait for movement to complete
     await asyncio.sleep(duration)
     
-    return result
-
-
+    return {"status": "success"}

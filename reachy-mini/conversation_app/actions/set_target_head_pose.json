@@ -1,43 +1,37 @@
 {
-    "name": "set_target_head_pose",
-    "description": "Move the robot's head to a specific target pose.\n\nThis moves the head to specified roll, pitch, and yaw angles.",
-    "parameters": {
-        "required": [],
-        "optional": [
-            {
-                "name": "roll",
-                "type": "number",
-                "default": 0.0,
-                "description": "Roll angle in degrees (tilt left/right)"
+    "type": "function",
+    "function": {
+        "name": "set_target_head_pose",
+        "description": "Move the robot's head to a specific target pose. This moves the head to specified roll, pitch, and yaw angles.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "roll": {
+                    "type": "number",
+                    "description": "Roll angle in degrees (tilt left/right)",
+                    "default": 0.0
+                },
+                "pitch": {
+                    "type": "number",
+                    "description": "Pitch angle in degrees (tilt up/down)",
+                    "default": 0.0
+                },
+                "yaw": {
+                    "type": "number",
+                    "description": "Yaw angle in degrees (turn left/right)",
+                    "default": 0.0
+                },
+                "duration": {
+                    "type": "number",
+                    "description": "Duration of movement in seconds",
+                    "default": 1.0
+                },
+                "speech": {
+                    "type": "string",
+                    "description": "Optional text to speak via TTS during movement"
+                }
             },
-            {
-                "name": "pitch",
-                "type": "number",
-                "default": 0.0,
-                "description": "Pitch angle in degrees (tilt up/down)"
-            },
-            {
-                "name": "yaw",
-                "type": "number",
-                "default": 0.0,
-                "description": "Yaw angle in degrees (turn left/right)"
-            },
-            {
-                "name": "duration",
-                "type": "number",
-                "default": 1.0,
-                "description": "Duration of movement in seconds"
-            },
-            {
-                "name": "speech",
-                "type": "string",
-                "default": null,
-                "description": "Optional text to speak via TTS during movement"
-            }
-        ]
-    },
-    "execution": {
-        "type": "script",
-        "script_file": "set_target_head_pose.py"
+            "required": []
+        }
     }
 }

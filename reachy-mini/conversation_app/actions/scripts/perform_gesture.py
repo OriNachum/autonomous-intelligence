@@ -3,13 +3,12 @@ import asyncio
 import math
 
 
-async def execute(make_request, create_head_pose, tts_queue, params):
+async def execute(controller, tts_queue, params):
     """
     Perform a predefined gesture sequence.
     
     Args:
-        make_request: Function to make HTTP requests
-        create_head_pose: Function to create head pose
+        controller: ReachyGateway instance for robot control
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with gesture parameter
     """
@@ -27,7 +26,7 @@ async def execute(make_request, create_head_pose, tts_queue, params):
     
     try:
         if gesture == "greeting":
-            # Wave with head and antennas - call nod_head logic
+            # Wave with head and antennas
             try:
                 duration = float(params.get('duration', 0.8))
             except (ValueError, TypeError):
@@ -38,16 +37,14 @@ async def execute(make_request, create_head_pose, tts_queue, params):
             except (ValueError, TypeError):
                 angle = 10.0
             
-            pose_down = create_head_pose(pitch=angle, degrees=True)
-            await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_down, "duration": duration})
+            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=angle)
             await asyncio.sleep(duration)
-            pose_neutral = create_head_pose()
-            await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_neutral, "duration": duration})
+            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=0)
             
             await asyncio.sleep(0.5)
-            await make_request("POST", "/api/move/goto", json_data={"antennas": [math.radians(30), math.radians(30)], "duration": 0.5})
+            await asyncio.to_thread(controller.move_smoothly_to, duration=0.5, antennas=[math.degrees(math.radians(30)), math.degrees(math.radians(30))])
             await asyncio.sleep(0.5)
-            await make_request("POST", "/api/move/goto", json_data={"antennas": [0.0, 0.0], "duration": 2.0})
+            await asyncio.to_thread(controller.move_smoothly_to, duration=2.0, antennas=[0.0, 0.0])
         
         elif gesture == "yes":
             # Nod yes
@@ -61,11 +58,9 @@ async def execute(make_request, create_head_pose, tts_queue, params):
             except (ValueError, TypeError):
                 angle = 20.0
             
-            pose_down = create_head_pose(pitch=angle, degrees=True)
-            await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_down, "duration": duration})
+            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=angle)
             await asyncio.sleep(duration)
-            pose_neutral = create_head_pose()
-            return await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_neutral, "duration": duration})
+            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=0)
         
         elif gesture == "no":
             # Shake no
@@ -79,35 +74,31 @@ async def execute(make_request, create_head_pose, tts_queue, params):
             except (ValueError, TypeError):
                 angle = 25.0
             
-            pose_left = create_head_pose(yaw=-angle, degrees=True)
-            await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_left, "duration": duration})
+            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=-angle)
             await asyncio.sleep(duration)
-            pose_right = create_head_pose(yaw=angle, degrees=True)
-            await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_right, "duration": duration})
+            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=angle)
             await asyncio.sleep(duration)
-            pose_neutral = create_head_pose()
-            return await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_neutral, "duration": duration})
+            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=0)
         
         elif gesture == "thinking":
             # Tilt head and one antenna
-            head_pose = create_head_pose(roll=15, pitch=5, degrees=True)
-            await make_request("POST", "/api/move/goto", json_data={
-                "head_pose": head_pose,
-                "antennas": [math.radians(20), math.radians(-10)],
-                "duration": 1.5
-            })
+            await asyncio.to_thread(
+                controller.move_smoothly_to,
+                duration=1.5,
+                roll=15,
+                pitch=5,
+                antennas=[20, -10]
+            )
         
         elif gesture == "celebration":
             # Excited movements
             for _ in range(2):
-                await make_request("POST", "/api/move/goto", json_data={"antennas": [math.radians(40), math.radians(40)], "duration": 0.4})
+                await asyncio.to_thread(controller.move_smoothly_to, duration=0.4, antennas=[40, 40])
                 await asyncio.sleep(0.4)
-                await make_request("POST", "/api/move/goto", json_data={"antennas": [math.radians(-20), math.radians(-20)], "duration": 0.4})
+                await asyncio.to_thread(controller.move_smoothly_to, duration=0.4, antennas=[-20, -20])
                 await asyncio.sleep(0.4)
-            await make_request("POST", "/api/move/goto", json_data={"antennas": [0.0, 0.0], "duration": 2.0})
+            await asyncio.to_thread(controller.move_smoothly_to, duration=2.0, antennas=[0.0, 0.0])
         
         return {"status": "success", "gesture": gesture}
     except Exception as e:
         return {"status": "error", "gesture": gesture, "error": str(e)}
-
-

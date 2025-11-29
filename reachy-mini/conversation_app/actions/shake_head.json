@@ -1,33 +1,23 @@
 {
-  "name": "shake_head",
-  "description": "Make the robot shake its head (yaw left and right).\n\nThis performs a head shake gesture by yawing left, then right, then back to neutral.",
-  "parameters": {
-    "required": [],
-    "optional": [
-      {
-        "name": "duration",
-        "type": "number",
-        "default": 1.0,
-        "description": "Duration for each movement in seconds"
+  "type": "function",
+  "function": {
+    "name": "shake_head",
+    "description": "Make the robot shake its head (yaw left and right). This performs a head shake gesture by turning the head left and right.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "duration": {
+          "type": "number",
+          "description": "Duration for each movement in seconds",
+          "default": 1.0
+        },
+        "angle": {
+          "type": "number",
+          "description": "Angle to turn in degrees",
+          "default": 15.0
+        }
       },
-      {
-        "name": "angle",
-        "type": "number",
-        "default": 20.0,
-        "description": "Angle to yaw in degrees (default 20 degrees)"
-      },
-      {
-        "name": "speech",
-        "type": "string",
-        "default": null,
-        "description": "Optional text to speak via TTS while shaking head"
-      }
-    ]
-  },
-  "execution": {
-    "type": "script",
-    "script_file": "shake_head.py"
+      "required": []
+    }
   }
 }
-
-

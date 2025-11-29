@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 CHAT_COMPLETIONS_URL = os.environ.get("VLLM_FRONT_URL", "http://localhost:8100/v1/chat/completions")
 MODEL_NAME = os.environ.get("MODEL_ID", "RedHatAI/Llama-3.2-3B-Instruct-FP8")
-AGENT_TEMPERATURE = 0.3
+AGENT_TEMPERATURE = 0.7
 
 class ConversationApp:
     """Conversation application with speech event integration."""
@@ -380,9 +380,21 @@ class ConversationApp:
         Yields:
             Dictionary with either 'content' (text token) or 'tool_call' (tool call delta)
         """
+        # Filter out 'tool' role messages for vLLM compatibility
+        # Many vLLM deployments don't support tool role in conversation history
+        # We keep them in our internal history but strip them when sending to API
+        filtered_messages = [
+            msg for msg in messages 
+            if msg.get("role") != "tool"
+        ]
+        
+        # Debug: log if we filtered any messages
+        if len(filtered_messages) < len(messages):
+            logger.debug(f"Filtered {len(messages) - len(filtered_messages)} tool messages from API request")
+        
         payload = {
             "model": MODEL_NAME,
-            "messages": messages,
+            "messages": filtered_messages,
             "max_tokens": max_tokens,
             "temperature": AGENT_TEMPERATURE,
             "stream": True,
@@ -433,7 +445,12 @@ class ConversationApp:
                                 
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error: {e}")
-                logger.error(f"Response: {e.response.text}")
+                # For streaming responses, need to read body first
+                try:
+                    error_body = await e.response.aread()
+                    logger.error(f"Response: {error_body.decode('utf-8')}")
+                except Exception as read_error:
+                    logger.error(f"Could not read error response: {read_error}")
                 raise
             except Exception as e:
                 logger.error(f"Error during streaming chat completion: {e}")

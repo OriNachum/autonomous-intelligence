@@ -4,8 +4,10 @@ Tilts the robot's head to the left or right.
 """
 
 
-async def execute(make_request, create_head_pose, tts_queue, params):
+async def execute(controller, tts_queue, params):
     """Execute the tilt_head tool."""
+    import asyncio
+    
     direction = params.get('direction', 'left')
     
     try:
@@ -20,14 +22,13 @@ async def execute(make_request, create_head_pose, tts_queue, params):
         await tts_queue.enqueue_text(speech)
     
     roll_angle = angle if direction.lower() == 'left' else -1*angle
-    pose = create_head_pose(roll=roll_angle, degrees=True)
     
     try:
         duration = float(params.get('duration', 2.0))
     except (ValueError, TypeError):
         duration = 2.0
-        
-    payload = {'head_pose': pose, 'duration': duration}
-    return await make_request('POST', '/api/move/goto', json_data=payload)
-
-
+    
+    # Use controller to tilt smoothly
+    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, roll=roll_angle)
+    
+    return {"status": "success"}

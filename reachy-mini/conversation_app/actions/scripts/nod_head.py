@@ -2,13 +2,12 @@
 import asyncio
 
 
-async def execute(make_request, create_head_pose, tts_queue, params):
+async def execute(controller, tts_queue, params):
     """
     Make the robot nod its head (pitch up and down).
     
     Args:
-        make_request: Function to make HTTP requests
-        create_head_pose: Function to create head pose
+        controller: ReachyGateway instance for robot control
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with duration and angle parameters
     """
@@ -28,15 +27,13 @@ async def execute(make_request, create_head_pose, tts_queue, params):
     if speech and tts_queue:
         await tts_queue.enqueue_text(speech)
     
-    # Nod down
-    pose_down = create_head_pose(pitch=angle, degrees=True)
-    await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_down, "duration": duration})
+    # Nod down using controller
+    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=angle)
     
     # Wait for movement to complete
     await asyncio.sleep(duration)
     
     # Return to neutral
-    pose_neutral = create_head_pose()
-    return await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_neutral, "duration": duration})
-
-
+    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=0)
+    
+    return {"status": "success"}

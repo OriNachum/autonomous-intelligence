@@ -2,16 +2,16 @@
 import asyncio
 
 
-async def execute(make_request, create_head_pose, tts_queue, params):
+async def execute(controller, tts_queue, params):
     """
     Make the robot shake its head (yaw left and right).
     
     Args:
-        make_request: Function to make HTTP requests
-        create_head_pose: Function to create head pose
+        controller: ReachyGateway instance for robot control
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with duration and angle parameters
     """
+    
     try:
         duration = float(params.get('duration', 1.0))
     except (ValueError, TypeError):
@@ -29,17 +29,14 @@ async def execute(make_request, create_head_pose, tts_queue, params):
         await tts_queue.enqueue_text(speech)
     
     # Shake left
-    pose_left = create_head_pose(yaw=-angle, degrees=True)
-    await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_left, "duration": duration})
+    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=-angle)
     await asyncio.sleep(duration)
     
     # Shake right
-    pose_right = create_head_pose(yaw=angle, degrees=True)
-    await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_right, "duration": duration})
+    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=angle)
     await asyncio.sleep(duration)
     
     # Return to neutral
-    pose_neutral = create_head_pose()
-    return await make_request("POST", "/api/move/goto", json_data={"head_pose": pose_neutral, "duration": duration})
-
-
+    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=0)
+    
+    return {"status": "success"}

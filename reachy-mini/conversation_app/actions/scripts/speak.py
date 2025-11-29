@@ -2,13 +2,12 @@
 import asyncio
 
 
-async def execute(make_request, create_head_pose, tts_queue, params):
+async def execute(controller, tts_queue, params):
     """
     Speak text aloud through text-to-speech.
     
     Args:
-        make_request: Function to make HTTP requests (not used)
-        create_head_pose: Function to create head pose (not used)
+        controller: ReachyGateway instance (not used in this script)
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with text parameter
     

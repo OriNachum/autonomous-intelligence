@@ -94,6 +94,7 @@ class ActionHandler:
         # Initialize actions queue
         try:
             self.actions_queue = AsyncActionsQueue(
+                gateway=self.gateway,
                 reachy_base_url=reachy_base_url,
                 tools_repository_path=tools_repository_path,
                 event_callback=self.event_callback,
