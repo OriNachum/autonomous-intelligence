@@ -274,9 +274,10 @@ class GatewayAudio:
                 if self.use_vad and self.vad:
                     is_speech = await asyncio.to_thread(self.is_speech, data.tobytes())
                 else:
-                    # DOA-based detection, no need for thread
-                    is_speech = self.is_speech(data.tobytes())
-                
+                    # DOA-based detection, rely on reachy controller
+                    if self.reachy_controller:
+                        is_speech = self.reachy_controller.get_current_doa_dict()['is_speech_detected']
+                        logger.debug(f"DOA-based speech detection: {is_speech}")
                 if is_speech:
                     await self.handle_speech(data)
                 else:
