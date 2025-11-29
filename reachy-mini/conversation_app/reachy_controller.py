@@ -48,7 +48,9 @@ class ReachyController:
         self.avg_x = 0.0
         self.avg_y = 0.0
         self.sample_count = 0
-        
+        self.total_sample_count = 0
+        self.speech_detected_count = 0
+
         # Current DOA state
         self.current_doa = None
         
@@ -101,6 +103,8 @@ class ReachyController:
         self.avg_x = 0.0
         self.avg_y = 0.0
         self.sample_count = 0
+        self.total_sample_count = 0
+        self.speech_detected_count = 0
         logger.info("DOA buffer cleared for new speech segment")
     
     def add_doa_sample(self, doa_tuple: Tuple[float, bool]):
@@ -112,7 +116,7 @@ class ReachyController:
             doa_tuple: Tuple of (angle_radians, is_speech_detected)
         """
         angle, is_speech_detected = doa_tuple
-        
+        self.total_sample_count += 1
         # Only add samples where speech/audio is detected
         if not is_speech_detected:
             logger.debug("Skipping DOA sample - no speech detected")
@@ -133,7 +137,7 @@ class ReachyController:
             self.avg_y = self.smoothing_alpha * new_y + (1 - self.smoothing_alpha) * self.avg_y
         
         self.sample_count += 1
-        
+        self.speech_detected_count += 1
         # Calculate current average angle for logging
         current_avg_angle = np.arctan2(self.avg_y, self.avg_x)
         logger.debug(f"DOA sample added: new_angle={np.degrees(angle):.1f}°, "
@@ -167,10 +171,11 @@ class ReachyController:
             "angle_degrees": float(avg_angle_degrees),
             "sample_count": self.sample_count,
             "cartesian_x": float(self.avg_x),
-            "cartesian_y": float(self.avg_y)
+            "cartesian_y": float(self.avg_y),
+            "is_speech_detected": bool(self.speech_detected_count / self.total_sample_count > 0.7)
         }
         
-        logger.debug(f"Average DOA calculated: {avg_angle_degrees:.1f}° from {self.sample_count} samples")
+        logger.info(f"Average DOA calculated: {avg_angle_degrees:.1f}° from {self.sample_count} samples")
         
         return result
     

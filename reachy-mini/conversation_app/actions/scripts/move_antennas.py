@@ -11,6 +11,7 @@ async def execute(controller, tts_queue, params):
     left = params.get('left')
     right = params.get('right')
     speech = params.get('speech')
+    duration = params.get('duration', 2.0)
     
     # Handle speech if provided
     if speech and tts_queue:
@@ -29,14 +30,16 @@ async def execute(controller, tts_queue, params):
             return {'error': 'Invalid right antenna position', 'status': 'failed'}
             
         try:
-            duration = float(params.get('duration', 2.0))
+            parsed_duration = float(duration)
+            if parsed_duration < 1:
+                parsed_duration = 1.0
         except (ValueError, TypeError):
-            duration = 2.0        
+            parsed_duration = 2.0        
 
         antennas_array = [right_angle, left_angle]  # Note: order is [right, left]
         
         # Use controller to move antennas
-        await asyncio.to_thread(controller.move_smoothly_to, duration=duration, antennas=antennas_array)
+        await asyncio.to_thread(controller.move_smoothly_to, duration=parsed_duration, antennas=antennas_array)
         
         return {"status": "success"}
     else:
