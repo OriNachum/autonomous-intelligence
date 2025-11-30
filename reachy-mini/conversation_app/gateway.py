@@ -93,6 +93,7 @@ class ReachyGateway:
                 logger.info("Initializing video processing component...")
                 frame_interval = int(os.getenv('VIDEO_FRAME_INTERVAL', '100'))
                 self.gateway_video = GatewayVideo(
+                    media=self.reachy_controller.mini.media,
                     event_callback=self.emit_event,
                     frame_interval=frame_interval
                 )
@@ -321,7 +322,7 @@ class ReachyGateway:
         # Start video capture (if enabled)
         if self.gateway_video:
             logger.info("Starting video capture...")
-            self.gateway_video.start()
+            await self.gateway_video.start()
             video_task = asyncio.create_task(self.gateway_video.run_gst_loop())
             tasks.append(video_task)
             logger.info("✅ Video capture task started")
