@@ -18,6 +18,11 @@ from collections import deque
 from typing import Optional, Callable
 import numpy as np
 
+
+from .logger import get_logger
+logger = logging.getLogger(__name__)
+
+
 # Try to import gi (GStreamer) - required for video capture
 try:
     import gi
@@ -36,7 +41,6 @@ try:
 except ImportError:
     HAS_CV2 = False
 
-logger = logging.getLogger(__name__)
 
 
 class GatewayVideo:
