@@ -85,7 +85,7 @@ class ReachyGateway:
         
         # Initialize video processing component (conditionally)
         self.gateway_video = None
-        enable_vision = os.getenv('ENABLE_VISION', 'false').lower() in ('true', '1', 'yes')
+        enable_vision = os.getenv('ENABLE_VISION', 'true').lower() in ('true', '1', 'yes')
         
         if enable_vision:
             try:
