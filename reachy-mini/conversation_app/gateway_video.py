@@ -22,21 +22,31 @@ try:
 except ImportError:
     HAS_CV2 = False
 
+# Import processor infrastructure
+try:
+    from .processors import ProcessorManager, YoloProcessor, FaceRecognitionProcessor
+    HAS_PROCESSORS = True
+except ImportError:
+    HAS_PROCESSORS = False
+    logger.warning("Processors not available - image processing will be disabled")
+
 class GatewayVideo:
     """
     Video processing component that wraps the ReachySDK Media Manager.
-    Polls frames from the SDK, saves them, and emits events.
+    Polls frames from the SDK, saves them, emits events, and runs image processors.
     """
     
-    def __init__(self, media, event_callback: Callable, frame_interval: int = 10):
+    def __init__(self, media, event_callback: Callable, frame_interval: int = 10, enable_processors: bool = True):
         """
         Args:
             mini_sdk: The initialized ReachySDK instance.
             event_callback: Async callback for events.
             frame_interval: Processing interval in seconds (default: 0.1s = 10FPS).
                             Note: Changed from 'nth frame' to 'seconds' since we are polling.
+            enable_processors: Enable image processors (YOLO, face recognition, etc.)
         """
         logger.info("Initializing Gateway Video (SDK Backend)")
+
         
         self.media = media
         self.emit_event = event_callback
@@ -55,8 +65,27 @@ class GatewayVideo:
         self.shutdown_requested = False
         self.polling_task = None
         
+        # Initialize image processors
+        self.processor_manager = None
+        if enable_processors and HAS_PROCESSORS:
+            logger.info("Initializing image processors...")
+            self.processor_manager = ProcessorManager(event_callback)
+            
+            # Register YOLO processor
+            yolo = YoloProcessor(model_name='yolov8n.pt', confidence_threshold=0.5)
+            self.processor_manager.register_processor(yolo)
+            
+            # Register Face Recognition processor
+            face_rec = FaceRecognitionProcessor(known_faces_dir='./conversation_app/data/faces')
+            self.processor_manager.register_processor(face_rec)
+            
+            logger.info("Image processors initialized")
+        else:
+            logger.info("Image processors disabled")
+        
         if self.media is None:
             logger.warning("ReachySDK has no media backend initialized!")
+
 
     async def start(self):
         """Start the video polling loop."""
@@ -134,6 +163,14 @@ class GatewayVideo:
                 "timestamp": timestamp
             })
             
+            # Process frame through image processors
+            if self.processor_manager:
+                await self.processor_manager.process_stream_frame(
+                    frame_bgr, 
+                    self.saved_frame_count, 
+                    timestamp
+                )
+            
         except Exception as e:
             logger.error(f"Error saving frame: {e}", exc_info=True)
 
@@ -147,3 +184,5 @@ class GatewayVideo:
 
     def cleanup(self):
         self.stop()
+        if self.processor_manager:
+            self.processor_manager.cleanup()
