@@ -1,4 +1,3 @@
-#FROM reachy-hearing-thor:r38.2.arm64-sbsa-cu130-24.04
 FROM reachy-conversation-full:r38.2.arm64-sbsa-cu130-24.04
 
 WORKDIR /app
@@ -6,6 +5,7 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update -qq && \
     apt-get install -y -qq alsa-utils \
+    v4l-utils \
     build-essential \
     pkg-config \
     python3-dev \
@@ -15,6 +15,7 @@ RUN apt-get update -qq && \
     libgstreamer-plugins-base1.0-dev \
     libgstreamer-plugins-bad1.0-dev \
     gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-base-apps \
     gstreamer1.0-plugins-good \
     gstreamer1.0-plugins-bad \
     gstreamer1.0-plugins-ugly \
@@ -23,6 +24,8 @@ RUN apt-get update -qq && \
     gir1.2-gstreamer-1.0 \
     gir1.2-gst-plugins-base-1.0 \
     gir1.2-gst-plugins-bad-1.0 \
+    gir1.2-gudev-1.0 \
+    v4l-utils \
     libssl-dev \
     python3-gi \
     python3-gst-1.0 && \
@@ -59,6 +62,7 @@ RUN git clone https://github.com/pollen-robotics/gst-signalling-py.git && \
     cd /app && \
     rm -rf /tmp/gst-signalling-py
 
+    
 # Copy requirements files
 COPY conversation_app/requirements.txt /app/conversation_app/requirements.txt
 
@@ -67,6 +71,8 @@ RUN pip install --no-cache-dir -r /app/conversation_app/requirements.txt
 
 # Copy application code
 COPY . /app
+RUN sed -i 's/api.v4l2.path/device.path/g' \
+    /opt/venv/lib/python3.12/site-packages/reachy_mini/media/camera_gstreamer.py
 
 # Set Python path
 ENV PYTHONPATH=/app

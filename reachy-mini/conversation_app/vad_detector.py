@@ -2,7 +2,7 @@
 """
 Voice Activity Detection (VAD) Module
 
-This module provides voice activity detection using WebRTC VAD.
+This module provides voice activity detection using WebRTC VAD or Silero VAD.
 """
 
 import webrtcvad
@@ -28,9 +28,9 @@ class VADDetector:
         
         try:
             self.vad = webrtcvad.Vad(aggressiveness)
-            logger.info(f"VAD initialized with aggressiveness={aggressiveness}, rate={sample_rate}Hz")
+            logger.info(f"WebRTC VAD initialized with aggressiveness={aggressiveness}, rate={sample_rate}Hz")
         except Exception as e:
-            logger.error(f"Failed to initialize VAD: {e}")
+            logger.error(f"Failed to initialize WebRTC VAD: {e}")
             raise
     
     def is_speech(self, audio_data: bytes) -> bool:

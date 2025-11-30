@@ -323,8 +323,8 @@ class ReachyGateway:
         if self.gateway_video:
             logger.info("Starting video capture...")
             await self.gateway_video.start()
-            video_task = asyncio.create_task(self.gateway_video.run_gst_loop())
-            tasks.append(video_task)
+            #video_task = asyncio.create_task(self.gateway_video.run_gst_loop())
+            #tasks.append(video_task)
             logger.info("✅ Video capture task started")
         
         try:
