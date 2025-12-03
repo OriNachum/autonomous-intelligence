@@ -5,6 +5,7 @@ Face Recognition Processor using face_recognition library.
 
 import os
 import logging
+import face_recognition     
 import numpy as np
 from typing import Any, Dict, List, Tuple
 from pathlib import Path
@@ -40,8 +41,6 @@ class FaceRecognitionProcessor(ImageProcessor):
         Load known faces from the directory.
         """
         try:
-            import face_recognition
-            
             # Create directory if it doesn't exist
             os.makedirs(self.known_faces_dir, exist_ok=True)
             
