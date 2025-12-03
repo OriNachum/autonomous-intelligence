@@ -2,11 +2,14 @@ FROM reachy-conversation-full:r38.2.arm64-sbsa-cu130-24.04
 
 WORKDIR /app
 
+#    cmake \
 # Install system dependencies
 RUN apt-get update -qq && \
     apt-get install -y -qq alsa-utils \
     v4l-utils \
     build-essential \
+    libx11-dev \
+    libopenblas-dev \
     pkg-config \
     python3-dev \
     libgirepository1.0-dev \
@@ -63,6 +66,13 @@ RUN git clone https://github.com/pollen-robotics/gst-signalling-py.git && \
     rm -rf /tmp/gst-signalling-py
 
     
+#    git checkout v19.24 && \
+RUN git clone https://github.com/davisking/dlib.git && \
+    cd dlib && \
+    python3 setup.py install && \
+    cd .. && \
+    rm -rf dlib
+
 # Copy requirements files
 COPY conversation_app/requirements.txt /app/conversation_app/requirements.txt
 
