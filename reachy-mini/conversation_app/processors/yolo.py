@@ -40,9 +40,21 @@ class YoloProcessor(ImageProcessor):
         """
         try:
             from ultralytics import YOLO
+            import os
+            from pathlib import Path
             
-            logger.info(f"Loading YOLO model: {self.model_name}")
-            self.model = YOLO(self.model_name)
+            model_path = self.model_name
+            
+            # Check if PROCESSOR_MODELS_DIR is set
+            models_dir = os.environ.get("PROCESSOR_MODELS_DIR")
+            if models_dir:
+                potential_path = Path(models_dir) / self.model_name
+                if potential_path.exists():
+                    model_path = str(potential_path)
+                    logger.info(f"Found model in models directory: {model_path}")
+            
+            logger.info(f"Loading YOLO model: {model_path}")
+            self.model = YOLO(model_path)
             logger.info("YOLO model loaded successfully")
             return True
             

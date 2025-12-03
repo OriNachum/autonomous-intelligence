@@ -118,14 +118,17 @@ class FaceRecognitionProcessor(ImageProcessor):
                 'count': 2
             }
         """
-        try:
-            import face_recognition
-            
+        try:            
             # Convert BGR to RGB (face_recognition uses RGB)
-            rgb_image = image[:, :, ::-1]
+            #rgb_image = image[:, :, ::-1]
+            rgb_image = np.ascontiguousarray(image[:, :, ::-1])
             
+            logger.info(f"Processing image shape: {rgb_image.shape}, dtype: {rgb_image.dtype}, min: {rgb_image.min()}, max: {rgb_image.max()}")
+
             # Find all face locations and encodings in the current frame
             face_locations = face_recognition.face_locations(rgb_image)
+            logger.info(f"Found {len(face_locations)} faces in image")
+
             face_encodings = face_recognition.face_encodings(rgb_image, face_locations)
             
             faces = []

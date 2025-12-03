@@ -9,6 +9,7 @@ import asyncio
 import numpy as np
 from typing import Any, Dict, List, Callable, Optional
 from .base import ImageProcessor
+from ..logger import get_logger
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,9 @@ class ProcessorManager:
             # Emit processor-specific event
             event_name = f"{processor.name}_result"
             await self.emit_event(event_name, result)
+            
+            # Audit Log
+            get_logger().log_vision_event(processor.name, result)
             
             logger.debug(f"Processor {processor.name} completed in {processing_time:.2f}ms")
             
