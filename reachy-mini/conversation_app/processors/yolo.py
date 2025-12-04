@@ -78,7 +78,7 @@ class YoloProcessor(ImageProcessor):
                 'processor': 'yolo_v8',
                 'detections': [
                     {
-                        'class': 'person',
+                        'label': 'person',
                         'confidence': 0.95,
                         'bbox': [x1, y1, x2, y2]  # Top-left and bottom-right
                     },
@@ -111,7 +111,7 @@ class YoloProcessor(ImageProcessor):
                     class_name = result.names[class_id]
                     
                     detections.append({
-                        'class': class_name,
+                        'label': class_name,
                         'confidence': confidence,
                         'bbox': [int(x1), int(y1), int(x2), int(y2)]
                     })

@@ -77,8 +77,6 @@ RUN git clone https://github.com/davisking/dlib.git && \
 # Copy requirements files
 COPY conversation_app/requirements.txt /app/conversation_app/requirements.txt
 
-RUN echo "TEST"
-
 # Install Python dependencies
 RUN pip install --no-cache-dir -r /app/conversation_app/requirements.txt 
 

@@ -32,10 +32,10 @@ class ResultFilter:
         self.window_duration = window_duration
         self.threshold = threshold
         self.result_window = deque()  # Store (timestamp, labels_set) tuples
-        self.last_emitted_set: Optional[Set[str]] = None  # Last stable set that was emitted (None = not yet emitted)
+        self.last_emitted_set: Set[str] = set()  # Last stable set that was emitted
         logger.info(f"ResultFilter initialized (window={window_duration}s, threshold={threshold})")
     
-    def add_result(self, result: Dict[str, Any], timestamp: int) -> Optional[Set[str]]:
+    def add_result(self, result: Dict[str, Any], timestamp: int) -> Optional[tuple[Set[str], Set[str], Set[str]]]:
         """
         Add a new detection result to the sliding window.
         
@@ -44,7 +44,10 @@ class ResultFilter:
             timestamp: Timestamp in milliseconds
         
         Returns:
-            Set of stable labels if state changed (should emit event), None otherwise
+            Tuple of (stable_set, entered, left) if state changed, None otherwise:
+            - stable_set: Current stable objects
+            - entered: Objects that entered (in current but not in last)
+            - left: Objects that left (in last but not in current)
         """
         # Extract labels from result
         labels_set = self._extract_labels(result)
@@ -62,8 +65,14 @@ class ResultFilter:
         
         # Check if stable set changed
         if stable_set != self.last_emitted_set:
+            # Calculate entered and left objects
+            entered = stable_set - self.last_emitted_set
+            left = self.last_emitted_set - stable_set
+            
+            # Update last emitted set
             self.last_emitted_set = stable_set.copy()
-            return stable_set
+            
+            return (stable_set, entered, left)
         
         return None  # No change, don't emit
     
@@ -238,16 +247,27 @@ class ProcessorManager:
             should_emit = True
             if self.enable_filtering and processor.name in self.filters:
                 result_filter = self.filters[processor.name]
-                stable_labels = result_filter.add_result(result, timestamp)
+                filter_result = result_filter.add_result(result, timestamp)
                 
-                if stable_labels is None:
+                if filter_result is None:
                     # No change in stable set, don't emit
                     should_emit = False
                     logger.debug(f"Processor {processor.name}: No stable change, skipping event")
                 else:
-                    # State changed, add stable labels to result
-                    result['stable_labels'] = list(stable_labels)
-                    logger.info(f"Processor {processor.name}: Stable state changed to {stable_labels}")
+                    # State changed, unpack the tuple
+                    stable_set, entered, left = filter_result
+                    
+                    # Add all information to result
+                    result['stable_labels'] = list(stable_set)
+                    result['entered'] = list(entered)
+                    result['left'] = list(left)
+                    
+                    # Log state changes with specific entered/left information
+                    logger.info(f"Processor {processor.name}: Stable state changed to {stable_set}")
+                    if entered:
+                        logger.info(f"Processor {processor.name}: Entered: {entered}")
+                    if left:
+                        logger.info(f"Processor {processor.name}: Left: {left}")
             
             # Apply time-based rate limiting
             if should_emit:
