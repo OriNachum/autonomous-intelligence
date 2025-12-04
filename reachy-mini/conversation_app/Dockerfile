@@ -17,6 +17,7 @@ RUN apt-get update -qq && \
     libgstreamer1.0-dev \
     libgstreamer-plugins-base1.0-dev \
     libgstreamer-plugins-bad1.0-dev \
+    gstreamer1.0-alsa \
     gstreamer1.0-plugins-base \
     gstreamer1.0-plugins-base-apps \
     gstreamer1.0-plugins-good \
@@ -76,14 +77,16 @@ RUN git clone https://github.com/davisking/dlib.git && \
 # Copy requirements files
 COPY conversation_app/requirements.txt /app/conversation_app/requirements.txt
 
+RUN echo "TEST"
+
 # Install Python dependencies
 RUN pip install --no-cache-dir -r /app/conversation_app/requirements.txt 
 
 # Copy application code
 COPY . /app
-RUN sed -i 's/api.v4l2.path/device.path/g' \
-    /opt/venv/lib/python3.12/site-packages/reachy_mini/media/camera_gstreamer.py && \
-    echo 'pcm.!default { type plug slave.pcm "hw:Audio,0" }' > /etc/asound.conf && \
+#RUN sed -i 's/api.v4l2.path/device.path/g' \
+#    /opt/venv/lib/python3.12/site-packages/reachy_mini/media/camera_gstreamer.py && \
+RUN echo 'pcm.!default { type plug slave.pcm "hw:Audio,0" }' > /etc/asound.conf && \
     echo 'ctl.!default { type hw card Audio }' >> /etc/asound.conf
 
 # Set Python path
