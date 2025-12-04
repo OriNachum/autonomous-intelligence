@@ -82,7 +82,9 @@ RUN pip install --no-cache-dir -r /app/conversation_app/requirements.txt
 # Copy application code
 COPY . /app
 RUN sed -i 's/api.v4l2.path/device.path/g' \
-    /opt/venv/lib/python3.12/site-packages/reachy_mini/media/camera_gstreamer.py
+    /opt/venv/lib/python3.12/site-packages/reachy_mini/media/camera_gstreamer.py && \
+    echo 'pcm.!default { type plug slave.pcm "hw:Audio,0" }' > /etc/asound.conf && \
+    echo 'ctl.!default { type hw card Audio }' >> /etc/asound.conf
 
 # Set Python path
 ENV PYTHONPATH=/app
@@ -91,6 +93,4 @@ ENV PYTHONUNBUFFERED=1
 ENV GI_TYPELIB_PATH=/usr/lib/aarch64-linux-gnu/girepository-1.0:/usr/lib/girepository-1.0
 # Force ALSA default device to be the USB Card named "Audio"
 # This makes autoaudiosrc pick the correct microphone automatically.
-RUN echo 'pcm.!default { type plug slave.pcm "hw:Audio,0" }' > /etc/asound.conf && \
-    echo 'ctl.!default { type hw card Audio }' >> /etc/asound.conf
 CMD ["python3", "-m", "conversation_app.app"]
