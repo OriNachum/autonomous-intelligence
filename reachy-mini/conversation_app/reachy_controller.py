@@ -37,7 +37,11 @@ class ReachyController:
         # Initialize ReachyMini
         logger.info("Initializing ReachyMini for DOA detection...")
         try:
-            self.mini = ReachyMini(timeout=10.0, spawn_daemon=True, log_level=log_level, automatic_body_yaw=True,)
+            self.mini = ReachyMini(timeout=10.0,
+                                   spawn_daemon=True,
+                                   log_level=log_level,
+                                   automatic_body_yaw=True,
+                                   media_backend='gstreamer')
             self.reachy_is_awake = True
             logger.info("ReachyMini initialized successfully")
         except Exception as e:

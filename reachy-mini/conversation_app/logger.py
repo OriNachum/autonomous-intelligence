@@ -251,6 +251,21 @@ class ConversationLogger:
             "error": error
         })
 
+    # Vision Events
+    
+    def log_vision_event(self, processor_name: str, result: Dict[str, Any]):
+        """
+        Log a vision processor event (e.g., face detected, object found).
+        
+        Args:
+            processor_name: Name of the processor (e.g., 'face_recognition', 'yolo')
+            result: The result dictionary from the processor
+        """
+        self._write_log("vision_event", {
+            "processor": processor_name,
+            "result": result
+        })
+
 
 # Singleton instance accessor
 def get_logger() -> ConversationLogger:
