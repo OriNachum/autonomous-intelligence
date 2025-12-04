@@ -1,32 +1,29 @@
 {
-  "name": "move_antennas",
-  "description": "Move the robot's antennas.\n\nYou can move one or both antennas. Leave None to keep current position.",
-  "parameters": {
-    "required": [],
-    "optional": [
-      {
-        "name": "left",
-        "type": "number",
-        "default": null,
-        "description": "Target position for left antenna (degrees, typically -45 to 45)"
+  "type": "function",
+  "function": {
+    "name": "move_antennas",
+    "description": "Move the robot's antennas. Both left and right antenna positions must be specified. Leave parameters out to keep current position.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "left": {
+          "type": "number",
+          "description": "Target position for left antenna in degrees (typically -45 to 45)"
+        },
+        "right": {
+          "type": "number",
+          "description": "Target position for right antenna in degrees (typically -45 to 45)"
+        },
+        "duration": {
+          "type": "number",
+          "description": "Duration of the movement in seconds",
+          "default": 2.0
+        }
       },
-      {
-        "name": "right",
-        "type": "number",
-        "default": null,
-        "description": "Target position for right antenna (degrees, typically -45 to 45)"
-      },
-      {
-        "name": "duration",
-        "type": "number",
-        "default": 2.0,
-        "description": "Duration of the movement in seconds"
-      }
-    ]
-  },
-  "execution": {
-    "type": "script",
-    "script_file": "move_antennas.py"
+      "required": [
+        "left",
+        "right"
+      ]
+    }
   }
 }
-

@@ -4,8 +4,10 @@ Makes the robot look in a specific direction.
 """
 
 
-async def execute(make_request, create_head_pose, tts_queue, params):
+async def execute(controller, tts_queue, params):
     """Execute the look_at_direction tool."""
+    import asyncio
+    
     direction = params.get('direction', 'forward').lower()
     speech = params.get('speech')
     
@@ -13,18 +15,28 @@ async def execute(make_request, create_head_pose, tts_queue, params):
     if speech and tts_queue:
         await tts_queue.enqueue_text(speech)
     
-    if direction == 'up':
-        pose = create_head_pose(pitch=-30, degrees=True)
-    elif direction == 'down':
-        pose = create_head_pose(pitch=30, degrees=True)
-    elif direction == 'left':
-        pose = create_head_pose(yaw=45, degrees=True)
-    elif direction == 'right':
-        pose = create_head_pose(yaw=-45, degrees=True)
-    else:
-        pose = create_head_pose()
+    # Validate direction parameter
+    valid_directions = ['up', 'down', 'left', 'right', 'forward']
+    if direction not in valid_directions:
+        direction = 'forward'
     
-    payload = {'head_pose': pose, 'duration': params.get('duration', 2.0)}
-    return await make_request('POST', '/api/move/goto', json_data=payload)
-
-
+    # Determine target pose based on direction
+    roll, pitch, yaw = 0, 0, 0
+    if direction == 'up':
+        pitch = -30
+    elif direction == 'down':
+        pitch = 30
+    elif direction == 'left':
+        yaw = 45
+    elif direction == 'right':
+        yaw = -45
+    
+    try:
+        duration = float(params.get('duration', 2.0))
+    except (ValueError, TypeError):
+        duration = 2.0
+    
+    # Move using controller
+    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, roll=roll, pitch=pitch, yaw=yaw)
+    
+    return {"status": "success"}

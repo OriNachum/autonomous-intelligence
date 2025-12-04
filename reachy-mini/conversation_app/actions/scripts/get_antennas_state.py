@@ -4,13 +4,15 @@ Gets the current state of the robot's antennas.
 """
 
 
-async def execute(make_request, create_head_pose, tts_queue, params):
+async def execute(controller, tts_queue, params):
     """Execute the get_antennas_state tool."""
-    full_state = await make_request('GET', '/api/state/full')
+    # Get current state from controller
+    if controller:
+        state = controller.get_current_state()
+        # state is (roll, pitch, yaw, antennas, body_yaw)
+        return {
+            "status": "success",
+            "antennas_position": state[3]  # antennas is [right, left] in degrees
+        }
     
-    if 'antennas_position' in full_state:
-        return {'antennas_position': full_state['antennas_position']}
-    
-    return full_state
-
-
+    return {"status": "error", "error": "Controller not available"}

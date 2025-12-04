@@ -222,6 +222,49 @@ class ConversationLogger:
             "success": success,
             "error": error
         })
+    
+    def log_tool_call_executed(self, tool_name: str, parameters: Dict[str, Any]):
+        """Log when a tool call is executed from function calling."""
+        self._write_log("tool_call_executed", {
+            "tool_name": tool_name,
+            "parameters": parameters
+        })
+    
+    def log_tool_output(self, tool_name: str, tool_call_id: str, output: Any, 
+                       duration_ms: float, success: bool, error: Optional[str] = None):
+        """Log tool execution output and result.
+        
+        Args:
+            tool_name: Name of the tool that was executed
+            tool_call_id: ID of the tool call for correlation
+            output: The output/result from the tool execution
+            duration_ms: Execution time in milliseconds
+            success: Whether the tool execution succeeded
+            error: Error message if execution failed
+        """
+        self._write_log("tool_output", {
+            "tool_name": tool_name,
+            "tool_call_id": tool_call_id,
+            "output": output,
+            "duration_ms": duration_ms,
+            "success": success,
+            "error": error
+        })
+
+    # Vision Events
+    
+    def log_vision_event(self, processor_name: str, result: Dict[str, Any]):
+        """
+        Log a vision processor event (e.g., face detected, object found).
+        
+        Args:
+            processor_name: Name of the processor (e.g., 'face_recognition', 'yolo')
+            result: The result dictionary from the processor
+        """
+        self._write_log("vision_event", {
+            "processor": processor_name,
+            "result": result
+        })
 
 
 # Singleton instance accessor

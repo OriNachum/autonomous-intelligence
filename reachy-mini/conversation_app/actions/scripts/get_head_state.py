@@ -4,13 +4,19 @@ Gets the current state of the robot's head.
 """
 
 
-async def execute(make_request, create_head_pose, tts_queue, params):
+async def execute(controller, tts_queue, params):
     """Execute the get_head_state tool."""
-    full_state = await make_request('GET', '/api/state/full')
+    # Get current state from controller
+    if controller:
+        state = controller.get_current_state()
+        # state is (roll, pitch, yaw, antennas, body_yaw)
+        return {
+            "status": "success",
+            "head_pose": {
+                "roll": state[0],
+                "pitch": state[1],
+                "yaw": state[2]
+            }
+        }
     
-    if 'head_pose' in full_state:
-        return {'head_pose': full_state['head_pose']}
-    
-    return full_state
-
-
+    return {"status": "error", "error": "Controller not available"}

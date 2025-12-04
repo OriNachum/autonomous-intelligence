@@ -91,8 +91,11 @@
       "name": "get_health_status",
       "enabled": true,
       "definition_file": "get_health_status.json"
+    },
+    {
+      "name": "dizzy",
+      "enabled": true,
+      "definition_file": "dizzy.json"
     }
   ]
 }
-
-

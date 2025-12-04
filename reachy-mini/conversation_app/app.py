@@ -48,6 +48,7 @@ from .speech_handler import SpeechHandler
 from .action_handler import ActionHandler
 from .gateway import ReachyGateway
 from .logger import get_logger
+from .tool_loader import load_tool_definitions
 
 
 # Set up logging
@@ -60,7 +61,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 CHAT_COMPLETIONS_URL = os.environ.get("VLLM_FRONT_URL", "http://localhost:8100/v1/chat/completions")
 MODEL_NAME = os.environ.get("MODEL_ID", "RedHatAI/Llama-3.2-3B-Instruct-FP8")
-AGENT_TEMPERATURE = 0.3
+AGENT_TEMPERATURE = 0.7
 
 class ConversationApp:
     """Conversation application with speech event integration."""
@@ -74,11 +75,26 @@ class ConversationApp:
         # Load the system prompt
         self.system_prompt = Path("/app/conversation_app/agents/reachy/reachy.system.md").read_text()
         
+        # Load tool definitions for function calling
+        actions_path = Path("/app/conversation_app/actions")
+        self.tools = load_tool_definitions(actions_path)
+        logger.info(f"Loaded {len(self.tools)} tools for function calling")
+        
         # Initialize components
         self.gateway = None  # Will be initialized in initialize()
         self.parser = ConversationParser()
         self.speech_handler = None  # Will be initialized in initialize()
         self.action_handler = None  # Will be initialized in initialize()
+        
+        # Video frame memory - store recent frame paths
+        self.recent_frames = []  # List of recent frame paths
+        self.max_frames_in_memory = int(os.getenv('MAX_FRAMES_IN_MEMORY', '10'))
+        
+        # DOA from most recent speech event (for parameterized actions)
+        self.current_doa = None  # Dict with angle_degrees and angle_radians
+        
+        # Vision context - latest stable vision information
+        self.latest_vision_context = None  # Dict with {'objects': [...], 'faces': [...], 'timestamp': int}
 
     async def initialize(self):
         """Initialize the application."""
@@ -120,7 +136,11 @@ class ConversationApp:
         
         # Initialize action handler
         try:
-            self.action_handler = ActionHandler(gateway=self.gateway)
+            self.action_handler = ActionHandler(
+                gateway=self.gateway,
+                event_callback=self.on_action_event,
+                tts_queue=self.speech_handler.tts_queue if self.speech_handler else None
+            )
             # Warm up action handler in background
             #asyncio.create_task(self.action_handler.execute("nod head"))
 
@@ -158,6 +178,7 @@ class ConversationApp:
             event_type: Type of event (speech_started, speech_stopped, etc.)
             data: Event data
         """
+        logger.debug(f"Gateway event: {event_type}")
         if event_type == "speech_started":
             await self.on_speech_started(data)
         elif event_type == "speech_stopped":
@@ -168,6 +189,12 @@ class ConversationApp:
         elif event_type == "speech_partial":
             # Optional: handle partial transcriptions
             pass
+        elif event_type == "video_frame_captured":
+            await self.on_video_frame_captured(data)
+        elif event_type == "yolo_v8_result":
+            await self.on_vision_result(data)
+        elif event_type == "face_recognition_result":
+            await self.on_vision_result(data)
         else:
             logger.debug(f"Unhandled event type: {event_type}")
     
@@ -211,6 +238,58 @@ class ConversationApp:
                 raise
 
 
+    async def on_action_event(self, event_type: str, data: Dict[str, Any]):
+        """
+        Handle action execution events for model context update.
+        
+        This callback is invoked from the actions queue background thread,
+        so we need to be thread-safe when updating conversation history.
+        
+        Args:
+            event_type: Type of event (action_started, action_completed, action_failed)
+            data: Event data
+        """
+        import asyncio
+        import threading
+        
+        # Get the current event loop (main loop)
+        try:
+            main_loop = asyncio.get_event_loop()
+        except RuntimeError:
+            logger.warning("No event loop available for action event callback")
+            return
+        
+        # Define async handler for event
+        async def handle_event():
+            if event_type == "action_started":
+                action = data.get("action")
+                logger.info(f"📍 Action started: {action}")
+            
+            elif event_type == "action_completed":
+                action = data.get("action")
+                result = data.get("result", {})
+                
+                # Don't add system messages - tool results are now added as 'tool' role messages in process_message
+                if action != "speak":
+                    logger.info(f"✅ Action completed: {action}")
+                else:
+                    logger.info(f"✅ Speech completed: {result.get('text', '')[:50]}...")
+            
+            elif event_type == "action_failed":
+                action = data.get("action")
+                error = data.get("error", "Unknown error")
+                
+                # Don't add system messages - tool errors are logged in audit trail
+                logger.error(f"❌ Action failed: {action} - {error}")
+        
+        # Schedule the async handler on the main event loop
+        if threading.current_thread() != threading.main_thread():
+            # Called from background thread - schedule on main loop
+            asyncio.run_coroutine_threadsafe(handle_event(), main_loop)
+        else:
+            # Already on main thread - can run directly
+            await handle_event()
+    
     async def on_speech_started(self, data: Dict[str, Any]):
         """
         Callback for speech started events.
@@ -228,6 +307,77 @@ class ConversationApp:
             logger.info("🚫 User started speaking - clearing action queue")
             await self.action_handler.clear()
     
+    async def on_video_frame_captured(self, data: Dict[str, Any]):
+        """
+        Callback for video frame captured events.
+        
+        Args:
+            data: Event data containing frame_number, file_path, timestamp, etc.
+        """
+        frame_number = data.get("frame_number")
+        file_path = data.get("file_path")
+        total_frames = data.get("total_frames")
+        
+        logger.info(f"🎥 Video frame captured: #{frame_number} (total: {total_frames}) - {file_path}")
+        
+        # Store frame path in memory
+        self.recent_frames.append(file_path)
+        
+        # Keep only the most recent frames in memory
+        if len(self.recent_frames) > self.max_frames_in_memory:
+            self.recent_frames = self.recent_frames[-self.max_frames_in_memory:]
+        
+        logger.debug(f"Stored frame path in memory. Total frames in memory: {len(self.recent_frames)}")
+    
+    async def on_vision_result(self, data: Dict[str, Any]):
+        """
+        Callback for vision processor result events (YOLO, face recognition, etc.).
+        
+        Args:
+            data: Event data containing processor results
+        """
+        timestamp = data.get("timestamp")
+        stable_labels = data.get("stable_labels", [])
+        
+        # Initialize vision context if needed
+        if self.latest_vision_context is None:
+            self.latest_vision_context = {
+                'objects': [],
+                'faces': [],
+                'timestamp': timestamp
+            }
+        
+        # Update vision context based on stable labels
+        objects = []
+        faces = []
+        
+        for label in stable_labels:
+            if label.startswith("person:"):
+                # Face recognition result
+                name = label.split(":", 1)[1]
+                faces.append(name)
+            else:
+                # Object detection result
+                objects.append(label)
+        
+        # Update context
+        self.latest_vision_context['objects'] = objects
+        self.latest_vision_context['faces'] = faces
+        self.latest_vision_context['timestamp'] = timestamp
+        
+        # Log the update
+        context_items = []
+        if objects:
+            context_items.append(f"objects: {', '.join(objects)}")
+        if faces:
+            context_items.append(f"faces: {', '.join(faces)}")
+        
+        if context_items:
+            logger.info(f"👁️  Vision context updated: {' | '.join(context_items)}")
+        else:
+            logger.info(f"👁️  Vision context cleared (no stable detections)")
+    
+    
     async def on_speech_stopped(self, data: Dict[str, Any]):
         """
         Callback for speech stopped events - trigger conversation processing.
@@ -237,9 +387,19 @@ class ConversationApp:
         """
         event_number = data.get("event_number")
         duration = data.get("duration")
-        doa = data.get("doa")
-        angle_degrees = doa.get("angle_degrees")
-        angle_radians = doa.get("angle_radians")
+        doa_average = data.get("doa_average")  # Get the average DOA from speech segment
+        
+        # Store DOA for action handler to use with "DOA" parameter
+        if doa_average:
+            self.current_doa = {
+                "angle_degrees": doa_average.get("angle_degrees"),
+                "angle_radians": doa_average.get("angle_radians")
+            }
+            angle_degrees = doa_average.get("angle_degrees")
+        else:
+            # Fallback if no DOA average available
+            self.current_doa = None
+            angle_degrees = 0.0
 
         logger.info(f"💭 Processing speech event #{event_number}")
         
@@ -250,6 +410,39 @@ class ConversationApp:
         
         # Create a user message representing the speech event with compass direction
         user_message = f"*Heard from {doa_compass} ({angle_degrees:.1f}°)* " + f"\"{data.get('transcription', '')}\""
+        
+        # Add visual context if available and recent (within 5 seconds)
+        import time
+        current_time = int(time.time() * 1000)  # Current time in milliseconds
+        if self.latest_vision_context and self.latest_vision_context.get('timestamp'):
+            vision_age_ms = current_time - self.latest_vision_context['timestamp']
+            vision_age_seconds = vision_age_ms / 1000.0
+            
+            if vision_age_seconds < 5.0:  # Vision context is recent enough
+                vision_items = []
+                
+                # Add objects to visual context
+                objects = self.latest_vision_context.get('objects', [])
+                if objects:
+                    vision_items.extend(objects)
+                
+                # Add faces to visual context
+                faces = self.latest_vision_context.get('faces', [])
+                if faces:
+                    for face in faces:
+                        if face != 'unknown':
+                            vision_items.append(face)
+                        else:
+                            vision_items.append('an unknown person')
+                
+                # Append visual context to user message
+                if vision_items:
+                    visual_context_str = ', '.join(vision_items)
+                    user_message += f" *[Visual Context: I see {visual_context_str}]*"
+                    logger.info(f"🔍 Added visual context: {visual_context_str}")
+            else:
+                logger.debug(f"Vision context too old ({vision_age_seconds:.1f}s), skipping")
+        
         logger.info(f"User: {user_message}")
         # For a real implementation, you would:
         # 1. Get the audio file saved by hearing_event_emitter
@@ -265,25 +458,42 @@ class ConversationApp:
     async def chat_completion_stream(
         self,
         messages: List[Dict[str, Any]],
-        max_tokens: int = 700
+        max_tokens: int = 2000
     ):
         """
-        Make a streaming chat completion request.
+        Make a streaming chat completion request with tool calling support.
         
         Args:
             messages: Conversation history
             max_tokens: Maximum tokens to generate
             
         Yields:
-            Content tokens from the streaming response
+            Dictionary with either 'content' (text token) or 'tool_call' (tool call delta)
         """
+        # Filter out 'tool' role messages for vLLM compatibility
+        # Many vLLM deployments don't support tool role in conversation history
+        # We keep them in our internal history but strip them when sending to API
+        filtered_messages = [
+            msg for msg in messages 
+            if msg.get("role") != "tool"
+        ]
+        
+        # Debug: log if we filtered any messages
+        if len(filtered_messages) < len(messages):
+            logger.debug(f"Filtered {len(messages) - len(filtered_messages)} tool messages from API request")
+        
         payload = {
             "model": MODEL_NAME,
-            "messages": messages,
+            "messages": filtered_messages,
             "max_tokens": max_tokens,
             "temperature": AGENT_TEMPERATURE,
-            "stream": True
+            "stream": True,
+            "tools": self.tools,
+            "tool_choice": "auto"  # Let model decide when to use tools
         }
+        
+        logger.debug(f"Sending request with {len(self.tools)} tools")
+        logger.debug(f"Tool names: {[t['function']['name'] for t in self.tools]}")
                 
         async with httpx.AsyncClient(timeout=60.0) as client:
             try:
@@ -304,16 +514,33 @@ class ConversationApp:
                                 if choices:
                                     delta = choices[0].get("delta", {})
                                     content = delta.get("content", "")
+                                    tool_calls = delta.get("tool_calls", [])
                                     
+                                    # Debug logging
+                                    if content or tool_calls:
+                                        logger.debug(f"Stream delta - content: {repr(content[:30])}, tool_calls: {len(tool_calls)} items")
+                                    
+                                    # Yield content tokens
                                     if content:
-                                        yield content
+                                        yield {"type": "content", "content": content}
+                                    
+                                    # Yield tool call deltas
+                                    if tool_calls:
+                                        yield {"type": "tool_calls", "tool_calls": tool_calls}
+                                else:
+                                    logger.debug(f"Empty choices in stream data: {data}")
                                         
                             except json.JSONDecodeError:
                                 continue
                                 
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error: {e}")
-                logger.error(f"Response: {e.response.text}")
+                # For streaming responses, need to read body first
+                try:
+                    error_body = await e.response.aread()
+                    logger.error(f"Response: {error_body.decode('utf-8')}")
+                except Exception as read_error:
+                    logger.error(f"Could not read error response: {read_error}")
                 raise
             except Exception as e:
                 logger.error(f"Error during streaming chat completion: {e}")
@@ -343,6 +570,11 @@ class ConversationApp:
         # Reset parser state
         self.parser.reset()
         
+        # Pass current DOA to action handler for parameterized actions
+        if self.action_handler and self.current_doa:
+            self.action_handler.set_doa(self.current_doa)
+            logger.debug(f"DOA passed to action handler: {self.current_doa['angle_degrees']:.1f}°")
+        
         # Clear any pending speech when new user input arrives
         if self.speech_handler:
             await self.speech_handler.clear()
@@ -357,48 +589,204 @@ class ConversationApp:
             parameters={"max_tokens": 700, "temperature": AGENT_TEMPERATURE}
         )
         
-        # Collect full response
+        # Collect full response and tool calls
         full_response = ""
+        tool_calls_accumulated = {}  # Track tool calls by index
         response_started = False
         response_start_time = time.time()
+        is_json_response = False  # Flag to detect JSON responses
         
         logger.info("🤖 Processing response...")
+        logger.debug(f"Request includes {len(self.tools)} tools")
+        
         
         # Stream the response
-        async for token in self.chat_completion_stream(messages=self.messages):
-            # Audit log: response started (first token only)
+        async for chunk in self.chat_completion_stream(messages=self.messages):
+            # Audit log: response started (first chunk only)
             if not response_started:
                 audit_logger.log_model_response_started()
                 response_started = True
             
-            full_response += token
-            # Parse the token for quotes and actions
-            self.parser.parse_token(token)
+            chunk_type = chunk.get("type")
             
-            # Process any speech items that were just parsed
-            while self.parser.has_speech():
-                speech_text = self.parser.get_speech()
+            if chunk_type == "content":
+                # Handle content (speech)
+                token = chunk.get("content", "")
+                full_response += token
+                logger.debug(f"Content token: {repr(token[:50])}")
+                
+                # Detect JSON early (first content token that starts with {)
+                if not is_json_response and full_response.strip().startswith('{'):
+                    is_json_response = True
+                    logger.debug("Detected JSON response format")
+                
+                # Only use ConversationParser for non-JSON responses
+                if not is_json_response:
+                    # Parse the token for quotes (speech only now, no actions)
+                    self.parser.parse_token(token)
+                    
+                    # Process any speech items that were just parsed
+                    while self.parser.has_speech():
+                        speech_text = self.parser.get_speech()
+                        if speech_text and self.speech_handler:
+                            logger.info(f'🗣️  Speaking: "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking: "{speech_text}"')
+                            # Audit log: parser cut (speech)
+                            audit_logger.log_parser_cut("speech", speech_text)
+                            await self.speech_handler.speak(speech_text)
+            
+            elif chunk_type == "tool_calls":
+                # Handle tool call deltas
+                tool_call_deltas = chunk.get("tool_calls", [])
+                logger.debug(f"Tool call deltas: {tool_call_deltas}")
+                
+                for tc_delta in tool_call_deltas:
+                    index = tc_delta.get("index", 0)
+                    
+                    # Initialize tool call accumulator if needed
+                    if index not in tool_calls_accumulated:
+                        tool_calls_accumulated[index] = {
+                            "id": "",
+                            "type": "function",
+                            "function": {
+                                "name": "",
+                                "arguments": ""
+                            }
+                        }
+                    
+                    # Accumulate tool call data
+                    if "id" in tc_delta:
+                        tool_calls_accumulated[index]["id"] = tc_delta["id"]
+                    
+                    if "function" in tc_delta:
+                        func_delta = tc_delta["function"]
+                        if "name" in func_delta:
+                            tool_calls_accumulated[index]["function"]["name"] += func_delta["name"]
+                        if "arguments" in func_delta:
+                            tool_calls_accumulated[index]["function"]["arguments"] += func_delta["arguments"]
+        
+        # Execute accumulated tool calls
+        tool_results = {}  # Store results by tool_call_id
+        if tool_calls_accumulated:
+            logger.info(f"🔧 Executing {len(tool_calls_accumulated)} tool call(s)...")
+            for index in sorted(tool_calls_accumulated.keys()):
+                tool_call = tool_calls_accumulated[index]
+                tool_name = tool_call["function"]["name"]
+                tool_args_str = tool_call["function"]["arguments"]
+                tool_call_id = tool_call["id"]
+                
+                try:
+                    # Parse arguments JSON (DO NOT append to full_response)
+                    tool_args = json.loads(tool_args_str) if tool_args_str else {}
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse tool arguments: {e}")
+                    logger.error(f"Arguments string: {tool_args_str}")
+                    continue
+                
+                logger.info(f"⚡ Executing tool: {tool_name} with args: {tool_args}")
+                
+                # Audit log: tool call execution
+                audit_logger.log_tool_call_executed(tool_name, tool_args)
+                
+                # Measure tool execution time
+                tool_start_time = time.time()
+                tool_success = True
+                tool_error = None
+                tool_result = None
+                
+                # Execute tool via action_handler
+                if self.action_handler:
+                    try:
+                        # Call execute_tool method that accepts structured commands
+                        tool_result = await self.action_handler.execute_tool(tool_name, tool_args)
+                        logger.info(f"✅ Tool {tool_name} executed successfully")
+                    except Exception as e:
+                        tool_success = False
+                        tool_error = str(e)
+                        logger.error(f"❌ Tool {tool_name} failed: {e}")
+                        tool_result = {"error": tool_error}
+                
+                # Calculate execution time
+                tool_duration_ms = (time.time() - tool_start_time) * 1000
+                
+                # Audit log: tool output
+                audit_logger.log_tool_output(
+                    tool_name=tool_name,
+                    tool_call_id=tool_call_id,
+                    output=tool_result,
+                    duration_ms=tool_duration_ms,
+                    success=tool_success,
+                    error=tool_error
+                )
+                
+                # Store result for history
+                tool_results[tool_call_id] = {
+                    "result": tool_result,
+                    "success": tool_success,
+                    "error": tool_error
+                }
+        else:
+            logger.info("No tool calls in response")
+        
+        # Handle JSON responses: extract and queue speech field
+        if is_json_response and full_response.strip():
+            try:
+                response_json = json.loads(full_response.strip())
+                speech_text = response_json.get('speech', '')
                 if speech_text and self.speech_handler:
-                    logger.info(f'🗣️  Speaking: "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking: "{speech_text}"')
-                    # Audit log: parser cut (speech)
+                    logger.info(f'🗣️  Speaking (from JSON): "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking (from JSON): "{speech_text}"')
+                    # Audit log: parser cut (speech from JSON)
                     audit_logger.log_parser_cut("speech", speech_text)
                     await self.speech_handler.speak(speech_text)
-            
-            # Process any action items that were just parsed
-            while self.parser.has_action():
-                action_text = self.parser.get_action()
-                if action_text and self.action_handler:
-                    logger.info(f'⚡ Executing action: **{action_text}**')
-                    # Audit log: parser cut (action)
-                    audit_logger.log_parser_cut("action", action_text)
-                    await self.action_handler.execute(action_text)
+                elif not speech_text:
+                    logger.debug("JSON response has no 'speech' field")
+            except json.JSONDecodeError as e:
+                logger.warning(f"Response looked like JSON but failed to parse: {e}")
+                logger.debug(f"Response content: {full_response[:100]}...")
+                # ConversationParser already handled it during streaming (if not JSON)
+                # If it was detected as JSON but invalid, we may have lost speech - log warning
+                if is_json_response:
+                    logger.warning("⚠️  Invalid JSON response detected - speech may have been lost!")
         
         # Audit log: model response finished
         response_latency_ms = (time.time() - response_start_time) * 1000
         audit_logger.log_model_response_finished(full_response, response_latency_ms)
         
-        # Add assistant response to conversation history
-        self.messages.append({"role": "assistant", "content": full_response})
+        # Log summary of what was received
+        logger.info(f"✅ Response complete: {len(full_response)} chars, {len(tool_calls_accumulated)} tool calls, {response_latency_ms:.0f}ms")
+        if not full_response and not tool_calls_accumulated:
+            logger.warning("⚠️  Model returned empty response (no content and no tool calls)")
+        
+        # Add assistant response to conversation history with proper tool_calls field
+        assistant_msg = {
+            "role": "assistant",
+            "content": full_response if full_response else None
+        }
+        
+        # Add tool_calls field if there were any tool calls
+        if tool_calls_accumulated:
+            assistant_msg["tool_calls"] = [
+                {
+                    "id": tool_calls_accumulated[index]["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tool_calls_accumulated[index]["function"]["name"],
+                        "arguments": tool_calls_accumulated[index]["function"]["arguments"]
+                    }
+                }
+                for index in sorted(tool_calls_accumulated.keys())
+            ]
+        
+        self.messages.append(assistant_msg)
+        
+        # Add tool response messages using 'tool' role (standard format)
+        for tool_call_id, result_data in tool_results.items():
+            tool_response_msg = {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": json.dumps(result_data["result"]) if result_data["result"] else json.dumps({"status": "completed"})
+            }
+            self.messages.append(tool_response_msg)
+            logger.debug(f"Added tool response to history for tool_call_id: {tool_call_id}")
         
         logger.info(f"✓ Full response received: {full_response[:50]}")
         # Run warm-up for caching in background

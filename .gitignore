@@ -22,3 +22,6 @@ local-codex/workspace/*
 gemma/gemma-vllm/models/*
 reachy-mini/log/*
 reachy-mini/data/*
+reachy-mini/logs/*
+reachy-mini/recordings/*
+reachy-mini/videos/*

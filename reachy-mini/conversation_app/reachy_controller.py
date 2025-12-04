@@ -37,7 +37,11 @@ class ReachyController:
         # Initialize ReachyMini
         logger.info("Initializing ReachyMini for DOA detection...")
         try:
-            self.mini = ReachyMini(timeout=10.0, spawn_daemon=True, log_level=log_level, automatic_body_yaw=True,)
+            self.mini = ReachyMini(timeout=10.0,
+                                   spawn_daemon=True,
+                                   log_level=log_level,
+                                   automatic_body_yaw=True,
+                                   media_backend='gstreamer')
             self.reachy_is_awake = True
             logger.info("ReachyMini initialized successfully")
         except Exception as e:
@@ -48,7 +52,9 @@ class ReachyController:
         self.avg_x = 0.0
         self.avg_y = 0.0
         self.sample_count = 0
-        
+        self.total_sample_count = 0
+        self.speech_detected_count = 0
+
         # Current DOA state
         self.current_doa = None
         
@@ -101,6 +107,8 @@ class ReachyController:
         self.avg_x = 0.0
         self.avg_y = 0.0
         self.sample_count = 0
+        self.total_sample_count = 0
+        self.speech_detected_count = 0
         logger.info("DOA buffer cleared for new speech segment")
     
     def add_doa_sample(self, doa_tuple: Tuple[float, bool]):
@@ -112,7 +120,7 @@ class ReachyController:
             doa_tuple: Tuple of (angle_radians, is_speech_detected)
         """
         angle, is_speech_detected = doa_tuple
-        
+        self.total_sample_count += 1
         # Only add samples where speech/audio is detected
         if not is_speech_detected:
             logger.debug("Skipping DOA sample - no speech detected")
@@ -133,7 +141,7 @@ class ReachyController:
             self.avg_y = self.smoothing_alpha * new_y + (1 - self.smoothing_alpha) * self.avg_y
         
         self.sample_count += 1
-        
+        self.speech_detected_count += 1
         # Calculate current average angle for logging
         current_avg_angle = np.arctan2(self.avg_y, self.avg_x)
         logger.debug(f"DOA sample added: new_angle={np.degrees(angle):.1f}°, "
@@ -167,10 +175,11 @@ class ReachyController:
             "angle_degrees": float(avg_angle_degrees),
             "sample_count": self.sample_count,
             "cartesian_x": float(self.avg_x),
-            "cartesian_y": float(self.avg_y)
+            "cartesian_y": float(self.avg_y),
+            "is_speech_detected": bool(self.speech_detected_count / self.total_sample_count > 0.7)
         }
         
-        logger.debug(f"Average DOA calculated: {avg_angle_degrees:.1f}° from {self.sample_count} samples")
+        logger.info(f"Average DOA calculated: {avg_angle_degrees:.1f}° from {self.sample_count} samples")
         
         return result
     
@@ -249,7 +258,7 @@ class ReachyController:
             logger.error(f"Error getting audio sample: {e}", exc_info=True)
             return None
     
-    def _get_current_state(self) -> Tuple[float, float, float, list, float]:
+    def get_current_state(self) -> Tuple[float, float, float, list, float]:
         """
         Get current robot state (pose and positions).
         
@@ -297,7 +306,7 @@ class ReachyController:
                 "body_direction": "East" or "North" or "West" etc.
             }
         """
-        roll, pitch, yaw, antennas, body_yaw = self._get_current_state()
+        roll, pitch, yaw, antennas, body_yaw = self.get_current_state()
         
         # Use mappings module to convert values to names
         head_direction = mappings.value_to_name('yaw', yaw)
@@ -336,15 +345,23 @@ class ReachyController:
         
         Supports compass directions for yaw and body_yaw (e.g., "North", "East", "West").
         """
-        def smooth_movement(t, max_angle):
-            phase = np.pi / 2 * t / duration
-            smooth_position = np.deg2rad(max_angle * np.sin(phase))
-            # Apply 2 decimal points precision
-            smooth_position = round(smooth_position, 2)
-            return smooth_position
-        
+        def smooth_movement(t, target_angle, cycle_duration=2.0):
+            """
+            Smooth oscillating movement with constant speed.
+            
+            Longer duration = more repetitions, not slower movement.
+            cycle_duration controls how fast one oscillation is.
+            """
+            # Repeat the motion: t loops within each cycle
+            t_in_cycle = t % cycle_duration
+            
+            # Cosine ease-in-out within each cycle
+            ease = (1.0 - np.cos(np.pi * t_in_cycle / cycle_duration)) / 2.0
+            position_deg = target_angle * ease
+            return round(np.deg2rad(position_deg), 4)
+
         # Get current state
-        curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self._get_current_state()
+        curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self.get_current_state()
         logger.info(f"Starting move_smoothly_to: roll={curr_roll:.1f}, pitch={curr_pitch:.1f}, yaw={curr_yaw:.1f}, antennas={curr_antennas}, body_yaw={curr_body_yaw:.1f}")
         
         # Parse compass directions if provided as strings
@@ -356,6 +373,11 @@ class ReachyController:
             body_yaw = self.parse_compass_direction(body_yaw)
             logger.info(f"Parsed body_yaw compass direction to {body_yaw:.1f}°")
         
+        # Parse duration if provided as string (defensive handling)
+        if isinstance(duration, str):
+            duration = mappings.name_to_value('duration', duration)
+            logger.info(f"Parsed duration name to {duration}s")
+            
         # Determine which parameters to animate vs keep constant
         # For None parameters, we use current values and mark them as constant
         animate_roll = roll is not None
@@ -421,7 +443,7 @@ class ReachyController:
             t = time.time()
         
         # Log final state
-        final_roll, final_pitch, final_yaw, final_antennas, final_body_yaw = self._get_current_state()
+        final_roll, final_pitch, final_yaw, final_antennas, final_body_yaw = self.get_current_state()
         logger.info(f"Finished move_smoothly_to: roll={final_roll:.1f}, pitch={final_pitch:.1f}, yaw={final_yaw:.1f}, antennas={final_antennas}, body_yaw={final_body_yaw:.1f}")
 
     def apply_safety_to_movement(self, roll, pitch, yaw, antennas, body_yaw):
@@ -440,7 +462,7 @@ class ReachyController:
             Tuple of (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw)
         """
         # Get current state
-        current_roll, current_pitch, current_yaw, current_antennas, current_body_yaw = self._get_current_state()
+        current_roll, current_pitch, current_yaw, current_antennas, current_body_yaw = self.get_current_state()
         
         # Convert to degrees for SafetyManager
         current_state_deg = (

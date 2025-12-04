@@ -4,7 +4,7 @@ Emergency stop - immediately halts all robot movements.
 """
 
 
-async def execute(make_request, create_head_pose, tts_queue, params):
+async def execute(controller, tts_queue, params):
     """Execute the stop_all_movements tool."""
     speech = params.get('speech')
     
@@ -12,6 +12,14 @@ async def execute(make_request, create_head_pose, tts_queue, params):
     if speech and tts_queue:
         await tts_queue.enqueue_text(speech)
     
-    return await make_request('POST', '/api/motors/set_mode/disabled')
-
-
+    # Access reachy instance to stop motors
+    if controller and controller.reachy_controller:
+        try:
+            reachy = controller.reachy_controller.reachy
+            # Disable motors to stop all movement
+            reachy.turn_off()
+            return {"status": "success", "message": "All movements stopped"}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+    
+    return {"status": "error", "error": "Controller not available"}
