@@ -92,6 +92,9 @@ class ConversationApp:
         
         # DOA from most recent speech event (for parameterized actions)
         self.current_doa = None  # Dict with angle_degrees and angle_radians
+        
+        # Vision context - latest stable vision information
+        self.latest_vision_context = None  # Dict with {'objects': [...], 'faces': [...], 'timestamp': int}
 
     async def initialize(self):
         """Initialize the application."""
@@ -175,6 +178,7 @@ class ConversationApp:
             event_type: Type of event (speech_started, speech_stopped, etc.)
             data: Event data
         """
+        logger.debug(f"Gateway event: {event_type}")
         if event_type == "speech_started":
             await self.on_speech_started(data)
         elif event_type == "speech_stopped":
@@ -187,6 +191,10 @@ class ConversationApp:
             pass
         elif event_type == "video_frame_captured":
             await self.on_video_frame_captured(data)
+        elif event_type == "yolo_v8_result":
+            await self.on_vision_result(data)
+        elif event_type == "face_recognition_result":
+            await self.on_vision_result(data)
         else:
             logger.debug(f"Unhandled event type: {event_type}")
     
@@ -321,6 +329,55 @@ class ConversationApp:
         
         logger.debug(f"Stored frame path in memory. Total frames in memory: {len(self.recent_frames)}")
     
+    async def on_vision_result(self, data: Dict[str, Any]):
+        """
+        Callback for vision processor result events (YOLO, face recognition, etc.).
+        
+        Args:
+            data: Event data containing processor results
+        """
+        timestamp = data.get("timestamp")
+        stable_labels = data.get("stable_labels", [])
+        
+        # Initialize vision context if needed
+        if self.latest_vision_context is None:
+            self.latest_vision_context = {
+                'objects': [],
+                'faces': [],
+                'timestamp': timestamp
+            }
+        
+        # Update vision context based on stable labels
+        objects = []
+        faces = []
+        
+        for label in stable_labels:
+            if label.startswith("person:"):
+                # Face recognition result
+                name = label.split(":", 1)[1]
+                faces.append(name)
+            else:
+                # Object detection result
+                objects.append(label)
+        
+        # Update context
+        self.latest_vision_context['objects'] = objects
+        self.latest_vision_context['faces'] = faces
+        self.latest_vision_context['timestamp'] = timestamp
+        
+        # Log the update
+        context_items = []
+        if objects:
+            context_items.append(f"objects: {', '.join(objects)}")
+        if faces:
+            context_items.append(f"faces: {', '.join(faces)}")
+        
+        if context_items:
+            logger.info(f"👁️  Vision context updated: {' | '.join(context_items)}")
+        else:
+            logger.info(f"👁️  Vision context cleared (no stable detections)")
+    
+    
     async def on_speech_stopped(self, data: Dict[str, Any]):
         """
         Callback for speech stopped events - trigger conversation processing.
@@ -353,6 +410,39 @@ class ConversationApp:
         
         # Create a user message representing the speech event with compass direction
         user_message = f"*Heard from {doa_compass} ({angle_degrees:.1f}°)* " + f"\"{data.get('transcription', '')}\""
+        
+        # Add visual context if available and recent (within 5 seconds)
+        import time
+        current_time = int(time.time() * 1000)  # Current time in milliseconds
+        if self.latest_vision_context and self.latest_vision_context.get('timestamp'):
+            vision_age_ms = current_time - self.latest_vision_context['timestamp']
+            vision_age_seconds = vision_age_ms / 1000.0
+            
+            if vision_age_seconds < 5.0:  # Vision context is recent enough
+                vision_items = []
+                
+                # Add objects to visual context
+                objects = self.latest_vision_context.get('objects', [])
+                if objects:
+                    vision_items.extend(objects)
+                
+                # Add faces to visual context
+                faces = self.latest_vision_context.get('faces', [])
+                if faces:
+                    for face in faces:
+                        if face != 'unknown':
+                            vision_items.append(face)
+                        else:
+                            vision_items.append('an unknown person')
+                
+                # Append visual context to user message
+                if vision_items:
+                    visual_context_str = ', '.join(vision_items)
+                    user_message += f" *[Visual Context: I see {visual_context_str}]*"
+                    logger.info(f"🔍 Added visual context: {visual_context_str}")
+            else:
+                logger.debug(f"Vision context too old ({vision_age_seconds:.1f}s), skipping")
+        
         logger.info(f"User: {user_message}")
         # For a real implementation, you would:
         # 1. Get the audio file saved by hearing_event_emitter

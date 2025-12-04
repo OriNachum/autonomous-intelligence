@@ -89,5 +89,8 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 # Add this near your other ENV command
 ENV GI_TYPELIB_PATH=/usr/lib/aarch64-linux-gnu/girepository-1.0:/usr/lib/girepository-1.0
-
+# Force ALSA default device to be the USB Card named "Audio"
+# This makes autoaudiosrc pick the correct microphone automatically.
+RUN echo 'pcm.!default { type plug slave.pcm "hw:Audio,0" }' > /etc/asound.conf && \
+    echo 'ctl.!default { type hw card Audio }' >> /etc/asound.conf
 CMD ["python3", "-m", "conversation_app.app"]

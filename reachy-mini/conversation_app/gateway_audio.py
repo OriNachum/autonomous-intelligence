@@ -330,10 +330,10 @@ class GatewayAudio:
         
         if self.speech_detected:
             # Emit ongoing event with current DOA
-            await self.emit_event("speech_ongoing", {
-                "event_number": self.speech_events,
-                "duration_so_far": time.time() - self.start_time
-            })
+            # await self.emit_event("speech_ongoing", {
+            #     "event_number": self.speech_events,
+            #     "duration_so_far": time.time() - self.start_time
+            # })
 
             self.speech_buffer.append(data)
             self.silence_start_time = None

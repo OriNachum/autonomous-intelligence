@@ -51,8 +51,8 @@ class GatewayVideo:
         self.media = media
         self.emit_event = event_callback
         self.frame_interval = frame_interval
-        # We now use time-based interval for polling, defaulting to ~10 FPS
-        self.poll_interval = 0.1 
+        # Process frames at very low rate to avoid interfering with audio (0.5 FPS = every 2 seconds)
+        self.poll_interval = 2.0 
         
         self.videos_dir = os.getenv('VIDEOS_DIR', './videos')
         os.makedirs(self.videos_dir, exist_ok=True)
