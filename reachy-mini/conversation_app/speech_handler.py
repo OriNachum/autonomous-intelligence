@@ -63,20 +63,26 @@ class SpeechHandler:
         """
         if not text:
             return text
-            
-        # 1. Decode unicode escapes (handles \\u2019 -> ')
-        try:
-            # encode to bytes, then decode with unicode_escape to resolve literal escapes
-            text = text.encode('utf-8').decode('unicode_escape')
-        except Exception as e:
-            logger.warning(f"Failed to decode unicode escapes in speech: {e}")
-            # Continue with original text if decoding fails
-            
-        # 2. Replace smart quotes with straight quotes
-        # Single quotes
-        text = text.replace("'", "'").replace("'", "'")
-        # Double quotes
-        text = text.replace(""", '"').replace(""", '"')
+        
+        # 1. Decode literal Unicode escapes like \\u2019
+        # Use a regex to find patterns like \uXXXX and decode them
+        import re
+        def decode_unicode_escape(match):
+            """Decode a single \\uXXXX escape sequence."""
+            try:
+                hex_code = match.group(1)
+                return chr(int(hex_code, 16))
+            except (ValueError, OverflowError):
+                # If invalid, return original
+                return match.group(0)
+        
+        text = re.sub(r'\\u([0-9a-fA-F]{4})', decode_unicode_escape, text)
+        
+        # 2. Replace smart quotes with straight quotes using explicit Unicode codes
+        # Left single quote (U+2018) and right single quote (U+2019) -> straight apostrophe (U+0027)
+        text = text.replace('\u2018', "'").replace('\u2019', "'")
+        # Left double quote (U+201C) and right double quote (U+201D) -> straight quote (U+0022)
+        text = text.replace('\u201C', '"').replace('\u201D', '"')
         
         return text
 
