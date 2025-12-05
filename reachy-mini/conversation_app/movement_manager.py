@@ -124,6 +124,8 @@ class MovementManager:
         Composites all active layers and sends the final pose to the robot.
         """
         loop_period = 1.0 / self.control_rate
+        consecutive_errors = 0
+        max_consecutive_errors = 3
         
         logger.info(f"Movement loop started (rate: {self.control_rate} Hz)")
         
@@ -173,8 +175,42 @@ class MovementManager:
                 
                 logger.debug(f"Pose sent: {final_pose}")
                 
+                # Reset error counter on success
+                consecutive_errors = 0
+                
+            except ConnectionError as e:
+                consecutive_errors += 1
+                logger.error(f"Connection error in movement loop (attempt {consecutive_errors}/{max_consecutive_errors}): {e}")
+                
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.warning(f"Too many consecutive connection errors, attempting daemon reset...")
+                    
+                    # Attempt to reset daemon
+                    reset_success = self.controller.reset_daemon()
+                    
+                    if reset_success:
+                        logger.info("Daemon reset successful, resuming movement loop")
+                        consecutive_errors = 0
+                        
+                        # Re-initialize base layer with current robot state
+                        try:
+                            current_pose = RobotPose.from_current_state(self.controller)
+                            self.base_layer.set_current_pose(current_pose)
+                            logger.info(f"Base layer re-initialized with: {current_pose}")
+                        except Exception as reinit_error:
+                            logger.error(f"Failed to re-initialize base layer: {reinit_error}")
+                    else:
+                        logger.error("Daemon reset failed, will retry on next error")
+                        consecutive_errors = 0  # Reset counter to try again later
+                
+                # Apply exponential backoff
+                backoff_time = min(5.0, 0.5 * (2 ** consecutive_errors))
+                logger.info(f"Backing off for {backoff_time:.1f}s before retry")
+                time.sleep(backoff_time)
+                
             except Exception as e:
                 logger.error(f"Error in movement loop: {e}", exc_info=True)
+                consecutive_errors = 0  # Don't count non-connection errors
             
             # Sleep to maintain loop rate
             elapsed = time.time() - loop_start

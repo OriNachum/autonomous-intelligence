@@ -33,6 +33,7 @@ class ReachyController:
             log_level: Logging level for ReachyMini
         """
         self.smoothing_alpha = smoothing_alpha
+        self.log_level = log_level  # Store for daemon reset
         
         # Initialize ReachyMini
         logger.info("Initializing ReachyMini for DOA detection...")
@@ -500,6 +501,45 @@ class ReachyController:
         except Exception as e:
             logger.error(f"Error getting sample rate: {e}", exc_info=True)
             return 16000  # Default fallback
+    
+    def reset_daemon(self):
+        """
+        Reset the ReachyMini daemon by closing the current connection
+        and creating a new instance.
+        
+        This is used to recover from connection errors.
+        """
+        logger.warning("Attempting to reset ReachyMini daemon...")
+        
+        # Close existing connection
+        if hasattr(self, 'mini') and self.mini is not None:
+            try:
+                logger.info("Closing existing ReachyMini connection...")
+                del self.mini
+            except Exception as e:
+                logger.error(f"Error closing old connection: {e}")
+        
+        # Wait a bit before reconnecting
+        time.sleep(1.0)
+        
+        # Create new instance
+        try:
+            logger.info("Creating new ReachyMini instance...")
+            self.mini = ReachyMini(timeout=10.0,
+                                   spawn_daemon=True,
+                                   log_level=self.log_level,
+                                   automatic_body_yaw=True,
+                                   media_backend='gstreamer')
+            self.reachy_is_awake = True
+            
+            # Reset tracked state
+            self._current_body_yaw = 0.0
+            
+            logger.info("ReachyMini daemon reset successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to reset ReachyMini daemon: {e}")
+            return False
     
     def cleanup(self):
         """Clean up ReachyMini resources"""
