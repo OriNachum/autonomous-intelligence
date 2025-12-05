@@ -65,8 +65,8 @@ class ReachyController:
         self.safety_config = SafetyConfig()
         self.safety_manager = SafetyManager(self.safety_config)
         
-        # Callbacks for post-movement actions
-        self.post_movement_callbacks = []
+        # Reference to movement manager (set externally after initialization)
+        self.movement_manager = None
         
         logger.info(f"DOA Detector initialized with smoothing_alpha={smoothing_alpha}")
     
@@ -339,33 +339,24 @@ class ReachyController:
         """
         return mappings.degrees_to_compass(degrees)
             
-    def move_smoothly_to(self, duration=10.0, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
+    def move_smoothly_to(self, duration=2.0, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """
-        Move the robot smoothly to a single position.
+        Move the robot smoothly to a target position (non-blocking).
         
-        Parameters default to None, which means maintain current position (constant, no oscillation).
-        Only specified parameters will have smooth sinusoidal movement applied.
+        Parameters default to None, which means maintain current position.
+        Only specified parameters will be updated.
         
         Supports compass directions for yaw and body_yaw (e.g., "North", "East", "West").
+        
+        This method is now NON-BLOCKING - it returns immediately and the movement
+        is executed by the MovementManager's control loop.
         """
-        def smooth_movement(t, target_angle, cycle_duration=2.0):
-            """
-            Smooth oscillating movement with constant speed.
-            
-            Longer duration = more repetitions, not slower movement.
-            cycle_duration controls how fast one oscillation is.
-            """
-            # Repeat the motion: t loops within each cycle
-            t_in_cycle = t % cycle_duration
-            
-            # Cosine ease-in-out within each cycle
-            ease = (1.0 - np.cos(np.pi * t_in_cycle / cycle_duration)) / 2.0
-            position_deg = target_angle * ease
-            return round(np.deg2rad(position_deg), 4)
-
+        from .robot_pose import RobotPose
+        
         # Get current state
         curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self.get_current_state()
-        logger.info(f"Starting move_smoothly_to: roll={curr_roll:.1f}, pitch={curr_pitch:.1f}, yaw={curr_yaw:.1f}, antennas={curr_antennas}, body_yaw={curr_body_yaw:.1f}")
+        logger.info(f"move_smoothly_to called: current state roll={curr_roll:.1f}°, pitch={curr_pitch:.1f}°, "
+                   f"yaw={curr_yaw:.1f}°, antennas={curr_antennas}, body_yaw={curr_body_yaw:.1f}°")
         
         # Parse compass directions if provided as strings
         if isinstance(yaw, str):
@@ -380,85 +371,32 @@ class ReachyController:
         if isinstance(duration, str):
             duration = mappings.name_to_value('duration', duration)
             logger.info(f"Parsed duration name to {duration}s")
-            
-        # Determine which parameters to animate vs keep constant
-        # For None parameters, we use current values and mark them as constant
-        animate_roll = roll is not None
-        animate_pitch = pitch is not None
-        animate_yaw = yaw is not None
-        animate_antennas = antennas is not None
-        animate_body_yaw = body_yaw is not None
         
-        # Set target values
+        # Build target pose (use current values for None parameters)
         target_roll = roll if roll is not None else curr_roll
         target_pitch = pitch if pitch is not None else curr_pitch
         target_yaw = yaw if yaw is not None else curr_yaw
         target_antennas = antennas if antennas is not None else curr_antennas
         target_body_yaw = body_yaw if body_yaw is not None else curr_body_yaw
         
-        logger.info(f"Moving robot smoothly to: roll={roll}, pitch={pitch}, yaw={yaw}, antennas={antennas}, body_yaw={body_yaw}")  
-        start_time = time.time()
-        t = time.time()
-        while t - start_time < duration:
-            tick_in_time = t - start_time
-            
-            # Apply smooth movement only to animated parameters, keep others constant
-            if animate_body_yaw:
-                body_yaw_t = smooth_movement(tick_in_time, target_body_yaw)
-            else:
-                body_yaw_t = np.deg2rad(curr_body_yaw)
-            
-            if animate_antennas:
-                antennas_t = [smooth_movement(tick_in_time, target_antennas[0]), 
-                             smooth_movement(tick_in_time, target_antennas[1])]
-            else:
-                antennas_t = [np.deg2rad(curr_antennas[0]), np.deg2rad(curr_antennas[1])]
-            
-            if animate_pitch:
-                pitch_t = smooth_movement(tick_in_time, target_pitch)
-            else:
-                pitch_t = np.deg2rad(curr_pitch)
-            
-            if animate_roll:
-                roll_t = smooth_movement(tick_in_time, target_roll)
-            else:
-                roll_t = np.deg2rad(curr_roll)
-            
-            if animate_yaw:
-                yaw_t = smooth_movement(tick_in_time, target_yaw)
-            else:
-                yaw_t = np.deg2rad(curr_yaw)
-
-            (safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw) = self.apply_safety_to_movement(roll_t, pitch_t, yaw_t, antennas=antennas_t, body_yaw=body_yaw_t)
-
-            # FIX: Update tracked body_yaw with the ACTUAL safe value used (at the end of animation)
-            if tick_in_time >= duration - 0.01:  # Near end of movement
-                self._current_body_yaw = np.degrees(safe_body_yaw)
-
-            head_pose = create_head_pose(
-                roll=safe_roll,
-                pitch=safe_pitch,
-                yaw=safe_yaw,
-                degrees=False,
-                mm=False,
-            )
-            self.mini.set_target(head=head_pose, antennas=safe_antennas, body_yaw=safe_body_yaw)
-            t = time.time()
+        # Create target pose
+        target_pose = RobotPose(
+            roll=target_roll,
+            pitch=target_pitch,
+            yaw=target_yaw,
+            antennas=(target_antennas[0], target_antennas[1]) if isinstance(target_antennas, (list, tuple)) else (target_antennas, target_antennas),
+            body_yaw=target_body_yaw
+        )
         
-        # Log final state
-        final_roll, final_pitch, final_yaw, final_antennas, final_body_yaw = self.get_current_state()
-        logger.info(f"Finished move_smoothly_to: roll={final_roll:.1f}, pitch={final_pitch:.1f}, yaw={final_yaw:.1f}, antennas={final_antennas}, body_yaw={final_body_yaw:.1f}")
+        logger.info(f"Setting target pose: {target_pose} (duration={duration:.2f}s)")
+        
+        # Delegate to movement manager
+        if self.movement_manager:
+            self.movement_manager.set_target_pose(target_pose, duration)
+        else:
+            logger.warning("No movement_manager available - movement command ignored")
+            logger.warning("Note: move_smoothly_to is now non-blocking and requires MovementManager")
 
-        # Invoke post-movement callbacks
-        for callback in self.post_movement_callbacks:
-            try:
-                callback()
-            except Exception as e:
-                logger.error(f"Error in post-movement callback: {e}")
-
-    def register_post_movement_callback(self, callback):
-        """Register a callback to be called after every movement."""
-        self.post_movement_callbacks.append(callback)
 
     def apply_safety_to_movement(self, roll, pitch, yaw, antennas, body_yaw):
         """
@@ -546,13 +484,6 @@ class ReachyController:
             self.reachy_is_awake = False
             # Move to neutral position (0, 0, 0)
             self.mini.goto_sleep()
-            
-            # Invoke post-movement callbacks
-            for callback in self.post_movement_callbacks:
-                try:
-                    callback()
-                except Exception as e:
-                    logger.error(f"Error in post-movement callback: {e}")
 
 
     def get_sample_rate(self) -> int:
