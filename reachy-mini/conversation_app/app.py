@@ -177,15 +177,13 @@ class ConversationApp:
                 reachy_controller=self.gateway.reachy_controller
             )
             
-            # Register callback to lock head pose after every movement
-            # This ensures that when switching back to WAITING/idle mode, 
-            # the animation starts from the current position
-            self.gateway.reachy_controller.register_post_movement_callback(self.movement_manager.lock_head_pose)
+            # Link movement manager to controller (enables non-blocking move_smoothly_to)
+            self.gateway.reachy_controller.movement_manager = self.movement_manager
             
             self.movement_manager.start()
-            # Start in WAITING mode (idle/listening)
-            self.movement_manager.set_mode(MovementManager.MODE_WAITING)
-            logger.info("✓ Movement manager initialized and started in WAITING mode")
+            # Start with idle animations enabled (antenna wiggling while waiting)
+            self.movement_manager.enable_idle(True)
+            logger.info("✓ Movement manager initialized and started with idle animations")
         except Exception as e:
             logger.error(f"❌ Failed to initialize movement manager: {e}")
             logger.warning("   Continuing without background movements...")
@@ -351,10 +349,10 @@ class ConversationApp:
         Args:
             data: Event data containing event_number, timestamp, etc.
         """
-        # Set movement mode to WAITING (antennas moving while user speaks)
+        # Enable idle animations when user speaks (antennas moving)
         if self.movement_manager:
-            self.movement_manager.set_mode(MovementManager.MODE_WAITING)
-            logger.debug("Movement mode: WAITING (user speaking)")
+            self.movement_manager.enable_idle(True)
+            logger.debug("Idle animations: enabled (user speaking)")
         
         # Clear TTS queue when user starts speaking to avoid talking over them
         if self.speech_handler:
@@ -638,10 +636,10 @@ class ConversationApp:
             self.action_handler.set_doa(self.current_doa)
             logger.debug(f"DOA passed to action handler: {self.current_doa['angle_degrees']:.1f}°")
         
-        # Set movement mode to STATIC (antennas stop while robot speaks/acts)
+        # Disable idle animations while robot speaks/acts
         if self.movement_manager:
-            self.movement_manager.set_mode(MovementManager.MODE_STATIC)
-            logger.debug("Movement mode: STATIC (robot responding)")
+            self.movement_manager.enable_idle(False)
+            logger.debug("Idle animations: disabled (robot responding)")
         
         # Clear any pending speech when new user input arrives
         if self.speech_handler:
@@ -865,7 +863,8 @@ class ConversationApp:
         
         # Return to WAITING mode after robot finishes speaking/acting
         if self.movement_manager:
-            self.movement_manager.set_mode(MovementManager.MODE_WAITING)
+            # Re-enable idle animations after response complete
+            self.movement_manager.enable_idle(True)
             logger.debug("Movement mode: WAITING (response complete)")
         
         return full_response
@@ -907,10 +906,10 @@ class ConversationApp:
         
         # Set STATIC mode before shutdown to prevent antenna interference
         if self.movement_manager:
-            logger.info("Setting STATIC mode for shutdown...")
-            self.movement_manager.set_mode(MovementManager.MODE_STATIC)
+            logger.info("Disabling idle animations for shutdown...")
+            self.movement_manager.enable_idle(False)
             # Give time for any in-flight antenna updates to complete
-            await asyncio.sleep(10)
+            await asyncio.sleep(0.1)
             self.movement_manager.cleanup()
         
         if self.speech_handler:

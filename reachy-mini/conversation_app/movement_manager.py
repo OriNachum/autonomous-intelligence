@@ -2,28 +2,37 @@
 """
 Movement Manager Module
 
-This module manages background antenna movements for Reachy based on operational modes.
-Modes:
-- STATIC: No background movement (robot is speaking/acting)
-- WAITING: Sinusoidal antenna movement (robot is listening/idle)
+This module manages the unified movement loop for Reachy, compositing
+multiple movement layers (base poses, idle animations, gestures) into
+a single smooth control flow.
 """
 
 import logging
 import threading
 import time
-import math
 import numpy as np
 from typing import Optional
+from reachy_mini.utils import create_head_pose
+
+try:
+    from .robot_pose import RobotPose
+    from .movement_layers import BasePoseLayer, IdleLayer
+except ImportError:
+    from robot_pose import RobotPose
+    from movement_layers import BasePoseLayer, IdleLayer
 
 logger = logging.getLogger(__name__)
 
 
 class MovementManager:
-    """Manages background antenna movements based on operational mode."""
+    """
+    Manages the unified movement loop with layer composition.
     
-    # Movement modes
-    MODE_STATIC = "STATIC"
-    MODE_WAITING = "WAITING"
+    Runs a constant control loop that composites multiple movement sources:
+    - Base pose layer: Primary target positions with smooth transitions
+    - Idle layer: Background animations (antenna wiggling)
+    - Future: Gesture layer for one-off movements
+    """
     
     def __init__(self, reachy_controller):
         """
@@ -33,19 +42,24 @@ class MovementManager:
             reachy_controller: ReachyController instance for robot control
         """
         self.controller = reachy_controller
-        self.mode = self.MODE_STATIC
         self.running = False
         self._thread = None
         self._lock = threading.Lock()
         
-        # Animation parameters for WAITING mode
-        self.antenna_amplitude = 15.0  # degrees (±15)
-        self.animation_frequency = 0.5  # Hz (0.5 cycles per second = 2 seconds per full cycle)
+        # Movement layers
+        self.base_layer = BasePoseLayer()
+        self.idle_layer = IdleLayer(amplitude=15.0, frequency=0.5)
+        
+        # Control loop parameters
         self.control_rate = 50  # Hz (50 updates per second)
         
-        self.lock_head_pose()
-
-        logger.info("MovementManager initialized")
+        # Initialize base layer with current robot state
+        current_pose = RobotPose.from_current_state(reachy_controller)
+        self.base_layer.set_current_pose(current_pose)
+        
+        logger.info("MovementManager initialized with layer-based architecture")
+        logger.info(f"  Base layer: {current_pose}")
+        logger.info(f"  Idle layer: amplitude=15.0°, frequency=0.5Hz")
     
     def start(self):
         """Start the background movement thread."""
@@ -56,7 +70,7 @@ class MovementManager:
         self.running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-        logger.info("MovementManager started")
+        logger.info("MovementManager: Control loop started")
     
     def stop(self):
         """Stop the background movement thread."""
@@ -67,78 +81,100 @@ class MovementManager:
         if self._thread:
             self._thread.join(timeout=1.0)
             self._thread = None
-        logger.info("MovementManager stopped")
-
-    def lock_head_pose(self):
-        self.head_pose_matrix = self.controller.mini.get_current_head_pose()
-
-    def set_mode(self, mode: str):
+        logger.info("MovementManager: Control loop stopped")
+    
+    def set_target_pose(self, pose: RobotPose, duration: float = 2.0):
         """
-        Set the operational mode.
+        Set a new target pose with smooth transition.
+        
+        This is the main API for commanding robot movements.
         
         Args:
-            mode: Either MODE_STATIC or MODE_WAITING
+            pose: Target pose
+            duration: Transition duration in seconds
         """
         with self._lock:
-            if mode not in [self.MODE_STATIC, self.MODE_WAITING]:
-                logger.warning(f"Invalid mode: {mode}, defaulting to STATIC")
-                mode = self.MODE_STATIC
-            
-            if self.mode != mode:
-                old_mode = self.mode
-                self.mode = mode
-                logger.info(f"Mode changed: {old_mode} → {mode}")
+            self.base_layer.set_target(pose, duration)
+        logger.debug(f"MovementManager: Target pose updated (duration={duration:.2f}s)")
     
-    def get_mode(self) -> str:
-        """Get the current operational mode."""
+    def enable_idle(self, enable: bool = True):
+        """
+        Enable or disable idle animations.
+        
+        Args:
+            enable: True to enable idle animations, False to disable
+        """
         with self._lock:
-            return self.mode
+            self.idle_layer.enable(enable)
+        logger.info(f"MovementManager: Idle animations {'enabled' if enable else 'disabled'}")
+    
+    def get_current_pose(self) -> RobotPose:
+        """
+        Get the current robot pose.
+        
+        Returns:
+            Current RobotPose
+        """
+        return RobotPose.from_current_state(self.controller)
     
     def _loop(self):
         """
         Main control loop running at control_rate Hz.
         
-        In WAITING mode, continuously updates antenna positions in a sinusoidal pattern.
-        In STATIC mode, does nothing (antennas remain at their current position).
+        Composites all active layers and sends the final pose to the robot.
         """
         loop_period = 1.0 / self.control_rate
-        start_time = time.time()
         
         logger.info(f"Movement loop started (rate: {self.control_rate} Hz)")
         
         while self.running:
             loop_start = time.time()
+            current_time = time.time()
             
-            # Check current mode (thread-safe)
-            current_mode = self.get_mode()
-            
-            if current_mode == self.MODE_WAITING:
-                # Calculate time-based sinusoidal position
-                elapsed = time.time() - start_time
-                
-                # Sinusoidal movement: position = amplitude * sin(2π * frequency * time)
-                # This creates a smooth oscillation between -amplitude and +amplitude
-                angle_rad = 2.0 * math.pi * self.animation_frequency * elapsed
-                antenna_position_deg = self.antenna_amplitude * math.sin(angle_rad)
-                
-                # Convert to radians for set_target
-                antenna_position_rad = np.deg2rad(antenna_position_deg)
-                
-                try:
+            try:
+                with self._lock:
+                    # 1. Get base pose from base layer
+                    final_pose = self.base_layer.get_pose(current_time)
                     
-                    # Set target with only antennas moving (both antennas mirror each other)
-                    self.controller.mini.set_target(
-                        head=self.head_pose_matrix,
-                        antennas=[antenna_position_rad, -1*antenna_position_rad],
-                        body_yaw=None  # Maintain current body yaw
+                    # 2. Apply idle layer if active
+                    if self.idle_layer.is_active():
+                        final_pose = self.idle_layer.apply(final_pose, current_time)
+                    
+                    # 3. Future: Apply gesture layer if active
+                    # if self.gesture_layer.is_active():
+                    #     final_pose = self.gesture_layer.apply(final_pose, current_time)
+                
+                # 4. Apply safety validation
+                roll_rad, pitch_rad, yaw_rad, antennas_rad, body_yaw_rad = final_pose.to_radians()
+                
+                safe_roll, safe_pitch, safe_yaw, safe_antennas, safe_body_yaw = \
+                    self.controller.apply_safety_to_movement(
+                        roll_rad, pitch_rad, yaw_rad, 
+                        antennas_rad, body_yaw_rad
                     )
-                    
-                    logger.debug(f"Antennas: {antenna_position_deg:.1f}°")
-                    
-                except Exception as e:
-                    logger.error(f"Error updating antenna position: {e}")
-            
-            # In STATIC mode, do nothing - antennas stay at current position
+                
+                # 5. Send to robot
+                head_pose = create_head_pose(
+                    roll=safe_roll,
+                    pitch=safe_pitch,
+                    yaw=safe_yaw,
+                    degrees=False,
+                    mm=False
+                )
+                
+                self.controller.mini.set_target(
+                    head=head_pose,
+                    antennas=list(safe_antennas),
+                    body_yaw=safe_body_yaw
+                )
+                
+                # Update tracked body yaw
+                self.controller._current_body_yaw = np.degrees(safe_body_yaw)
+                
+                logger.debug(f"Pose sent: {final_pose}")
+                
+            except Exception as e:
+                logger.error(f"Error in movement loop: {e}", exc_info=True)
             
             # Sleep to maintain loop rate
             elapsed = time.time() - loop_start
