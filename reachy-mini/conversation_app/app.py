@@ -49,6 +49,7 @@ from .action_handler import ActionHandler
 from .gateway import ReachyGateway
 from .logger import get_logger
 from .tool_loader import load_tool_definitions
+from .movement_manager import MovementManager
 
 
 # Set up logging
@@ -85,6 +86,7 @@ class ConversationApp:
         self.parser = ConversationParser()
         self.speech_handler = None  # Will be initialized in initialize()
         self.action_handler = None  # Will be initialized in initialize()
+        self.movement_manager = None  # Will be initialized in initialize()
         
         # Video frame memory - store recent frame paths
         self.recent_frames = []  # List of recent frame paths
@@ -168,6 +170,20 @@ class ConversationApp:
             logger.error(f"❌ Failed to initialize action handler: {e}")
             logger.warning("   Continuing without action execution...")
             self.action_handler = None
+        
+        # Initialize movement manager
+        try:
+            self.movement_manager = MovementManager(
+                reachy_controller=self.gateway.reachy_controller
+            )
+            self.movement_manager.start()
+            # Start in WAITING mode (idle/listening)
+            self.movement_manager.set_mode(MovementManager.MODE_WAITING)
+            logger.info("✓ Movement manager initialized and started in WAITING mode")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize movement manager: {e}")
+            logger.warning("   Continuing without background movements...")
+            self.movement_manager = None
         
         logger.info("✓ App initialized")
         logger.info("=" * 70)
@@ -329,6 +345,11 @@ class ConversationApp:
         Args:
             data: Event data containing event_number, timestamp, etc.
         """
+        # Set movement mode to WAITING (antennas moving while user speaks)
+        if self.movement_manager:
+            self.movement_manager.set_mode(MovementManager.MODE_WAITING)
+            logger.debug("Movement mode: WAITING (user speaking)")
+        
         # Clear TTS queue when user starts speaking to avoid talking over them
         if self.speech_handler:
             logger.info("🔇 User started speaking - clearing TTS queue")
@@ -611,6 +632,11 @@ class ConversationApp:
             self.action_handler.set_doa(self.current_doa)
             logger.debug(f"DOA passed to action handler: {self.current_doa['angle_degrees']:.1f}°")
         
+        # Set movement mode to STATIC (antennas stop while robot speaks/acts)
+        if self.movement_manager:
+            self.movement_manager.set_mode(MovementManager.MODE_STATIC)
+            logger.debug("Movement mode: STATIC (robot responding)")
+        
         # Clear any pending speech when new user input arrives
         if self.speech_handler:
             await self.speech_handler.clear()
@@ -831,6 +857,11 @@ class ConversationApp:
         # Run warm-up for caching in background
         asyncio.create_task(self._warm_up_for_caching(full_response))
         
+        # Return to WAITING mode after robot finishes speaking/acting
+        if self.movement_manager:
+            self.movement_manager.set_mode(MovementManager.MODE_WAITING)
+            logger.debug("Movement mode: WAITING (response complete)")
+        
         return full_response
     
     async def run(self):
@@ -867,6 +898,9 @@ class ConversationApp:
     async def cleanup(self):
         """Cleanup resources."""
         logger.info("🧹 Cleaning up...")
+        
+        if self.movement_manager:
+            self.movement_manager.cleanup()
         
         if self.speech_handler:
             self.speech_handler.cleanup()
