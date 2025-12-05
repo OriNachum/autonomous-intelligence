@@ -65,6 +65,9 @@ class ReachyController:
         self.safety_config = SafetyConfig()
         self.safety_manager = SafetyManager(self.safety_config)
         
+        # Callbacks for post-movement actions
+        self.post_movement_callbacks = []
+        
         logger.info(f"DOA Detector initialized with smoothing_alpha={smoothing_alpha}")
     
     def parse_compass_direction(self, direction_str: str) -> float:
@@ -446,6 +449,17 @@ class ReachyController:
         final_roll, final_pitch, final_yaw, final_antennas, final_body_yaw = self.get_current_state()
         logger.info(f"Finished move_smoothly_to: roll={final_roll:.1f}, pitch={final_pitch:.1f}, yaw={final_yaw:.1f}, antennas={final_antennas}, body_yaw={final_body_yaw:.1f}")
 
+        # Invoke post-movement callbacks
+        for callback in self.post_movement_callbacks:
+            try:
+                callback()
+            except Exception as e:
+                logger.error(f"Error in post-movement callback: {e}")
+
+    def register_post_movement_callback(self, callback):
+        """Register a callback to be called after every movement."""
+        self.post_movement_callbacks.append(callback)
+
     def apply_safety_to_movement(self, roll, pitch, yaw, antennas, body_yaw):
         """
         Apply safety limits to robot movements using the SafetyManager.
@@ -532,6 +546,13 @@ class ReachyController:
             self.reachy_is_awake = False
             # Move to neutral position (0, 0, 0)
             self.mini.goto_sleep()
+            
+            # Invoke post-movement callbacks
+            for callback in self.post_movement_callbacks:
+                try:
+                    callback()
+                except Exception as e:
+                    logger.error(f"Error in post-movement callback: {e}")
 
 
     def get_sample_rate(self) -> int:

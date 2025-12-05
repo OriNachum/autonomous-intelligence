@@ -43,6 +43,8 @@ class MovementManager:
         self.animation_frequency = 0.5  # Hz (0.5 cycles per second = 2 seconds per full cycle)
         self.control_rate = 50  # Hz (50 updates per second)
         
+        self.lock_head_pose()
+
         logger.info("MovementManager initialized")
     
     def start(self):
@@ -66,7 +68,10 @@ class MovementManager:
             self._thread.join(timeout=1.0)
             self._thread = None
         logger.info("MovementManager stopped")
-    
+
+    def lock_head_pose(self):
+        self.head_pose_matrix = self.controller.mini.get_current_head_pose()
+
     def set_mode(self, mode: str):
         """
         Set the operational mode.
@@ -120,13 +125,11 @@ class MovementManager:
                 antenna_position_rad = np.deg2rad(antenna_position_deg)
                 
                 try:
-                    # Get current head pose to maintain head position
-                    head_pose_matrix = self.controller.mini.get_current_head_pose()
                     
                     # Set target with only antennas moving (both antennas mirror each other)
                     self.controller.mini.set_target(
-                        head=head_pose_matrix,
-                        antennas=[antenna_position_rad, antenna_position_rad],
+                        head=self.head_pose_matrix,
+                        antennas=[antenna_position_rad, -1*antenna_position_rad],
                         body_yaw=None  # Maintain current body yaw
                     )
                     

@@ -176,6 +176,12 @@ class ConversationApp:
             self.movement_manager = MovementManager(
                 reachy_controller=self.gateway.reachy_controller
             )
+            
+            # Register callback to lock head pose after every movement
+            # This ensures that when switching back to WAITING/idle mode, 
+            # the animation starts from the current position
+            self.gateway.reachy_controller.register_post_movement_callback(self.movement_manager.lock_head_pose)
+            
             self.movement_manager.start()
             # Start in WAITING mode (idle/listening)
             self.movement_manager.set_mode(MovementManager.MODE_WAITING)
@@ -899,7 +905,12 @@ class ConversationApp:
         """Cleanup resources."""
         logger.info("🧹 Cleaning up...")
         
+        # Set STATIC mode before shutdown to prevent antenna interference
         if self.movement_manager:
+            logger.info("Setting STATIC mode for shutdown...")
+            self.movement_manager.set_mode(MovementManager.MODE_STATIC)
+            # Give time for any in-flight antenna updates to complete
+            await asyncio.sleep(10)
             self.movement_manager.cleanup()
         
         if self.speech_handler:
