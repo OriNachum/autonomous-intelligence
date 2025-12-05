@@ -95,6 +95,9 @@ class ConversationApp:
         
         # Vision context - latest stable vision information
         self.latest_vision_context = None  # Dict with {'objects': [...], 'faces': [...], 'timestamp': int}
+        
+        # Conversation audit logging
+        self.audit_log_path = None
 
     async def initialize(self):
         """Initialize the application."""
@@ -106,6 +109,22 @@ class ConversationApp:
         self.messages = [
             {"role": "system", "content": self.system_prompt}
         ]
+        
+        # Create conversation audit log file
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            log_filename = f"conversation.{timestamp}.log"
+            logs_dir = Path("/app/conversation_app/logs")
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            self.audit_log_path = logs_dir / log_filename
+            
+            # Write system prompt to audit log
+            self._write_audit_log("--- SYSTEM PROMPT ---", self.system_prompt)
+            logger.info(f"✓ Conversation audit log created: {self.audit_log_path}")
+        except Exception as e:
+            logger.error(f"❌ Failed to create conversation audit log: {e}")
+            self.audit_log_path = None
         
         # Initialize ReachyGateway with callback
         try:
@@ -152,6 +171,19 @@ class ConversationApp:
         
         logger.info("✓ App initialized")
         logger.info("=" * 70)
+    
+    def _write_audit_log(self, header: str, content: str):
+        """Write an entry to the conversation audit log."""
+        if not self.audit_log_path:
+            return
+        
+        try:
+            with open(self.audit_log_path, 'a', encoding='utf-8') as f:
+                f.write(f"\n{header}\n")
+                f.write(f"{content}\n")
+                f.write("-" * len(header) + "\n")
+        except Exception as e:
+            logger.error(f"Failed to write to audit log: {e}")
     
     def _trim_conversation_history(self):
         """
@@ -438,7 +470,7 @@ class ConversationApp:
                 # Append visual context to user message
                 if vision_items:
                     visual_context_str = ', '.join(vision_items)
-                    user_message += f" *[Visual Context: I see {visual_context_str}]*"
+                    user_message += f" *[Visual Context: You see {visual_context_str}]*"
                     logger.info(f"🔍 Added visual context: {visual_context_str}")
             else:
                 logger.debug(f"Vision context too old ({vision_age_seconds:.1f}s), skipping")
@@ -560,7 +592,11 @@ class ConversationApp:
         audit_logger = get_logger()
         
         # Add user message to conversation
-        self.messages.append({"role": "user", "content": user_message})
+        user_msg = {"role": "user", "content": user_message}
+        self.messages.append(user_msg)
+        
+        # Write user message to audit log
+        self._write_audit_log("--- USER REQUEST ---", json.dumps(user_msg, indent=2))
         
         # Trim history to keep system + last 9 messages (now 10 total with new user message)
         self._trim_conversation_history()
@@ -777,6 +813,9 @@ class ConversationApp:
             ]
         
         self.messages.append(assistant_msg)
+        
+        # Write assistant message to audit log
+        self._write_audit_log("--- MODEL RESPONSE ---", json.dumps(assistant_msg, indent=2))
         
         # Add tool response messages using 'tool' role (standard format)
         for tool_call_id, result_data in tool_results.items():

@@ -511,28 +511,14 @@ class ActionHandler:
                     audit_logger.log_command_finished(tool_name, state_after, success=success)
                     continue
                 
-                # Build action string for actions_queue
-                if parameters:
-                    # Convert parameters to action string format
-                    param_strs = []
-                    for key, value in parameters.items():
-                        if isinstance(value, str):
-                            param_strs.append(f"{key}='{value}'")
-                        else:
-                            param_strs.append(f"{key}={value}")
-                    
-                    action_str = f"{tool_name}({', '.join(param_strs)})"
-                else:
-                    action_str = tool_name
+                # Execute via actions queue with structured parameters
+                logger.info(f"  ⚡ Executing: {tool_name} with params: {normalized_params}")
                 
-                logger.info(f"  ⚡ Executing: {action_str}")
-                
-                # Execute via actions queue
                 success = True
                 try:
-                    await self.actions_queue.enqueue_action(action_str)
+                    await self.actions_queue.enqueue_command(tool_name, normalized_params)
                 except Exception as e:
-                    logger.error(f"Error executing {action_str}: {e}")
+                    logger.error(f"Error executing {tool_name}: {e}")
                     success = False
                 
                 # Get state after command execution (raw numeric values)
@@ -559,55 +545,6 @@ class ActionHandler:
                 
                 # Audit log: command finished
                 audit_logger.log_command_finished(tool_name, state_after, success=success)
-                return
-            
-            # Build action string for actions_queue
-            if normalized_params:
-                # Convert parameters to action string format
-                param_strs = []
-                for key, value in normalized_params.items():
-                    if isinstance(value, str):
-                        param_strs.append(f"{key}='{value}'")
-                    else:
-                        param_strs.append(f"{key}={value}")
-                
-                action_str = f"{tool_name}({', '.join(param_strs)})"
-            else:
-                action_str = tool_name
-            
-            logger.info(f"  ⚡ Executing: {action_str}")
-            
-            # Execute via actions queue
-            success = True
-            try:
-                await self.actions_queue.enqueue_action(action_str)
-            except Exception as e:
-                logger.error(f"Error executing {action_str}: {e}")
-                success = False
-            
-            # Get state after command execution
-            state_after = None
-            if self.gateway:
-                try:
-                    raw_state = self.gateway.get_current_state()
-                    state_after = {
-                        "roll": raw_state[0],
-                        "pitch": raw_state[1],
-                        "yaw": raw_state[2],
-                        "antennas": raw_state[3],
-                        "body_yaw": raw_state[4]
-                    }
-                    
-                    # Push state_before to history for "back" functionality
-                    if state_before:
-                        self._state_history.append(state_before)
-                        logger.debug(f"Pushed state to history (depth: {len(self._state_history)})")
-                    
-                except Exception as e:
-                    logger.warning(f"Failed to get state after command: {e}")
-            
-            # Audit log: command finished
-            audit_logger.log_command_finished(tool_name, state_after, success=success)
             
         except Exception as e:
             logger.error(f"❌ Error executing tool: {e}")
@@ -633,36 +570,19 @@ class ActionHandler:
         audit_logger = get_logger()
         logger.info(f"🎯 Processing tool call: {tool_name}({parameters})")
         
-        # Build action string for actions_queue from structured tool call
-        if parameters:
-            param_strs = []
-            for key, value in parameters.items():
-                if isinstance(value, str):
-                    param_strs.append(f"{key}='{value}'")
-                else:
-                    param_strs.append(f"{key}={value}")
-            
-            action_str = f"{tool_name}({', '.join(param_strs)})"
-        else:
-            action_str = tool_name
-        
-        logger.info(f"  ⚡ Executing: {action_str}")
-        
-        # Execute via actions queue directly
+        # Execute via actions queue directly with structured parameters
         try:
-            await self.actions_queue.enqueue_action(action_str)
+            await self.actions_queue.enqueue_command(tool_name, parameters)
             return {
                 "status": "success",
-                "action": action_str,
                 "tool_name": tool_name,
                 "parameters": parameters
             }
         except Exception as e:
-            logger.error(f"Error executing {action_str}: {e}")
+            logger.error(f"Error executing {tool_name}: {e}")
             return {
                 "status": "error",
                 "error": str(e),
-                "action": action_str,
                 "tool_name": tool_name,
                 "parameters": parameters
             }
