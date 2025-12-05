@@ -150,31 +150,43 @@ class IdleLayer(MovementLayer):
         self.frequency = frequency
         self._enabled = False
         self._start_time = time.time()
+        self._fade_duration = 0.5  # Duration for smooth fade in/out in seconds
+        self._fade_start_time = None
+        self._fading_in = False
+        self._fading_out = False
+        self._fade_value = 0.0  # Current fade multiplier (0.0 to 1.0)
         
-        logger.info(f"IdleLayer initialized (amplitude={amplitude}°, frequency={frequency}Hz)")
+        logger.info(f"IdleLayer initialized (amplitude={amplitude}°, frequency={frequency}Hz, fade={self._fade_duration}s)")
     
     def is_active(self) -> bool:
-        """Check if idle animations are enabled."""
-        return self._enabled
+        """Check if idle animations are enabled or fading."""
+        return self._enabled or self._fading_out
     
     def enable(self, enabled: bool = True):
         """
-        Enable or disable idle animations.
+        Enable or disable idle animations with smooth fade transition.
         
         Args:
             enabled: True to enable, False to disable
         """
         if enabled and not self._enabled:
+            # Start fading in
+            self._enabled = True
+            self._fading_in = True
+            self._fading_out = False
+            self._fade_start_time = time.time()
             self._start_time = time.time()  # Reset animation phase
-            logger.info("IdleLayer: Enabled")
+            logger.info("IdleLayer: Fading in")
         elif not enabled and self._enabled:
-            logger.info("IdleLayer: Disabled")
-        
-        self._enabled = enabled
+            # Start fading out
+            self._fading_out = True
+            self._fading_in = False
+            self._fade_start_time = time.time()
+            logger.info("IdleLayer: Fading out")
     
     def get_pose(self, current_time: float) -> Optional[RobotPose]:
         """
-        Compute idle animation contribution.
+        Compute idle animation contribution with smooth fade transitions.
         
         Args:
             current_time: Current time in seconds
@@ -182,13 +194,34 @@ class IdleLayer(MovementLayer):
         Returns:
             Pose delta to apply, or None if inactive
         """
-        if not self._enabled:
+        if not self.is_active():
             return None
+        
+        # Update fade value if fading
+        if self._fading_in or self._fading_out:
+            if self._fade_start_time is not None:
+                fade_elapsed = current_time - self._fade_start_time
+                fade_progress = min(1.0, fade_elapsed / self._fade_duration)
+                
+                if self._fading_in:
+                    # Fade in: 0 -> 1
+                    self._fade_value = fade_progress
+                    if fade_progress >= 1.0:
+                        self._fading_in = False
+                        logger.debug("IdleLayer: Fade in complete")
+                elif self._fading_out:
+                    # Fade out: 1 -> 0
+                    self._fade_value = 1.0 - fade_progress
+                    if fade_progress >= 1.0:
+                        self._fading_out = False
+                        self._enabled = False
+                        self._fade_value = 0.0
+                        logger.debug("IdleLayer: Fade out complete, disabled")
         
         # Calculate sinusoidal position
         elapsed = current_time - self._start_time
         angle_rad = 2.0 * math.pi * self.frequency * elapsed
-        antenna_offset = self.amplitude * math.sin(angle_rad)
+        antenna_offset = self.amplitude * math.sin(angle_rad) * self._fade_value
         
         # Return pose with only antenna deltas
         # Note: This is an additive delta, not absolute position

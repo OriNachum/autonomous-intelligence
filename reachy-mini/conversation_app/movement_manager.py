@@ -133,6 +133,15 @@ class MovementManager:
             loop_start = time.time()
             current_time = time.time()
             
+            # Check if robot is awake before sending commands
+            if not self.controller.reachy_is_awake:
+                logger.debug("Robot is asleep, skipping movement commands")
+                # Sleep to maintain loop rate
+                elapsed = time.time() - loop_start
+                sleep_time = max(0, loop_period - elapsed)
+                time.sleep(sleep_time)
+                continue
+            
             try:
                 with self._lock:
                     # 1. Get base pose from base layer

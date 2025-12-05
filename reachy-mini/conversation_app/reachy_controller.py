@@ -339,12 +339,12 @@ class ReachyController:
             Compass direction string (e.g., "North", "North East", "East")
         """
         return mappings.degrees_to_compass(degrees)
-            
+        
     def move_smoothly_to(self, duration=2.0, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """
         Move the robot smoothly to a target position (non-blocking).
         
-        Parameters default to None, which means maintain current position.
+        Parameters default to None, which means maintain current target position.
         Only specified parameters will be updated.
         
         Supports compass directions for yaw and body_yaw (e.g., "North", "East", "West").
@@ -354,10 +354,24 @@ class ReachyController:
         """
         from .robot_pose import RobotPose
         
-        # Get current state
-        curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self.get_current_state()
-        logger.info(f"move_smoothly_to called: current state roll={curr_roll:.1f}°, pitch={curr_pitch:.1f}°, "
-                   f"yaw={curr_yaw:.1f}°, antennas={curr_antennas}, body_yaw={curr_body_yaw:.1f}°")
+        # Get current state - use target from MovementManager if available
+        if self.movement_manager and hasattr(self.movement_manager, 'base_layer'):
+            # Use the current target pose from MovementManager to preserve ongoing movements
+            target_pose = self.movement_manager.base_layer._target_pose
+            curr_roll = target_pose.roll
+            curr_pitch = target_pose.pitch
+            curr_yaw = target_pose.yaw
+            curr_antennas = target_pose.antennas
+            curr_body_yaw = target_pose.body_yaw
+            logger.info(f"move_smoothly_to called: using MovementManager target pose as base: "
+                       f"roll={curr_roll:.1f}°, pitch={curr_pitch:.1f}°, "
+                       f"yaw={curr_yaw:.1f}°, antennas={curr_antennas}, body_yaw={curr_body_yaw:.1f}°")
+        else:
+            # Fallback to physical state if MovementManager is not available
+            curr_roll, curr_pitch, curr_yaw, curr_antennas, curr_body_yaw = self.get_current_state()
+            logger.info(f"move_smoothly_to called: using physical state (no MovementManager): "
+                       f"roll={curr_roll:.1f}°, pitch={curr_pitch:.1f}°, "
+                       f"yaw={curr_yaw:.1f}°, antennas={curr_antennas}, body_yaw={curr_body_yaw:.1f}°")
         
         # Parse compass directions if provided as strings
         if isinstance(yaw, str):
