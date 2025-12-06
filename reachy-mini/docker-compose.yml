@@ -30,6 +30,8 @@ services:
               capabilities: [gpu]
     command: >
       sh -c "
+      rm -rf ./videos/*.jpg &&
+      rm -rf ./recordings/*.wav &&
       hf auth login --token ${HF_TOKEN} --add-to-git-credential &&
       hf download ${MODEL_ID} --cache-dir /root/.cache/huggingface &&
       vllm serve ${MODEL_ID}
