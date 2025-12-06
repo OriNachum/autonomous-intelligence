@@ -323,12 +323,25 @@ class ActionsQueue:
             # Parse parameters
             params = {}
             if params_str:
-                # Split by comma, but respect nested parentheses
+                # Split by comma, but respect nested parentheses AND quotes
                 param_pairs = []
                 current = ""
                 depth = 0
+                in_quote = False
+                quote_char = None
+                
                 for char in params_str:
-                    if char == ',' and depth == 0:
+                    # Track quote state
+                    if char in ['"', "'"]:
+                        if not in_quote:
+                            in_quote = True
+                            quote_char = char
+                        elif char == quote_char:
+                            in_quote = False
+                            quote_char = None
+                    
+                    # Split on comma only if not in quotes and not in nested structures
+                    if char == ',' and depth == 0 and not in_quote:
                         param_pairs.append(current.strip())
                         current = ""
                     else:
@@ -337,6 +350,7 @@ class ActionsQueue:
                         elif char in ')]}':
                             depth -= 1
                         current += char
+                        
                 if current.strip():
                     param_pairs.append(current.strip())
                 
@@ -360,6 +374,18 @@ class ActionsQueue:
         else:
             # Simple action name without parameters
             return {"action": action_string, "params": {}}
+    
+    def enqueue_command(self, action_name: str, params: Dict[str, Any]):
+        """
+        Enqueue an action with structured parameters directly.
+        Avoids string parsing issues.
+        
+        Args:
+            action_name: Name of the action to execute
+            params: Dictionary of parameters
+        """
+        logger.info(f"⚙️  Enqueueing command: {action_name}")
+        self.action_queue.put({"action": action_name, "params": params})
     
     def enqueue_action(self, action_string: str):
         """
@@ -431,6 +457,11 @@ class AsyncActionsQueue:
             event_callback=event_callback,
             tts_queue=tts_queue
         )
+    
+    async def enqueue_command(self, action_name: str, params: Dict[str, Any]):
+        """Enqueue command with structured parameters (async version)."""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self.actions_queue.enqueue_command, action_name, params)
     
     async def enqueue_action(self, action_string: str):
         """Enqueue action for execution (async version)."""

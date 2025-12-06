@@ -286,37 +286,32 @@ class TTSQueue:
     
     def enqueue_text(self, text: str):
         """
-        Extract quoted text and enqueue for TTS playback.
-        If no quotes are found, treat the entire text as speech.
+        Enqueue text for TTS playback.
         
         Args:
-            text: Text that may contain quoted segments to vocalize, or plain text
+            text: Text to vocalize
         """
         audit_logger = get_logger()
         
-        # Extract quoted segments
-        quoted_texts = self.extract_quoted_text(text)
+        # Skip empty text
+        if not text.strip():
+            return
         
-        # If no quoted text found, use the entire text as-is
-        if not quoted_texts:
-            if text.strip():
-                quoted_texts = [text.strip()]
-            else:
-                return
+        # Treat the entire text as speech (no quote extraction)
+        text_to_speak = text.strip()
         
-        print(f"🔊 Enqueueing {len(quoted_texts)} TTS segment(s)...")
+        print(f"🔊 Enqueueing TTS segment...")
         
-        for quoted_text in quoted_texts:
-            # Audit log: TTS request queued
-            audit_logger.log_tts_request_queued(quoted_text)
-            
-            # Convert to speech
-            audio_file = self.text_to_speech(quoted_text)
-            
-            if audio_file:
-                # Add to playback queue
-                self.audio_queue.put(audio_file)
-                print(f'   ✓ Queued: "{quoted_text[:50]}..."' if len(quoted_text) > 50 else f'   ✓ Queued: "{quoted_text}"')
+        # Audit log: TTS request queued
+        audit_logger.log_tts_request_queued(text_to_speak)
+        
+        # Convert to speech
+        audio_file = self.text_to_speech(text_to_speak)
+        
+        if audio_file:
+            # Add to playback queue
+            self.audio_queue.put(audio_file)
+            print(f'   ✓ Queued: "{text_to_speak[:50]}..."' if len(text_to_speak) > 50 else f'   ✓ Queued: "{text_to_speak}"')
     
     def clear_queue(self):
         """Clear all pending audio from the queue."""

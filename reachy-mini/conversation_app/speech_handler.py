@@ -55,6 +55,37 @@ class SpeechHandler:
             logger.error(f"❌ Failed to initialize TTS queue: {e}")
             raise
     
+    def _normalize_text(self, text: str) -> str:
+        """
+        Normalize text for TTS:
+        1. Decode literal unicode escapes (e.g. \\u2019 -> ')
+        2. Replace smart quotes with straight quotes
+        """
+        if not text:
+            return text
+        
+        # 1. Decode literal Unicode escapes like \\u2019
+        # Use a regex to find patterns like \uXXXX and decode them
+        import re
+        def decode_unicode_escape(match):
+            """Decode a single \\uXXXX escape sequence."""
+            try:
+                hex_code = match.group(1)
+                return chr(int(hex_code, 16))
+            except (ValueError, OverflowError):
+                # If invalid, return original
+                return match.group(0)
+        
+        text = re.sub(r'\\u([0-9a-fA-F]{4})', decode_unicode_escape, text)
+        
+        # 2. Replace smart quotes with straight quotes using explicit Unicode codes
+        # Left single quote (U+2018) and right single quote (U+2019) -> straight apostrophe (U+0027)
+        text = text.replace('\u2018', "'").replace('\u2019', "'")
+        # Left double quote (U+201C) and right double quote (U+201D) -> straight quote (U+0022)
+        text = text.replace('\u201C', '"').replace('\u201D', '"')
+        
+        return text
+
     async def speak(self, text: str):
         """
         Queue text for speech output.
@@ -64,6 +95,9 @@ class SpeechHandler:
         """
         if not text or not text.strip():
             return
+            
+        # Normalize text (fix escapes and quotes)
+        text = self._normalize_text(text)
         
         logger.debug(f"Queueing speech: {text[:50]}..." if len(text) > 50 else f"Queueing speech: {text}")
         

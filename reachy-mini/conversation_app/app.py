@@ -35,6 +35,7 @@ import httpx
 import traceback
 import os
 import sys
+import base64
 from pathlib import Path
 from typing import List, Dict, Any
 import logging
@@ -49,6 +50,7 @@ from .action_handler import ActionHandler
 from .gateway import ReachyGateway
 from .logger import get_logger
 from .tool_loader import load_tool_definitions
+from .movement_manager import MovementManager
 
 
 # Set up logging
@@ -60,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 CHAT_COMPLETIONS_URL = os.environ.get("VLLM_FRONT_URL", "http://localhost:8100/v1/chat/completions")
-MODEL_NAME = os.environ.get("MODEL_ID", "RedHatAI/Llama-3.2-3B-Instruct-FP8")
+MODEL_NAME = os.environ.get("MODEL_ID", "RedHatAI/Qwen2.5-VL-7B-Instruct-quantized.w4a16")
 AGENT_TEMPERATURE = 0.7
 
 class ConversationApp:
@@ -85,6 +87,7 @@ class ConversationApp:
         self.parser = ConversationParser()
         self.speech_handler = None  # Will be initialized in initialize()
         self.action_handler = None  # Will be initialized in initialize()
+        self.movement_manager = None  # Will be initialized in initialize()
         
         # Video frame memory - store recent frame paths
         self.recent_frames = []  # List of recent frame paths
@@ -95,6 +98,26 @@ class ConversationApp:
         
         # Vision context - latest stable vision information
         self.latest_vision_context = None  # Dict with {'objects': [...], 'faces': [...], 'timestamp': int}
+        
+        # Conversation audit logging
+        self.audit_log_path = None
+
+    def _encode_image_to_base64(self, image_path: str) -> str:
+        """
+        Encode an image file to base64 for API transmission.
+        
+        Args:
+            image_path: Path to the image file
+            
+        Returns:
+            Base64-encoded string of the image
+        """
+        try:
+            with open(image_path, 'rb') as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
+        except Exception as e:
+            logger.error(f"Failed to encode image {image_path}: {e}")
+            return None
 
     async def initialize(self):
         """Initialize the application."""
@@ -106,6 +129,22 @@ class ConversationApp:
         self.messages = [
             {"role": "system", "content": self.system_prompt}
         ]
+        
+        # Create conversation audit log file
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            log_filename = f"conversation.{timestamp}.log"
+            logs_dir = Path("/app/conversation_app/logs")
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            self.audit_log_path = logs_dir / log_filename
+            
+            # Write system prompt to audit log
+            self._write_audit_log("--- SYSTEM PROMPT ---", self.system_prompt)
+            logger.info(f"✓ Conversation audit log created: {self.audit_log_path}")
+        except Exception as e:
+            logger.error(f"❌ Failed to create conversation audit log: {e}")
+            self.audit_log_path = None
         
         # Initialize ReachyGateway with callback
         try:
@@ -150,8 +189,39 @@ class ConversationApp:
             logger.warning("   Continuing without action execution...")
             self.action_handler = None
         
+        # Initialize movement manager
+        try:
+            self.movement_manager = MovementManager(
+                reachy_controller=self.gateway.reachy_controller
+            )
+            
+            # Link movement manager to controller (enables non-blocking move_smoothly_to)
+            self.gateway.reachy_controller.movement_manager = self.movement_manager
+            
+            self.movement_manager.start()
+            # Start with idle animations enabled (antenna wiggling while waiting)
+            self.movement_manager.enable_idle(True)
+            logger.info("✓ Movement manager initialized and started with idle animations")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize movement manager: {e}")
+            logger.warning("   Continuing without background movements...")
+            self.movement_manager = None
+        
         logger.info("✓ App initialized")
         logger.info("=" * 70)
+    
+    def _write_audit_log(self, header: str, content: str):
+        """Write an entry to the conversation audit log."""
+        if not self.audit_log_path:
+            return
+        
+        try:
+            with open(self.audit_log_path, 'a', encoding='utf-8') as f:
+                f.write(f"\n{header}\n")
+                f.write(f"{content}\n")
+                f.write("-" * len(header) + "\n")
+        except Exception as e:
+            logger.error(f"Failed to write to audit log: {e}")
     
     def _trim_conversation_history(self):
         """
@@ -297,6 +367,11 @@ class ConversationApp:
         Args:
             data: Event data containing event_number, timestamp, etc.
         """
+        # Enable idle animations when user speaks (antennas moving)
+        if self.movement_manager:
+            self.movement_manager.enable_idle(True)
+            logger.debug("Idle animations: enabled (user speaking)")
+        
         # Clear TTS queue when user starts speaking to avoid talking over them
         if self.speech_handler:
             logger.info("🔇 User started speaking - clearing TTS queue")
@@ -438,7 +513,7 @@ class ConversationApp:
                 # Append visual context to user message
                 if vision_items:
                     visual_context_str = ', '.join(vision_items)
-                    user_message += f" *[Visual Context: I see {visual_context_str}]*"
+                    user_message += f" *[Visual Context: You see {visual_context_str}]*"
                     logger.info(f"🔍 Added visual context: {visual_context_str}")
             else:
                 logger.debug(f"Vision context too old ({vision_age_seconds:.1f}s), skipping")
@@ -557,10 +632,55 @@ class ConversationApp:
             The assistant's complete response
         """
         import time
+        import copy
         audit_logger = get_logger()
         
+        # Construct multimodal message content
+        content = [{"type": "text", "text": user_message}]
+        
+        # Add the latest frame if available and recent (< 5 seconds old)
+        if self.recent_frames:
+            latest_frame_path = self.recent_frames[-1]
+            
+            # Check if frame is recent enough
+            try:
+                from pathlib import Path
+                frame_mtime = Path(latest_frame_path).stat().st_mtime
+                current_time = time.time()
+                frame_age_seconds = current_time - frame_mtime
+                
+                if frame_age_seconds < 5.0:
+                    # Encode image to base64
+                    image_base64 = self._encode_image_to_base64(latest_frame_path)
+                    
+                    if image_base64:
+                        # Add image to content
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}"
+                            }
+                        })
+                        logger.info(f"📸 Added image to request: {latest_frame_path} (age: {frame_age_seconds:.1f}s)")
+                    else:
+                        logger.warning(f"Failed to encode image: {latest_frame_path}")
+                else:
+                    logger.debug(f"Frame too old ({frame_age_seconds:.1f}s), skipping image")
+            except Exception as e:
+                logger.error(f"Error checking frame age: {e}")
+        
         # Add user message to conversation
-        self.messages.append({"role": "user", "content": user_message})
+        user_msg = {"role": "user", "content": content}
+        self.messages.append(user_msg)
+        
+        # Write user message to audit log (truncate image data for readability)
+        # Use deepcopy to avoid modifying the original content
+        audit_content = {"role": "user", "content": copy.deepcopy(content)}
+        for item in audit_content["content"]:
+            if item.get("type") == "image_url":
+                # Truncate base64 for audit log
+                item["image_url"]["url"] = item["image_url"]["url"][:50] + "...[truncated]"
+        self._write_audit_log("--- USER REQUEST ---", json.dumps(audit_content, indent=2))
         
         # Trim history to keep system + last 9 messages (now 10 total with new user message)
         self._trim_conversation_history()
@@ -574,6 +694,11 @@ class ConversationApp:
         if self.action_handler and self.current_doa:
             self.action_handler.set_doa(self.current_doa)
             logger.debug(f"DOA passed to action handler: {self.current_doa['angle_degrees']:.1f}°")
+        
+        # Disable idle animations while robot speaks/acts
+        if self.movement_manager:
+            self.movement_manager.enable_idle(False)
+            logger.debug("Idle animations: disabled (robot responding)")
         
         # Clear any pending speech when new user input arrives
         if self.speech_handler:
@@ -600,6 +725,10 @@ class ConversationApp:
         logger.debug(f"Request includes {len(self.tools)} tools")
         
         
+        # Sentence buffer for streaming speech
+        sentence_buffer = ""
+        sentence_delimiters = ('.', '?', '!', '\n')
+        
         # Stream the response
         async for chunk in self.chat_completion_stream(messages=self.messages):
             # Audit log: response started (first chunk only)
@@ -620,19 +749,30 @@ class ConversationApp:
                     is_json_response = True
                     logger.debug("Detected JSON response format")
                 
-                # Only use ConversationParser for non-JSON responses
+                # For non-JSON responses, use sentence buffering
                 if not is_json_response:
-                    # Parse the token for quotes (speech only now, no actions)
-                    self.parser.parse_token(token)
+                    # Add token to sentence buffer
+                    sentence_buffer += token
                     
-                    # Process any speech items that were just parsed
-                    while self.parser.has_speech():
-                        speech_text = self.parser.get_speech()
-                        if speech_text and self.speech_handler:
-                            logger.info(f'🗣️  Speaking: "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking: "{speech_text}"')
-                            # Audit log: parser cut (speech)
-                            audit_logger.log_parser_cut("speech", speech_text)
-                            await self.speech_handler.speak(speech_text)
+                    # Check for sentence delimiters
+                    for delimiter in sentence_delimiters:
+                        if delimiter in sentence_buffer:
+                            # Split on first delimiter and send the complete sentence
+                            parts = sentence_buffer.split(delimiter, 1)
+                            if len(parts) == 2:
+                                sentence = parts[0] + delimiter
+                                sentence_buffer = parts[1]  # Keep remainder for next sentence
+                                
+                                # Send sentence to TTS
+                                sentence_stripped = sentence.strip()
+                                if sentence_stripped and self.speech_handler:
+                                    logger.info(f'🗣️  Speaking: "{sentence_stripped[:50]}..."' if len(sentence_stripped) > 50 else f'🗣️  Speaking: "{sentence_stripped}"')
+                                    # Audit log: sentence cut
+                                    audit_logger.log_parser_cut("speech", sentence_stripped)
+                                    await self.speech_handler.speak(sentence_stripped)
+                                
+                                # Process only one delimiter at a time, break to re-check buffer
+                                break
             
             elif chunk_type == "tool_calls":
                 # Handle tool call deltas
@@ -663,6 +803,14 @@ class ConversationApp:
                             tool_calls_accumulated[index]["function"]["name"] += func_delta["name"]
                         if "arguments" in func_delta:
                             tool_calls_accumulated[index]["function"]["arguments"] += func_delta["arguments"]
+        
+        # After streaming completes, speak any remaining text in the sentence buffer
+        if sentence_buffer.strip() and not is_json_response and self.speech_handler:
+            remaining_text = sentence_buffer.strip()
+            logger.info(f'🗣️  Speaking (remaining): "{remaining_text[:50]}..."' if len(remaining_text) > 50 else f'🗣️  Speaking (remaining): "{remaining_text}"')
+            # Audit log: remaining text
+            audit_logger.log_parser_cut("speech", remaining_text)
+            await self.speech_handler.speak(remaining_text)
         
         # Execute accumulated tool calls
         tool_results = {}  # Store results by tool_call_id
@@ -778,6 +926,9 @@ class ConversationApp:
         
         self.messages.append(assistant_msg)
         
+        # Write assistant message to audit log
+        self._write_audit_log("--- MODEL RESPONSE ---", json.dumps(assistant_msg, indent=2))
+        
         # Add tool response messages using 'tool' role (standard format)
         for tool_call_id, result_data in tool_results.items():
             tool_response_msg = {
@@ -791,6 +942,12 @@ class ConversationApp:
         logger.info(f"✓ Full response received: {full_response[:50]}")
         # Run warm-up for caching in background
         asyncio.create_task(self._warm_up_for_caching(full_response))
+        
+        # Return to WAITING mode after robot finishes speaking/acting
+        if self.movement_manager:
+            # Re-enable idle animations after response complete
+            self.movement_manager.enable_idle(True)
+            logger.debug("Movement mode: WAITING (response complete)")
         
         return full_response
     
@@ -828,6 +985,14 @@ class ConversationApp:
     async def cleanup(self):
         """Cleanup resources."""
         logger.info("🧹 Cleaning up...")
+        
+        # Set STATIC mode before shutdown to prevent antenna interference
+        if self.movement_manager:
+            logger.info("Disabling idle animations for shutdown...")
+            self.movement_manager.enable_idle(False)
+            # Give time for any in-flight antenna updates to complete
+            await asyncio.sleep(0.1)
+            self.movement_manager.cleanup()
         
         if self.speech_handler:
             self.speech_handler.cleanup()
