@@ -339,6 +339,19 @@ class ReachyController:
             Compass direction string (e.g., "North", "North East", "East")
         """
         return mappings.degrees_to_compass(degrees)
+    
+    def _degrees_to_direction(self, degrees: float) -> str:
+        """
+        Convert angle in degrees to nearest natural direction.
+        Delegates to mappings module for consistency.
+        
+        Args:
+            degrees: Angle in degrees (0=front, 90=left, -90=right)
+        
+        Returns:
+            Natural direction string (e.g., "front", "front right", "right")
+        """
+        return mappings.degrees_to_direction(degrees)
         
     def move_smoothly_to(self, duration=2.0, roll=None, pitch=None, yaw=None, antennas=None, body_yaw=None):
         """

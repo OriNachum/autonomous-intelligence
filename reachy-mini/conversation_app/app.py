@@ -560,13 +560,13 @@ class ConversationApp:
 
         logger.info(f"💭 Processing speech event #{event_number}")
         
-        # Convert DOA angle to compass direction
+        # Convert DOA angle to natural direction
         # DOA angle: 0° = front, 90° = right, -90° = left
-        # Map to compass: North = 0°, East = 90°, West = -90°
-        doa_compass = self.gateway._degrees_to_compass(angle_degrees)
+        # Map to natural directions: front = 0°, right = 90°, left = -90°
+        doa_direction = self.gateway._degrees_to_direction(angle_degrees)
         
-        # Create a user message representing the speech event with compass direction
-        user_message = f"*Heard from {doa_compass} ({angle_degrees:.1f}°)* " + f"\"{data.get('transcription', '')}\""
+        # Create a user message representing the speech event with natural direction
+        user_message = f"*Heard from speaker at {doa_direction} ({angle_degrees:.1f}°)* " + f"\"{data.get('transcription', '')}\""
         
         # Add visual context if available and recent (within 5 seconds)
         import time

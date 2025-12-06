@@ -202,6 +202,20 @@ class ReachyGateway:
             return self.reachy_controller._degrees_to_compass(degrees)
         return "North"
     
+    def _degrees_to_direction(self, degrees: float) -> str:
+        """
+        Convert angle in degrees to nearest natural direction.
+        
+        Args:
+            degrees: Angle in degrees (0=front, 90=left, -90=right)
+        
+        Returns:
+            Natural direction string (e.g., "front", "front right", "right")
+        """
+        if self.reachy_controller:
+            return self.reachy_controller._degrees_to_direction(degrees)
+        return "front"
+    
     async def accept_clients(self):
         """Accept new client connections"""
         if not self.enable_socket_server:

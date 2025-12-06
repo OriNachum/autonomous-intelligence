@@ -52,8 +52,13 @@ NATURAL_MAPPINGS = {
     }
 }
 
-# Compass direction vectors for yaw and body_yaw
+# Natural direction vectors for yaw and body_yaw
 CARDINAL_VECTORS = {
+    'front': (0, 1),
+    'back': (0, -1),
+    'left': (-1, 0),   # Fixed: left should be negative X for proper angle calculation
+    'right': (1, 0),   # Fixed: right should be positive X for proper angle calculation
+    # Keep compass directions for backward compatibility
     'north': (0, 1),
     'south': (0, -1),
     'west': (1, 0),
@@ -89,9 +94,9 @@ def name_to_value(parameter_name: str, name: Union[str, float, List]) -> Union[f
             # Pass through as-is for action_handler to resolve dynamically
             return normalized_name
     
-    # Handle compass directions for yaw/body_yaw
+    # Handle natural/compass directions for yaw/body_yaw
     if parameter_name in ['yaw', 'body_yaw'] and isinstance(name, str):
-        return parse_compass_direction(name)
+        return parse_direction(name)
     
     # Handle named parameters
     if parameter_name not in NATURAL_MAPPINGS:
@@ -119,11 +124,11 @@ def value_to_name(parameter_name: str, value: Union[float, List[float]]) -> str:
     Returns:
         Named value (e.g., 'up', 'happy', 'fast') or compass direction
     """
-    # Handle compass directions for yaw/body_yaw
+    # Handle natural directions for yaw/body_yaw
     if parameter_name in ['yaw', 'body_yaw']:
-        # Convert reachy_yaw to compass angle: compass_angle = -2 * reachy_yaw
-        compass_angle = -2.0 * value
-        return degrees_to_compass(compass_angle)
+        # Convert reachy_yaw to angle: angle = -2 * reachy_yaw
+        angle = -2.0 * value
+        return degrees_to_direction(angle)
     
     # Handle antennas (list of values)
     if parameter_name == 'antennas':
@@ -161,20 +166,26 @@ def value_to_name(parameter_name: str, value: Union[float, List[float]]) -> str:
     return closest_name
 
 
-def parse_compass_direction(direction_str: str) -> float:
+def parse_direction(direction_str: str) -> float:
     """
-    Parse compass direction string and convert to Reachy yaw angle in degrees.
+    Parse natural direction string and convert to Reachy yaw angle in degrees.
     
-    Uses vector addition to handle arbitrary compass strings like "North East".
+    Uses vector addition to handle arbitrary direction strings like "front right".
     Reachy's yaw is limited to ±45°, where:
+    - Front (0°) = forward = 0° in Reachy
+    - Right (90°) = right = -45° in Reachy (max right)
+    - Left (-90°) = left = +45° in Reachy (max left)
+    - Back (180°) = backward (limited range)
+    
+    Also supports compass directions for backward compatibility:
     - North (0°) = forward = 0° in Reachy
     - East (90°) = right = -45° in Reachy (max right)
     - West (-90°) = left = +45° in Reachy (max left)
     
-    Formula: reachy_yaw = -1 * (compass_angle / 2)
+    Formula: reachy_yaw = -1 * (angle / 2)
     
     Args:
-        direction_str: Compass direction (e.g., "North", "East", "West", "North East")
+        direction_str: Natural or compass direction (e.g., "front", "right", "front right", "North East")
     
     Returns:
         Yaw angle in degrees for Reachy, clamped to ±45°
@@ -194,56 +205,60 @@ def parse_compass_direction(direction_str: str) -> float:
             total_x += x
             total_y += y
     
-    # If no valid tokens found, default to North (forward)
+    # If no valid tokens found, default to front (forward)
     if total_x == 0 and total_y == 0:
-        logger.warning(f"No valid compass direction in '{direction_str}', defaulting to North (0°)")
+        logger.warning(f"No valid direction in '{direction_str}', defaulting to front (0°)")
         return 0.0
     
-    # Calculate the angle of the resulting vector relative to North
-    # atan2 gives angle from East (positive x-axis), we need from North (positive y-axis)
-    compass_angle_rad = np.arctan2(total_x, total_y)  # Note: swapped x and y for North=0
-    compass_angle_deg = np.degrees(compass_angle_rad)
+    # Calculate the angle of the resulting vector relative to front
+    # atan2 gives angle from East (positive x-axis), we need from front (positive y-axis)
+    angle_rad = np.arctan2(total_x, total_y)  # Note: swapped x and y for front=0
+    angle_deg = np.degrees(angle_rad)
     
-    # Map compass angle to Reachy yaw
-    # Compass: East=90°, West=-90° (or 270°)
+    # Map angle to Reachy yaw
+    # Angle: Right=90°, Left=-90° (or 270°)
     # Reachy: Max Right=-45°, Max Left=+45°
-    # Formula: reachy_yaw = -1 * (compass_angle / 2)
-    reachy_yaw = -1.0 * (compass_angle_deg / 2.0)
+    # Formula: reachy_yaw = -1 * (angle / 2)
+    reachy_yaw = -1.0 * (angle_deg / 2.0)
     
     # Clamp to safety limits (±45°)
     MAX_YAW = 45.0
     reachy_yaw = np.clip(reachy_yaw, -MAX_YAW, MAX_YAW)
     
-    logger.debug(f"Parsed compass direction '{direction_str}': compass_angle={compass_angle_deg:.1f}°, "
+    logger.debug(f"Parsed direction '{direction_str}': angle={angle_deg:.1f}°, "
                 f"reachy_yaw={reachy_yaw:.1f}°")
     
     return float(reachy_yaw)
 
 
-def degrees_to_compass(degrees: float) -> str:
+# Keep parse_compass_direction as an alias for backward compatibility
+parse_compass_direction = parse_direction
+
+
+def degrees_to_direction(degrees: float) -> str:
     """
-    Convert compass angle in degrees to nearest cardinal/intercardinal direction.
+    Convert angle in degrees to nearest natural direction.
     
     Args:
-        degrees: Compass angle in degrees (0=North, 90=West, -90=East)
+        degrees: Angle in degrees (0=front, 90=left, -90=right)
     
     Returns:
-        Compass direction string (e.g., "North", "North East", "East")
+        Natural direction string (e.g., "front", "front right", "right")
     """
     # Normalize to [0, 360)
     degrees = degrees % 360.0
     
-    # Quantize to 8 directions (N, NE, E, SE, S, SW, W, NW)
+    # Quantize to 8 directions (front, front right, right, back right, back, back left, left, front left)
     # Each direction spans 45°
     directions = [
-        "North",      # 337.5-22.5 (wraps around 0)
-        "North West", # 22.5-67.5
-        "West",       # 67.5-112.5
-        "South West", # 112.5-157.5
-        "South",      # 157.5-202.5
-        "South East", # 202.5-247.5
-        "East",       # 247.5-292.5
-        "North East"  # 292.5-337.5
+        "front",       # 337.5-22.5 (wraps around 0)
+        "front left",  # 22.5-67.5
+        "left",        # 67.5-112.5
+        "back left",   # 112.5-157.5
+        "back",        # 157.5-202.5
+        "back right",  # 202.5-247.5
+        "right",       # 247.5-292.5
+        "front right"  # 292.5-337.5
     ]
     
     # Convert to index (0-7)
@@ -251,3 +266,7 @@ def degrees_to_compass(degrees: float) -> str:
     index = int((degrees + 22.5) / 45.0) % 8
     
     return directions[index]
+
+
+# Keep degrees_to_compass as an alias for backward compatibility
+degrees_to_compass = degrees_to_direction
