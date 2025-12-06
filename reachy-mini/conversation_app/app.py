@@ -35,6 +35,7 @@ import httpx
 import traceback
 import os
 import sys
+import base64
 from pathlib import Path
 from typing import List, Dict, Any
 import logging
@@ -61,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 CHAT_COMPLETIONS_URL = os.environ.get("VLLM_FRONT_URL", "http://localhost:8100/v1/chat/completions")
-MODEL_NAME = os.environ.get("MODEL_ID", "RedHatAI/Llama-3.2-3B-Instruct-FP8")
+MODEL_NAME = os.environ.get("MODEL_ID", "RedHatAI/Qwen2.5-VL-7B-Instruct-quantized.w4a16")
 AGENT_TEMPERATURE = 0.7
 
 class ConversationApp:
@@ -100,6 +101,23 @@ class ConversationApp:
         
         # Conversation audit logging
         self.audit_log_path = None
+
+    def _encode_image_to_base64(self, image_path: str) -> str:
+        """
+        Encode an image file to base64 for API transmission.
+        
+        Args:
+            image_path: Path to the image file
+            
+        Returns:
+            Base64-encoded string of the image
+        """
+        try:
+            with open(image_path, 'rb') as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
+        except Exception as e:
+            logger.error(f"Failed to encode image {image_path}: {e}")
+            return None
 
     async def initialize(self):
         """Initialize the application."""
@@ -614,14 +632,55 @@ class ConversationApp:
             The assistant's complete response
         """
         import time
+        import copy
         audit_logger = get_logger()
         
+        # Construct multimodal message content
+        content = [{"type": "text", "text": user_message}]
+        
+        # Add the latest frame if available and recent (< 5 seconds old)
+        if self.recent_frames:
+            latest_frame_path = self.recent_frames[-1]
+            
+            # Check if frame is recent enough
+            try:
+                from pathlib import Path
+                frame_mtime = Path(latest_frame_path).stat().st_mtime
+                current_time = time.time()
+                frame_age_seconds = current_time - frame_mtime
+                
+                if frame_age_seconds < 5.0:
+                    # Encode image to base64
+                    image_base64 = self._encode_image_to_base64(latest_frame_path)
+                    
+                    if image_base64:
+                        # Add image to content
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}"
+                            }
+                        })
+                        logger.info(f"📸 Added image to request: {latest_frame_path} (age: {frame_age_seconds:.1f}s)")
+                    else:
+                        logger.warning(f"Failed to encode image: {latest_frame_path}")
+                else:
+                    logger.debug(f"Frame too old ({frame_age_seconds:.1f}s), skipping image")
+            except Exception as e:
+                logger.error(f"Error checking frame age: {e}")
+        
         # Add user message to conversation
-        user_msg = {"role": "user", "content": user_message}
+        user_msg = {"role": "user", "content": content}
         self.messages.append(user_msg)
         
-        # Write user message to audit log
-        self._write_audit_log("--- USER REQUEST ---", json.dumps(user_msg, indent=2))
+        # Write user message to audit log (truncate image data for readability)
+        # Use deepcopy to avoid modifying the original content
+        audit_content = {"role": "user", "content": copy.deepcopy(content)}
+        for item in audit_content["content"]:
+            if item.get("type") == "image_url":
+                # Truncate base64 for audit log
+                item["image_url"]["url"] = item["image_url"]["url"][:50] + "...[truncated]"
+        self._write_audit_log("--- USER REQUEST ---", json.dumps(audit_content, indent=2))
         
         # Trim history to keep system + last 9 messages (now 10 total with new user message)
         self._trim_conversation_history()
