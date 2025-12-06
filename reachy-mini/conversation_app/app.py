@@ -51,6 +51,7 @@ from .gateway import ReachyGateway
 from .logger import get_logger
 from .tool_loader import load_tool_definitions
 from .movement_manager import MovementManager
+from .memory_manager import MemoryManager
 
 
 # Set up logging
@@ -88,6 +89,7 @@ class ConversationApp:
         self.speech_handler = None  # Will be initialized in initialize()
         self.action_handler = None  # Will be initialized in initialize()
         self.movement_manager = None  # Will be initialized in initialize()
+        self.memory_manager = None  # Will be initialized in initialize()
         
         # Video frame memory - store recent frame paths
         self.recent_frames = []  # List of recent frame paths
@@ -125,7 +127,34 @@ class ConversationApp:
         logger.info("Initializing Conversation App")
         logger.info("=" * 70)
         
-        # Initialize conversation with system prompt
+        # Initialize memory manager
+        try:
+            memory_file_path = "/app/conversation_app/data/memento.json"
+            self.memory_manager = MemoryManager(
+                file_path=memory_file_path,
+                model_name=MODEL_NAME,
+                api_url=CHAT_COMPLETIONS_URL,
+                temperature=0.3  # Lower temperature for more consistent memory updates
+            )
+            
+            # Load memory and inject into system context
+            memory_context = self.memory_manager.load_memory()
+            
+            # Create system message with memory context
+            system_content = self.system_prompt
+            if memory_context and memory_context != "No previous context available.":
+                system_content += f"\n\n## Persistent Memory\n\n{memory_context}"
+                logger.info("✓ Memory loaded and injected into system prompt")
+            else:
+                logger.info("✓ Memory manager initialized (no previous memory)")
+            
+            self.system_prompt = system_content
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize memory manager: {e}")
+            logger.warning("   Continuing without memory management...")
+            self.memory_manager = None
+        
+        # Initialize conversation with system prompt (now includes memory)
         self.messages = [
             {"role": "system", "content": self.system_prompt}
         ]
@@ -306,6 +335,59 @@ class ConversationApp:
             except Exception as e:
                 logger.error(f"Error during dummy request for caching: {e}")
                 raise
+
+    async def _update_memory_background(self, user_message: str, assistant_response: str):
+        """
+        Update memory in background without blocking conversation flow.
+        
+        Args:
+            user_message: The user's message (may include multimodal content)
+            assistant_response: The assistant's text response
+        """
+        try:
+            # Extract text from user message (handle multimodal content)
+            user_text = user_message
+            if isinstance(user_message, list):
+                # Extract text from multimodal content
+                text_parts = [item.get('text', '') for item in user_message if item.get('type') == 'text']
+                user_text = ' '.join(text_parts)
+            elif isinstance(user_message, dict):
+                user_text = user_message.get('content', str(user_message))
+            
+            logger.debug(f"Updating memory for interaction: {user_text[:50]}...")
+            
+            # Call memory manager to update
+            updated_memory_str = await self.memory_manager.update_memory(
+                last_user_message=user_text,
+                last_assistant_response=assistant_response
+            )
+            
+            if updated_memory_str:
+                # Update system prompt with new memory for next conversation turn
+                # Find the base system prompt (before memory section)
+                if "## Persistent Memory" in self.system_prompt:
+                    base_prompt = self.system_prompt.split("## Persistent Memory")[0].rstrip()
+                else:
+                    base_prompt = self.system_prompt
+                
+                # Append updated memory
+                if updated_memory_str and updated_memory_str != "No previous context available.":
+                    self.system_prompt = f"{base_prompt}\n\n## Persistent Memory\n\n{updated_memory_str}"
+                else:
+                    self.system_prompt = base_prompt
+                
+                # Update the system message in conversation history
+                if self.messages and self.messages[0].get('role') == 'system':
+                    self.messages[0]['content'] = self.system_prompt
+                
+                logger.info("✓ Memory updated and injected into system prompt")
+            else:
+                logger.warning("Memory update returned empty result")
+                
+        except Exception as e:
+            logger.error(f"Error updating memory in background: {e}")
+            import traceback
+            traceback.print_exc()
 
 
     async def on_action_event(self, event_type: str, data: Dict[str, Any]):
@@ -940,6 +1022,12 @@ class ConversationApp:
             logger.debug(f"Added tool response to history for tool_call_id: {tool_call_id}")
         
         logger.info(f"✓ Full response received: {full_response[:50]}")
+        
+        # Update memory asynchronously in background
+        if self.memory_manager:
+            # Spawn background task to update memory without blocking
+            asyncio.create_task(self._update_memory_background(user_message, full_response))
+        
         # Run warm-up for caching in background
         asyncio.create_task(self._warm_up_for_caching(full_response))
         
