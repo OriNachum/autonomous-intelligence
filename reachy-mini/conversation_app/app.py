@@ -725,6 +725,10 @@ class ConversationApp:
         logger.debug(f"Request includes {len(self.tools)} tools")
         
         
+        # Sentence buffer for streaming speech
+        sentence_buffer = ""
+        sentence_delimiters = ('.', '?', '!', '\n')
+        
         # Stream the response
         async for chunk in self.chat_completion_stream(messages=self.messages):
             # Audit log: response started (first chunk only)
@@ -745,19 +749,30 @@ class ConversationApp:
                     is_json_response = True
                     logger.debug("Detected JSON response format")
                 
-                # Only use ConversationParser for non-JSON responses
+                # For non-JSON responses, use sentence buffering
                 if not is_json_response:
-                    # Parse the token for quotes (speech only now, no actions)
-                    self.parser.parse_token(token)
+                    # Add token to sentence buffer
+                    sentence_buffer += token
                     
-                    # Process any speech items that were just parsed
-                    while self.parser.has_speech():
-                        speech_text = self.parser.get_speech()
-                        if speech_text and self.speech_handler:
-                            logger.info(f'🗣️  Speaking: "{speech_text[:50]}..."' if len(speech_text) > 50 else f'🗣️  Speaking: "{speech_text}"')
-                            # Audit log: parser cut (speech)
-                            audit_logger.log_parser_cut("speech", speech_text)
-                            await self.speech_handler.speak(speech_text)
+                    # Check for sentence delimiters
+                    for delimiter in sentence_delimiters:
+                        if delimiter in sentence_buffer:
+                            # Split on first delimiter and send the complete sentence
+                            parts = sentence_buffer.split(delimiter, 1)
+                            if len(parts) == 2:
+                                sentence = parts[0] + delimiter
+                                sentence_buffer = parts[1]  # Keep remainder for next sentence
+                                
+                                # Send sentence to TTS
+                                sentence_stripped = sentence.strip()
+                                if sentence_stripped and self.speech_handler:
+                                    logger.info(f'🗣️  Speaking: "{sentence_stripped[:50]}..."' if len(sentence_stripped) > 50 else f'🗣️  Speaking: "{sentence_stripped}"')
+                                    # Audit log: sentence cut
+                                    audit_logger.log_parser_cut("speech", sentence_stripped)
+                                    await self.speech_handler.speak(sentence_stripped)
+                                
+                                # Process only one delimiter at a time, break to re-check buffer
+                                break
             
             elif chunk_type == "tool_calls":
                 # Handle tool call deltas
@@ -788,6 +803,14 @@ class ConversationApp:
                             tool_calls_accumulated[index]["function"]["name"] += func_delta["name"]
                         if "arguments" in func_delta:
                             tool_calls_accumulated[index]["function"]["arguments"] += func_delta["arguments"]
+        
+        # After streaming completes, speak any remaining text in the sentence buffer
+        if sentence_buffer.strip() and not is_json_response and self.speech_handler:
+            remaining_text = sentence_buffer.strip()
+            logger.info(f'🗣️  Speaking (remaining): "{remaining_text[:50]}..."' if len(remaining_text) > 50 else f'🗣️  Speaking (remaining): "{remaining_text}"')
+            # Audit log: remaining text
+            audit_logger.log_parser_cut("speech", remaining_text)
+            await self.speech_handler.speak(remaining_text)
         
         # Execute accumulated tool calls
         tool_results = {}  # Store results by tool_call_id
