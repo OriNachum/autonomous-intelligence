@@ -116,6 +116,14 @@ class ReachyGateway:
         self.shutdown_requested = False
         
         logger.info("Reachy Gateway initialization complete")
+            
+    def reload_vision_models(self):
+        """Reload vision models (e.g. after adding a new face)."""
+        if self.gateway_video:
+            self.gateway_video.reload_processors()
+            logger.info("Vision models reloaded successfully")
+        else:
+            logger.warning("Cannot reload vision models: Video processing disabled")
     
     def setup_signal_handlers(self):
         """Register signal handlers for graceful shutdown"""

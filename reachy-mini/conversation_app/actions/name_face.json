@@ -1,0 +1,21 @@
+{
+    "name": "name_face",
+    "description": "Renames a known face from a temporary ID (e.g. JohnDoe1) to a real name.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "current_name": {
+                "type": "string",
+                "description": "The current name of the face (e.g. 'JohnDoe1')"
+            },
+            "new_name": {
+                "type": "string",
+                "description": "The new name to assign to the face (e.g. 'Alice')"
+            }
+        },
+        "required": [
+            "current_name",
+            "new_name"
+        ]
+    }
+}

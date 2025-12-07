@@ -76,7 +76,10 @@ class GatewayVideo:
             self.processor_manager.register_processor(yolo)
             
             # Register Face Recognition processor
-            face_rec = FaceRecognitionProcessor(known_faces_dir='./conversation_app/data/faces')
+            face_rec = FaceRecognitionProcessor(
+                known_faces_dir='./conversation_app/data/faces',
+                event_callback=event_callback
+            )
             self.processor_manager.register_processor(face_rec)
             
             logger.info("Image processors initialized")
@@ -181,6 +184,25 @@ class GatewayVideo:
         if self.polling_task:
             self.polling_task.cancel()
             self.polling_task = None
+
+    def reload_processors(self):
+        """
+        Reload all processors.
+        """
+        if self.processor_manager:
+            logger.info("Reloading image processors...")
+            # Re-register processors to force reload
+            # For now, we'll just re-initialize them if they support it
+            # But ProcessorManager doesn't have a reload method, so we might need to iterate
+            
+            for processor in self.processor_manager.processors:
+                try:
+                    logger.info(f"Reloading processor: {processor.name}")
+                    processor.initialize()
+                except Exception as e:
+                    logger.error(f"Error reloading processor {processor.name}: {e}")
+            
+            logger.info("Image processors reloaded")
 
     def cleanup(self):
         self.stop()

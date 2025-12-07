@@ -294,6 +294,8 @@ class ConversationApp:
             await self.on_vision_result(data)
         elif event_type == "face_recognition_result":
             await self.on_vision_result(data)
+        elif event_type == "new_face_saved":
+            await self.on_new_face_saved(data)
         else:
             logger.debug(f"Unhandled event type: {event_type}")
     
@@ -485,6 +487,33 @@ class ConversationApp:
             self.recent_frames = self.recent_frames[-self.max_frames_in_memory:]
         
         logger.debug(f"Stored frame path in memory. Total frames in memory: {len(self.recent_frames)}")
+    
+    async def on_new_face_saved(self, data: Dict[str, Any]):
+        """
+        Callback for new face saved events.
+        
+        Args:
+            data: Event data containing name, location, image_path, timestamp
+        """
+        name = data.get("name")
+        image_path = data.get("image_path")
+        timestamp = data.get("timestamp")
+        
+        logger.info(f"👤 New face saved: {name} at {image_path}")
+        
+        # Update vision context to include the new face
+        if self.latest_vision_context is None:
+            self.latest_vision_context = {
+                'objects': [],
+                'faces': [],
+                'timestamp': timestamp
+            }
+        
+        # Add the new face to the context
+        if name not in self.latest_vision_context['faces']:
+            self.latest_vision_context['faces'].append(name)
+            self.latest_vision_context['timestamp'] = timestamp
+            logger.info(f"Added {name} to vision context")
     
     async def on_vision_result(self, data: Dict[str, Any]):
         """
