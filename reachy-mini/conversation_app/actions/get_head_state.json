@@ -1,13 +1,16 @@
 {
-  "name": "get_head_state",
-  "description": "Get the current state of the robot's head.\n\nReturns the head's current position (x, y, z) and orientation (roll, pitch, yaw).",
-  "parameters": {
-    "required": [],
-    "optional": []
+  "type": "function",
+  "function": {
+    "name": "get_head_state",
+    "description": "Get the current state of the robot's head.\n\nReturns the head's current position (x, y, z) and orientation (roll, pitch, yaw).",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
   },
   "execution": {
     "type": "script",
     "script_file": "get_head_state.py"
   }
 }
-

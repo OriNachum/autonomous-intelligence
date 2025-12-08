@@ -1,68 +1,62 @@
 {
-  "name": "move_head",
-  "description": "Move the robot's head to a target pose.\n\nExample:\n    Move head up 10mm and roll 15 degrees:\n    move_head(z=10, roll=15, duration=2.0)",
-  "parameters": {
-    "required": [],
-    "optional": [
-      {
-        "name": "x",
-        "type": "number",
-        "default": 0.0,
-        "description": "X position offset (millimeters by default)"
+  "type": "function",
+  "function": {
+    "name": "move_head",
+    "description": "Move the robot's head to a target pose.\n\nExample:\n    Move head up 10mm and roll 15 degrees:\n    move_head(z=10, roll=15, duration=2.0)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X position offset (millimeters by default)",
+          "default": 0.0
+        },
+        "y": {
+          "type": "number",
+          "description": "Y position offset (millimeters by default)",
+          "default": 0.0
+        },
+        "z": {
+          "type": "number",
+          "description": "Z position offset (millimeters by default)",
+          "default": 0.0
+        },
+        "roll": {
+          "type": "number",
+          "description": "Roll angle (degrees by default)",
+          "default": 0.0
+        },
+        "pitch": {
+          "type": "number",
+          "description": "Pitch angle (degrees by default)",
+          "default": 0.0
+        },
+        "yaw": {
+          "type": "number",
+          "description": "Yaw angle (degrees by default)",
+          "default": 0.0
+        },
+        "duration": {
+          "type": "number",
+          "description": "Duration of the movement in seconds",
+          "default": 2.0
+        },
+        "degrees": {
+          "type": "boolean",
+          "description": "If True (default), angles are in degrees",
+          "default": true
+        },
+        "mm": {
+          "type": "boolean",
+          "description": "If True (default), positions are in millimeters",
+          "default": true
+        }
       },
-      {
-        "name": "y",
-        "type": "number",
-        "default": 0.0,
-        "description": "Y position offset (millimeters by default)"
-      },
-      {
-        "name": "z",
-        "type": "number",
-        "default": 0.0,
-        "description": "Z position offset (millimeters by default)"
-      },
-      {
-        "name": "roll",
-        "type": "number",
-        "default": 0.0,
-        "description": "Roll angle (degrees by default)"
-      },
-      {
-        "name": "pitch",
-        "type": "number",
-        "default": 0.0,
-        "description": "Pitch angle (degrees by default)"
-      },
-      {
-        "name": "yaw",
-        "type": "number",
-        "default": 0.0,
-        "description": "Yaw angle (degrees by default)"
-      },
-      {
-        "name": "duration",
-        "type": "number",
-        "default": 2.0,
-        "description": "Duration of the movement in seconds"
-      },
-      {
-        "name": "degrees",
-        "type": "boolean",
-        "default": true,
-        "description": "If True (default), angles are in degrees"
-      },
-      {
-        "name": "mm",
-        "type": "boolean",
-        "default": true,
-        "description": "If True (default), positions are in millimeters"
-      }
-    ]
+      "required": []
+    }
   },
   "execution": {
     "type": "script",
     "script_file": "move_head.py"
   }
 }
-

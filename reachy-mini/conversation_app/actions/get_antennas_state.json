@@ -1,13 +1,16 @@
 {
-  "name": "get_antennas_state",
-  "description": "Get the current state of the robot's antennas.\n\nReturns the current position of left and right antennas.",
-  "parameters": {
-    "required": [],
-    "optional": []
+  "type": "function",
+  "function": {
+    "name": "get_antennas_state",
+    "description": "Get the current state of the robot's antennas.\n\nReturns the current position of left and right antennas.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
   },
   "execution": {
     "type": "script",
     "script_file": "get_antennas_state.py"
   }
 }
-

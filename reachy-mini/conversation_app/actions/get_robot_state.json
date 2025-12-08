@@ -1,13 +1,16 @@
 {
-  "name": "get_robot_state",
-  "description": "Get the current full state of the Reachy Mini robot.\n\nReturns detailed information about:\n- Motors (head, antennas) and their current positions\n- Camera status\n- Power state\n- Connection status",
-  "parameters": {
-    "required": [],
-    "optional": []
+  "type": "function",
+  "function": {
+    "name": "get_robot_state",
+    "description": "Get the current full state of the Reachy Mini robot.\n\nReturns detailed information about:\n- Motors (head, antennas) and their current positions\n- Camera status\n- Power state\n- Connection status",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
   },
   "execution": {
     "type": "script",
     "script_file": "get_robot_state.py"
   }
 }
-

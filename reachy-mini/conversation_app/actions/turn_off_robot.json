@@ -1,20 +1,21 @@
 {
-  "name": "turn_off_robot",
-  "description": "Turn off the robot's motors and deactivate systems.\n\nThis powers down the robot safely. Use this when done controlling the robot.",
-  "parameters": {
-    "required": [],
-    "optional": [
-      {
-        "name": "speech",
-        "type": "string",
-        "default": null,
-        "description": "Optional text to speak via TTS before turning off robot"
-      }
-    ]
+  "type": "function",
+  "function": {
+    "name": "turn_off_robot",
+    "description": "Turn off the robot's motors and deactivate systems.\n\nThis powers down the robot safely. Use this when done controlling the robot.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "speech": {
+          "type": "string",
+          "description": "Optional text to speak via TTS before turning off robot"
+        }
+      },
+      "required": []
+    }
   },
   "execution": {
     "type": "script",
     "script_file": "turn_off_robot.py"
   }
 }
-

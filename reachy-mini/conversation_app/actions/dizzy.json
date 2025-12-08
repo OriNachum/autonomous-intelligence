@@ -1,16 +1,18 @@
 {
-  "name": "dizzy",
-  "description": "Make the robot look dizzy by moving its head in slow circles.\n\nThis performs a smooth circular motion for a dizzy effect using roll and pitch variations.",
-  "parameters": {
-    "required": [],
-    "optional": [
-      {
-        "name": "speech",
-        "type": "string",
-        "default": null,
-        "description": "Optional text to speak via TTS while performing dizzy motion"
-      }
-    ]
+  "type": "function",
+  "function": {
+    "name": "dizzy",
+    "description": "Make the robot look dizzy by moving its head in slow circles.\n\nThis performs a smooth circular motion for a dizzy effect using roll and pitch variations.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "speech": {
+          "type": "string",
+          "description": "Optional text to speak via TTS while performing dizzy motion"
+        }
+      },
+      "required": []
+    }
   },
   "execution": {
     "type": "script",

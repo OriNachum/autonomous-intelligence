@@ -1,25 +1,27 @@
 {
-  "name": "express_emotion",
-  "description": "Make the robot express an emotion using head and antenna movements.\n\nThis combines head and antenna movements to create emotional expressions.",
-  "parameters": {
-    "required": [
-      {
-        "name": "emotion",
-        "type": "string",
-        "description": "One of: 'happy', 'sad', 'curious', 'surprised', 'confused', 'neutral'"
-      }
-    ],
-    "optional": [
-      {
-        "type": "string",
-        "default": null,
-        "description": "Optional text to speak via TTS while performing the emotion"
-      }
-    ]
+  "type": "function",
+  "function": {
+    "name": "express_emotion",
+    "description": "Make the robot express an emotion using head and antenna movements.\n\nThis combines head and antenna movements to create emotional expressions.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "emotion": {
+          "type": "string",
+          "description": "One of: 'happy', 'sad', 'curious', 'surprised', 'confused', 'neutral'"
+        },
+        "speech": {
+          "type": "string",
+          "description": "Optional text to speak via TTS while performing the emotion"
+        }
+      },
+      "required": [
+        "emotion"
+      ]
+    }
   },
   "execution": {
     "type": "script",
     "script_file": "express_emotion.py"
   }
 }
-

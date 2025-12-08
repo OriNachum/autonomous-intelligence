@@ -1,20 +1,21 @@
 {
-  "name": "stop_all_movements",
-  "description": "Emergency stop - immediately halt all robot movements.\n\nThis stops the head and antennas in their current positions.",
-  "parameters": {
-    "required": [],
-    "optional": [
-      {
-        "name": "speech",
-        "type": "string",
-        "default": null,
-        "description": "Optional text to speak via TTS when stopping"
-      }
-    ]
+  "type": "function",
+  "function": {
+    "name": "stop_all_movements",
+    "description": "Emergency stop - immediately halt all robot movements.\n\nThis stops the head and antennas in their current positions.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "speech": {
+          "type": "string",
+          "description": "Optional text to speak via TTS when stopping"
+        }
+      },
+      "required": []
+    }
   },
   "execution": {
     "type": "script",
     "script_file": "stop_all_movements.py"
   }
 }
-
