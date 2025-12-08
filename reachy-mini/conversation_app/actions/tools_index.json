@@ -48,9 +48,9 @@
       "definition_file": "move_antennas.json"
     },
     {
-      "name": "name_face",
+      "name": "remember_face",
       "enabled": true,
-      "definition_file": "name_face.json"
+      "definition_file": "remember_face.json"
     },
     {
       "name": "reset_antennas",
