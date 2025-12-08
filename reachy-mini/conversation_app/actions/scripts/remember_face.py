@@ -9,24 +9,21 @@ from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 logger = logging.getLogger("name_face")
-
-def name_face(current_name, new_name, gateway=None):
+    
+def execute(controller, tts_queue, params):
     """
     Rename a face directory and reload vision models.
     
     Args:
-        current_name: Current name (e.g. "JohnDoe1")
-        new_name: New name (e.g. "Alice")
-        gateway: ReachyGateway instance (optional, for reloading models)
-        
-    Returns:
-        Dictionary with 'success', 'message', and optional 'error' keys
+        controller: ReachyGateway instance for robot control
+        tts_queue: TTS queue for speech synthesis
+        params: Dictionary with face parameters
     """
     faces_dir = Path("./conversation_app/data/faces")
     
     # Sanitize names (basic check)
-    current_name = "".join(c for c in current_name if c.isalnum() or c in ('-', '_'))
-    new_name = "".join(c for c in new_name if c.isalnum() or c in ('-', '_'))
+    current_name = "".join(c for c in params.get('current_name', '') if c.isalnum() or c in ('-', '_'))
+    new_name = "".join(c for c in params.get('new_name', '') if c.isalnum() or c in ('-', '_'))
     
     current_path = faces_dir / current_name
     new_path = faces_dir / new_name
