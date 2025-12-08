@@ -2,12 +2,12 @@
 import asyncio
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """
     Make the robot shake its head (yaw left and right).
     
     Args:
-        controller: ReachyGateway instance for robot control
+        gateway: ReachyGateway instance for robot control
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with duration and angle parameters
     """
@@ -29,14 +29,15 @@ async def execute(controller, tts_queue, params):
         await tts_queue.enqueue_text(speech)
     
     # Shake left
-    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=-angle)
+    await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, yaw=-angle)
     await asyncio.sleep(duration)
     
     # Shake right
-    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=angle)
+    await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, yaw=angle)
     await asyncio.sleep(duration)
     
     # Return to neutral
-    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=0)
+    await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, yaw=0)
     
     return {"status": "success"}
+

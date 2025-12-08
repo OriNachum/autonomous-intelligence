@@ -4,7 +4,7 @@ Moves the robot's antennas independently.
 """
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """Execute the move_antennas tool."""
     import asyncio
     
@@ -39,7 +39,7 @@ async def execute(controller, tts_queue, params):
         antennas_array = [right_angle, left_angle]  # Note: order is [right, left]
         
         # Use controller to move antennas
-        await asyncio.to_thread(controller.move_smoothly_to, duration=parsed_duration, antennas=antennas_array)
+        await asyncio.to_thread(gateway.move_smoothly_to, duration=parsed_duration, antennas=antennas_array)
         
         return {"status": "success"}
     else:

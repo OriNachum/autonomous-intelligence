@@ -2,12 +2,12 @@
 import asyncio
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """
     Move the robot's head to a specific pose (roll, pitch, yaw).
     
     Args:
-        controller: ReachyGateway instance for robot control
+        gateway: ReachyGateway instance for robot control
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with roll, pitch, yaw, duration parameters
     """
@@ -39,7 +39,7 @@ async def execute(controller, tts_queue, params):
         await tts_queue.enqueue_text(speech)
     
     # Move head using controller
-    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, roll=roll, pitch=pitch, yaw=yaw)
+    await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, roll=roll, pitch=pitch, yaw=yaw)
     
     # Wait for movement to complete
     await asyncio.sleep(duration)

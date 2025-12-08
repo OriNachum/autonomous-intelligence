@@ -99,7 +99,7 @@ class ConversationApp:
         self.current_doa = None  # Dict with angle_degrees and angle_radians
         
         # Vision context - latest stable vision information
-        self.latest_vision_context = None  # Dict with {'objects': [...], 'faces': [...], 'timestamp': int}
+        self.latest_vision_context = None  # Dict with {'objects': [...], 'faces': [...], 'recently_seen': [...], 'timestamp': int}
         
         # Conversation audit logging
         self.audit_log_path = None
@@ -514,6 +514,12 @@ class ConversationApp:
             self.latest_vision_context['faces'].append(name)
             self.latest_vision_context['timestamp'] = timestamp
             logger.info(f"Added {name} to vision context")
+        
+        # Also add to recently_seen if not already there
+        if 'recently_seen' not in self.latest_vision_context:
+            self.latest_vision_context['recently_seen'] = []
+        if name not in self.latest_vision_context['recently_seen']:
+            self.latest_vision_context['recently_seen'].append(name)
     
     async def on_vision_result(self, data: Dict[str, Any]):
         """
@@ -530,6 +536,7 @@ class ConversationApp:
             self.latest_vision_context = {
                 'objects': [],
                 'faces': [],
+                'recently_seen': [],
                 'timestamp': timestamp
             }
         
@@ -551,12 +558,18 @@ class ConversationApp:
         self.latest_vision_context['faces'] = faces
         self.latest_vision_context['timestamp'] = timestamp
         
+        # Extract recently_seen from face recognition results (if available)
+        if 'recently_seen' in data:
+            self.latest_vision_context['recently_seen'] = data.get('recently_seen', [])
+        
         # Log the update
         context_items = []
         if objects:
             context_items.append(f"objects: {', '.join(objects)}")
         if faces:
             context_items.append(f"faces: {', '.join(faces)}")
+        if self.latest_vision_context.get('recently_seen'):
+            context_items.append(f"recently_seen: {', '.join(self.latest_vision_context['recently_seen'])}")
         
         if context_items:
             logger.info(f"👁️  Vision context updated: {' | '.join(context_items)}")
@@ -617,15 +630,27 @@ class ConversationApp:
                 if faces:
                     for face in faces:
                         if face != 'unknown':
-                            vision_items.append(face)
+                            vision_items.append(f"a face of {face}")
                         else:
-                            vision_items.append('an unknown person')
+                            vision_items.append('an unknown face')
                 
                 # Append visual context to user message
                 if vision_items:
                     visual_context_str = ', '.join(vision_items)
                     user_message += f" *[Visual Context: You see {visual_context_str}]*"
                     logger.info(f"🔍 Added visual context: {visual_context_str}")
+                
+                # Add recently seen faces if available and different from currently visible
+                recently_seen = self.latest_vision_context.get('recently_seen', [])
+                if recently_seen:
+                    # Filter out faces that are currently visible
+                    current_faces = self.latest_vision_context.get('faces', [])
+                    recently_seen_not_visible = [name for name in recently_seen if name not in current_faces]
+                    
+                    if recently_seen_not_visible:
+                        recently_seen_str = ', '.join(recently_seen_not_visible)
+                        user_message += f" *[Faces you have recently seen (last 15min): {recently_seen_str}]*"
+                        logger.info(f"👁️  Added recently seen: {recently_seen_str}")
             else:
                 logger.debug(f"Vision context too old ({vision_age_seconds:.1f}s), skipping")
         

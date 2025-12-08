@@ -2,12 +2,12 @@
 import asyncio
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """
     Make the robot nod its head (pitch up and down).
     
     Args:
-        controller: ReachyGateway instance for robot control
+        gateway: ReachyGateway instance for robot control
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with duration and angle parameters
     """
@@ -27,13 +27,14 @@ async def execute(controller, tts_queue, params):
     if speech and tts_queue:
         await tts_queue.enqueue_text(speech)
     
-    # Nod down using controller
-    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=angle)
+    # Nod down using gateway
+    await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, pitch=angle)
     
     # Wait for movement to complete
     await asyncio.sleep(duration)
     
     # Return to neutral
-    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=0)
+    await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, pitch=0)
     
     return {"status": "success"}
+

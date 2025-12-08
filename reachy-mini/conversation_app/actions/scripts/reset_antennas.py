@@ -4,7 +4,7 @@ Resets both antennas to their neutral position (0 degrees).
 """
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """Execute the reset_antennas tool."""
     import asyncio
     
@@ -20,6 +20,6 @@ async def execute(controller, tts_queue, params):
         duration = 2.0
     
     # Reset antennas to neutral using controller
-    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, antennas=[0.0, 0.0])
+    await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, antennas=[0.0, 0.0])
     
     return {"status": "success"}

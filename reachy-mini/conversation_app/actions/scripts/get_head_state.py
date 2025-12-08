@@ -4,11 +4,11 @@ Gets the current state of the robot's head.
 """
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """Execute the get_head_state tool."""
     # Get current state from controller
-    if controller:
-        state = controller.get_current_state()
+    if gateway:
+        state = gateway.get_current_state()
         # state is (roll, pitch, yaw, antennas, body_yaw)
         return {
             "status": "success",
@@ -19,4 +19,4 @@ async def execute(controller, tts_queue, params):
             }
         }
     
-    return {"status": "error", "error": "Controller not available"}
+    return {"status": "error", "error": "Gateway not available"}

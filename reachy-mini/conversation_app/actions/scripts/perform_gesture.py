@@ -3,12 +3,12 @@ import asyncio
 import math
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """
     Perform a predefined gesture sequence.
     
     Args:
-        controller: ReachyGateway instance for robot control
+        gateway: ReachyGateway instance for robot control
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with gesture parameter
     """
@@ -37,14 +37,14 @@ async def execute(controller, tts_queue, params):
             except (ValueError, TypeError):
                 angle = 10.0
             
-            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=angle)
+            await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, pitch=angle)
             await asyncio.sleep(duration)
-            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=0)
+            await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, pitch=0)
             
             await asyncio.sleep(0.5)
-            await asyncio.to_thread(controller.move_smoothly_to, duration=0.5, antennas=[math.degrees(math.radians(30)), math.degrees(math.radians(30))])
+            await asyncio.to_thread(gateway.move_smoothly_to, duration=0.5, antennas=[math.degrees(math.radians(30)), math.degrees(math.radians(30))])
             await asyncio.sleep(0.5)
-            await asyncio.to_thread(controller.move_smoothly_to, duration=2.0, antennas=[0.0, 0.0])
+            await asyncio.to_thread(gateway.move_smoothly_to, duration=2.0, antennas=[0.0, 0.0])
         
         elif gesture == "yes":
             # Nod yes
@@ -58,9 +58,9 @@ async def execute(controller, tts_queue, params):
             except (ValueError, TypeError):
                 angle = 20.0
             
-            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=angle)
+            await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, pitch=angle)
             await asyncio.sleep(duration)
-            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, pitch=0)
+            await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, pitch=0)
         
         elif gesture == "no":
             # Shake no
@@ -74,16 +74,16 @@ async def execute(controller, tts_queue, params):
             except (ValueError, TypeError):
                 angle = 25.0
             
-            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=-angle)
+            await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, yaw=-angle)
             await asyncio.sleep(duration)
-            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=angle)
+            await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, yaw=angle)
             await asyncio.sleep(duration)
-            await asyncio.to_thread(controller.move_smoothly_to, duration=duration, yaw=0)
+            await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, yaw=0)
         
         elif gesture == "thinking":
             # Tilt head and one antenna
             await asyncio.to_thread(
-                controller.move_smoothly_to,
+                gateway.move_smoothly_to,
                 duration=1.5,
                 roll=15,
                 pitch=5,
@@ -93,12 +93,13 @@ async def execute(controller, tts_queue, params):
         elif gesture == "celebration":
             # Excited movements
             for _ in range(2):
-                await asyncio.to_thread(controller.move_smoothly_to, duration=0.4, antennas=[40, 40])
+                await asyncio.to_thread(gateway.move_smoothly_to, duration=0.4, antennas=[40, 40])
                 await asyncio.sleep(0.4)
-                await asyncio.to_thread(controller.move_smoothly_to, duration=0.4, antennas=[-20, -20])
+                await asyncio.to_thread(gateway.move_smoothly_to, duration=0.4, antennas=[-20, -20])
                 await asyncio.sleep(0.4)
-            await asyncio.to_thread(controller.move_smoothly_to, duration=2.0, antennas=[0.0, 0.0])
+            await asyncio.to_thread(gateway.move_smoothly_to, duration=2.0, antennas=[0.0, 0.0])
         
         return {"status": "success", "gesture": gesture}
     except Exception as e:
         return {"status": "error", "gesture": gesture, "error": str(e)}
+

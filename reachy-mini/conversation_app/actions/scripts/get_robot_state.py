@@ -4,12 +4,12 @@ Gets the current full state of the Reachy Mini robot.
 """
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """Execute the get_robot_state tool."""
-    # Get states from controller
-    if controller:
-        state = controller.get_current_state()
-        natural_state = controller.get_current_state_natural()
+    # Get states from gateway
+    if gateway:
+        state = gateway.get_current_state()
+        natural_state = gateway.get_current_state_natural()
         
         return {
             "status": "success",
@@ -23,4 +23,5 @@ async def execute(controller, tts_queue, params):
             "natural_state": natural_state
         }
     
-    return {"status": "error", "error": "Controller not available"}
+    return {"status": "error", "error": "Gateway not available"}
+

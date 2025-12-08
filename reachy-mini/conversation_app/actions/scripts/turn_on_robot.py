@@ -4,14 +4,14 @@ Turns on the robot's motors and activates all systems.
 """
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """Execute the turn_on_robot tool."""
     speech = params.get('speech')
     
     # Access reachy instance to enable motors
-    if controller and controller.reachy_controller:
+    if controller and gateway.reachy_controller:
         try:
-            reachy = controller.reachy_controller.reachy
+            reachy = gateway.reachy_gateway.reachy
             # Enable motors
             reachy.turn_on()
             
@@ -23,4 +23,4 @@ async def execute(controller, tts_queue, params):
         except Exception as e:
             return {"status": "error", "error": str(e)}
     
-    return {"status": "error", "error": "Controller not available"}
+    return {"status": "error", "error": "Gateway not available"}

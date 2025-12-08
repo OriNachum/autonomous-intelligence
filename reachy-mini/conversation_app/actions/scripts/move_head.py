@@ -4,7 +4,7 @@ Moves the robot's head to a target pose.
 """
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """Execute the move_head tool."""
     import asyncio
     
@@ -35,11 +35,11 @@ async def execute(controller, tts_queue, params):
     except (ValueError, TypeError):
         duration = 2.0
     
-    # Use controller.move_smoothly_to instead of HTTP requests
+    # Use gateway.move_smoothly_to instead of HTTP requests
     # Note: x, y, z parameters are not supported by move_smoothly_to
     # only roll, pitch, yaw are supported for head movements
     await asyncio.to_thread(
-        controller.move_smoothly_to,
+        gateway.move_smoothly_to,
         duration=duration,
         roll=roll,
         pitch=pitch,

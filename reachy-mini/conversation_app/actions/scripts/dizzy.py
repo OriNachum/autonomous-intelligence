@@ -4,12 +4,12 @@ import asyncio
 import math
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """
     Make the robot look dizzy by moving its head in slow circles.
     
     Args:
-        controller: ReachyGateway instance for robot control
+        gateway: ReachyGateway instance for robot control
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with duration, radius, and speed parameters
     """
@@ -51,7 +51,7 @@ async def execute(controller, tts_queue, params):
     # Calculate total steps
     total_steps = int(duration * UPDATE_RATE)
     
-    # Perform smooth circular dizzy motion using controller
+    # Perform smooth circular dizzy motion using gateway
     for i in range(total_steps):
         # Calculate current time
         t = i * step_duration
@@ -63,13 +63,14 @@ async def execute(controller, tts_queue, params):
         roll = radius * math.sin(angle)
         pitch = radius * math.cos(angle)
         
-        # Move head using controller
-        await asyncio.to_thread(controller.move_smoothly_to, duration=step_duration, roll=roll, pitch=pitch, yaw=0)
+        # Move head using gateway
+        await asyncio.to_thread(gateway.move_smoothly_to, duration=step_duration, roll=roll, pitch=pitch, yaw=0)
         
         # Wait for this step to complete
         await asyncio.sleep(step_duration)
     
     # Return to neutral
-    await asyncio.to_thread(controller.move_smoothly_to, duration=0.5, roll=0, pitch=0, yaw=0)
+    await asyncio.to_thread(gateway.move_smoothly_to, duration=0.5, roll=0, pitch=0, yaw=0)
     
     return {"status": "success"}
+

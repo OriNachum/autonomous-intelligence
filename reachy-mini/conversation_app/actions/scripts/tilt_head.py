@@ -4,7 +4,7 @@ Tilts the robot's head to the left or right.
 """
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """Execute the tilt_head tool."""
     import asyncio
     
@@ -29,6 +29,6 @@ async def execute(controller, tts_queue, params):
         duration = 2.0
     
     # Use controller to tilt smoothly
-    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, roll=roll_angle)
+    await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, roll=roll_angle)
     
     return {"status": "success"}

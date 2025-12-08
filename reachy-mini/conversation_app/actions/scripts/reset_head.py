@@ -4,7 +4,7 @@ Resets the robot's head to the default neutral position.
 """
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """Execute the reset_head tool."""
     import asyncio
     
@@ -20,6 +20,6 @@ async def execute(controller, tts_queue, params):
         duration = 2.0
     
     # Reset head to neutral position using controller
-    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, roll=0, pitch=0, yaw=0)
+    await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, roll=0, pitch=0, yaw=0)
     
     return {"status": "success"}

@@ -2,12 +2,12 @@
 import asyncio
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """
     Speak text aloud through text-to-speech.
     
     Args:
-        controller: ReachyGateway instance (not used in this script)
+        gateway: ReachyGateway instance (not used in this script)
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with text parameter
     
@@ -27,3 +27,4 @@ async def execute(controller, tts_queue, params):
     await tts_queue.enqueue_text(text)
     
     return {"status": "success", "text": text}
+

@@ -4,7 +4,7 @@ Makes the robot look in a specific direction.
 """
 
 
-async def execute(controller, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """Execute the look_at_direction tool."""
     import asyncio
     
@@ -37,6 +37,6 @@ async def execute(controller, tts_queue, params):
         duration = 2.0
     
     # Move using controller
-    await asyncio.to_thread(controller.move_smoothly_to, duration=duration, roll=roll, pitch=pitch, yaw=yaw)
+    await asyncio.to_thread(gateway.move_smoothly_to, duration=duration, roll=roll, pitch=pitch, yaw=yaw)
     
     return {"status": "success"}

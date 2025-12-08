@@ -10,12 +10,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 logger = logging.getLogger("name_face")
     
-def execute(controller, tts_queue, params):
+def execute(gateway, tts_queue, params):
     """
     Rename a face directory and reload vision models.
     
     Args:
-        controller: ReachyGateway instance for robot control
+        gateway: ReachyGateway instance for robot control
         tts_queue: TTS queue for speech synthesis
         params: Dictionary with face parameters
     """
