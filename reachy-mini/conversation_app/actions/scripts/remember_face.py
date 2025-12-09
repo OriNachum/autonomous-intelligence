@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 logger = logging.getLogger("name_face")
     
-def execute(gateway, tts_queue, params):
+async def execute(gateway, tts_queue, params):
     """
     Rename a face directory and reload vision models.
     
