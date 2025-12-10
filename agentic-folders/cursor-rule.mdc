@@ -1,0 +1,20 @@
+---
+description: Enforces the agentic-folders system: use AGENT.md for folder documentation and context.
+alwaysApply: false
+---
+# Agentic Folders System
+
+This rule enforces the "agentic-folders" documentation system. The system is fully described in `docs/AGENT.md`.
+
+## 1. Context Acquisition
+- **Check AGENT.md**: When exploring a new folder or starting a task in a directory, read the `AGENT.md` file first.
+- **Source of Truth**: Treat `AGENT.md` as the authoritative source for the folder's context, purpose, structure, workflow, and testing.
+
+## 2. Documentation Standards
+- **Use AGENT.md**: For folder-level documentation and context, always use the `AGENT.md` file.
+- **Use the Template**: When creating a new `AGENT.md`, follow the structure defined in `docs/AGENT-template.md`.
+- **Maintain Freshness**: Update `AGENT.md` whenever significant changes are made to the code structure, flow, or testing strategies.
+
+## 3. File Usage
+- **Exclusive Documentation File**: Restrict folder-level documentation updates to `AGENT.md`.
+- **User Requests**: Update `README.md` or other markdown files only when explicitly requested by the user.
