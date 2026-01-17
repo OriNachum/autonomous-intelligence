@@ -1,0 +1,33 @@
+services:
+  unsloth:
+    build: .
+    image: unsloth-spark
+    stdin_open: true
+    tty: true
+    env_file:
+      - .env
+    environment:
+      - MODEL_NAME=${MODEL_NAME:-unsloth/gemma-3-4B-it}
+      - MAX_SEQ_LENGTH=${MAX_SEQ_LENGTH:-2048}
+      - LOAD_IN_4BIT=${LOAD_IN_4BIT:-true}
+      - BATCH_SIZE=${BATCH_SIZE:-2}
+      - GRADIENT_ACCUMULATION_STEPS=${GRADIENT_ACCUMULATION_STEPS:-4}
+      - MAX_STEPS=${MAX_STEPS:-60}
+      - LEARNING_RATE=${LEARNING_RATE:-5e-5}
+      - LORA_R=${LORA_R:-16}
+      - LORA_ALPHA=${LORA_ALPHA:-16}
+      - HF_TOKEN=${HF_TOKEN:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    volumes:
+      - ./data:/workspace/data
+      - ./outputs:/workspace/outputs
+      - ./scripts:/workspace/scripts
