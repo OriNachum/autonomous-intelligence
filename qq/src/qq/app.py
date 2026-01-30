@@ -1,0 +1,208 @@
+"""Main application orchestration."""
+
+import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+def main() -> None:
+    """Main entry point for qq."""
+    # Load environment variables from .env file
+    # Try multiple locations
+    for env_path in [
+        Path.cwd() / ".env",
+        Path(__file__).parent.parent.parent / ".env",
+    ]:
+        if env_path.exists():
+            load_dotenv(env_path)
+            break
+    
+    from qq.cli import parse_args
+    from qq.console import qqConsole, stream_to_console
+    from qq.client import create_client
+    from qq.history import History
+    from qq.agents import load_agent
+    from qq.skills import load_all_skills, find_relevant_skills, inject_skills, create_example_skill
+    from qq.mcp_loader import load_mcp_tools
+    
+    # Parse arguments
+    args = parse_args()
+    
+    # Initialize console
+    console = qqConsole(no_color=args.no_color)
+    
+    try:
+        # Load agent
+        agent = load_agent(args.agent)
+        if args.verbose:
+            console.print_info(f"Loaded agent: {agent.name}")
+    except FileNotFoundError as e:
+        console.print_error(str(e))
+        sys.exit(1)
+    
+    # Initialize history
+    history = History(agent_name=agent.name)
+    
+    if args.clear_history:
+        history.clear()
+        console.print_info("History cleared")
+    
+    # Load MCP tools
+    mcp_tools, tool_executor = load_mcp_tools()
+    if args.verbose and mcp_tools:
+        console.print_info(f"Loaded {len(mcp_tools)} MCP tools")
+    
+    # Load skills
+    skills = load_all_skills()
+    if not skills:
+        # Create example skill on first run
+        create_example_skill()
+        skills = load_all_skills()
+    if args.verbose and skills:
+        console.print_info(f"Loaded {len(skills)} skills")
+    
+    # Create vLLM client
+    client = create_client()
+    
+    # Run in appropriate mode
+    if args.mode == "cli":
+        run_cli_mode(
+            client=client,
+            agent=agent,
+            history=history,
+            skills=skills,
+            mcp_tools=mcp_tools,
+            tool_executor=tool_executor,
+            console=console,
+            message=args.message or "",
+        )
+    else:
+        run_console_mode(
+            client=client,
+            agent=agent,
+            history=history,
+            skills=skills,
+            mcp_tools=mcp_tools,
+            tool_executor=tool_executor,
+            console=console,
+        )
+
+
+def run_cli_mode(
+    client,
+    agent,
+    history,
+    skills,
+    mcp_tools,
+    tool_executor,
+    console,
+    message: str,
+) -> None:
+    """Run in CLI mode - single message and response."""
+    from qq.skills import find_relevant_skills, inject_skills
+    
+    if not message:
+        console.print_error("No message provided. Use -m 'your message'")
+        sys.exit(1)
+    
+    # Find relevant skills
+    relevant_skills = find_relevant_skills(message, skills)
+    system_prompt = inject_skills(agent.system_prompt, relevant_skills)
+    
+    # Build messages
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend(history.get_messages())
+    messages.append({"role": "user", "content": message})
+    
+    # Get response
+    if mcp_tools:
+        response, _ = client.chat_with_tools(
+            messages=messages,
+            tools=mcp_tools,
+            tool_executor=tool_executor,
+        )
+    else:
+        response = client.chat(messages=messages, stream=False)
+    
+    # Save to history
+    history.add("user", message)
+    history.add("assistant", response)
+    
+    # Output response
+    console.print_assistant_message(response)
+
+
+def run_console_mode(
+    client,
+    agent,
+    history,
+    skills,
+    mcp_tools,
+    tool_executor,
+    console,
+) -> None:
+    """Run in console mode - interactive REPL."""
+    from qq.skills import find_relevant_skills, inject_skills
+    from qq.console import stream_to_console
+    
+    console.print_welcome(agent.name, history.windowed_count)
+    
+    while True:
+        try:
+            # Get user input
+            user_input = console.get_input()
+            
+            # Handle special commands
+            if user_input.lower() in ("exit", "quit", "q"):
+                console.print_goodbye()
+                break
+            
+            if user_input.lower() == "clear":
+                history.clear()
+                console.print_info("History cleared")
+                continue
+            
+            if user_input.lower() == "history":
+                console.print_info(f"History: {history.count} total, {history.windowed_count} in window")
+                continue
+            
+            if not user_input.strip():
+                continue
+            
+            # Find relevant skills for this message
+            relevant_skills = find_relevant_skills(user_input, skills)
+            system_prompt = inject_skills(agent.system_prompt, relevant_skills)
+            
+            # Build messages
+            messages = [{"role": "system", "content": system_prompt}]
+            messages.extend(history.get_messages())
+            messages.append({"role": "user", "content": user_input})
+            
+            # Get response
+            if mcp_tools:
+                # Tool calling mode (non-streaming for simplicity)
+                response, _ = client.chat_with_tools(
+                    messages=messages,
+                    tools=mcp_tools,
+                    tool_executor=tool_executor,
+                )
+                console.print_assistant_message(response)
+            else:
+                # Streaming mode
+                stream = client.chat(messages=messages, stream=True)
+                response = stream_to_console(console, stream)
+            
+            # Save to history
+            history.add("user", user_input)
+            history.add("assistant", response)
+            
+        except KeyboardInterrupt:
+            console.print_goodbye()
+            break
+        except Exception as e:
+            console.print_error(str(e))
+
+
+if __name__ == "__main__":
+    main()

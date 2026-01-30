@@ -1,0 +1,10 @@
+#!/bin/bash
+# QQ - Conversational AI CLI
+# Run from anywhere - added to PATH via .bashrc
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Change to the project directory and run
+cd "$SCRIPT_DIR"
+exec uv run python -m qq "$@"
