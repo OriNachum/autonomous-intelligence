@@ -119,9 +119,15 @@ def stream_to_console(
     console.print_assistant_start()
     
     full_response = []
-    for chunk in stream:
-        console.print_stream_chunk(chunk)
-        full_response.append(chunk)
+    try:
+        for chunk in stream:
+            console.print_stream_chunk(chunk)
+            full_response.append(chunk)
+    except KeyboardInterrupt:
+        console.print_stream_end()
+        console.print_info("[Interrupted]")
+        return "".join(full_response)
     
     console.print_stream_end()
     return "".join(full_response)
+

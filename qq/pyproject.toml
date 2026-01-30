@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp>=1.0"]
+mcp = ["fastmcp>=2.0"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
