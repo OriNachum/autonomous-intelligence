@@ -4,9 +4,13 @@
 
 Extract entities and relationships from PDFs using vLLM, store them in Neo4j, then use that knowledge to generate synthetic training data.
 
+<img width="2752" height="1536" alt="data-refinery" src="https://github.com/user-attachments/assets/60eb5a0c-783e-4784-a11c-b419a2e6b2e3" />
+
+
 ## Quick Start
 
 ```bash
+
 # 1. Clone & setup
 git clone <repo-url> && cd data-refinery
 cp .env.sample .env  # Add your HF_TOKEN
