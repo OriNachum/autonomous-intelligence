@@ -6,7 +6,9 @@ client = OpenAI(
     api_key="EMPTY"  # vLLM doesn't require an API key by default
 )
 
-model_id = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
+import os
+
+model_id = os.getenv("MODEL_ID", "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8")
 
 print(f"Testing vLLM server with model: {model_id}")
 

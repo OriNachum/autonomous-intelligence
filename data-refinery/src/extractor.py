@@ -14,6 +14,7 @@ from .models import (
     WindowExtractionResult,
 )
 from .document_processor import SlidingWindow
+from .embeddings import EmbeddingClient
 
 
 # Prompts for extraction
@@ -85,10 +86,11 @@ class Extractor:
     
     def __init__(
         self,
-        vllm_url: str = "http://localhost:8000/v1",
+        vllm_url: str = "http://localhost:8100/v1",
         model: str = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8",
         max_relationship_iterations: int = 5,
         temperature: float = 0.1,
+        embedding_client: EmbeddingClient = None,
     ):
         """
         Initialize the extractor.
@@ -98,11 +100,13 @@ class Extractor:
             model: Model name to use
             max_relationship_iterations: Max iterations for relationship extraction
             temperature: Sampling temperature
+            embedding_client: Optional client for generating entity embeddings
         """
         self.client = OpenAI(base_url=vllm_url, api_key="not-needed")
         self.model = model
         self.max_relationship_iterations = max_relationship_iterations
         self.temperature = temperature
+        self.embedding_client = embedding_client
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     def _call_llm(self, messages: list, response_format: dict = None) -> str:
@@ -243,6 +247,16 @@ class Extractor:
                 entities=[],
                 relationships=[],
             )
+        
+        # Generate embeddings if client is available
+        if self.embedding_client:
+            texts = [f"{e.name}: {e.description}" for e in entities]
+            try:
+                embeddings = self.embedding_client.get_embeddings_batch(texts)
+                for entity, embedding in zip(entities, embeddings):
+                    entity.embedding = embedding
+            except Exception as e:
+                print(f"Warning: Failed to generate embeddings: {e}")
         
         # Step 2+: Iteratively extract relationships
         all_relationships = []

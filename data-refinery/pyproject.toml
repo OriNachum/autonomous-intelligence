@@ -11,10 +11,12 @@ dependencies = [
     "httpx>=0.25",
     "tenacity>=8.0",
     "tqdm>=4.0",
+    "fastmcp>=2.0",
+    "neo4j>=5.0",
 ]
 
 [project.optional-dependencies]
-neo4j = ["neo4j>=5.0"]
+dev = ["pytest>=8.0"]
 
 [project.scripts]
 refinery = "refinery:main"

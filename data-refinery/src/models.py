@@ -10,6 +10,7 @@ class Entity(BaseModel):
     type: str = Field(description="Type: name, concept, feature, or location")
     description: str = Field(description="Brief description of the entity")
     source_page: int = Field(description="Page number where entity was found")
+    embedding: Optional[List[float]] = Field(default=None, description="Optional embedding vector")
     
     def to_cypher_id(self) -> str:
         """Generate a safe Cypher-compatible ID."""

@@ -45,8 +45,8 @@ services:
     command: >
       sh -c "
       hf auth login --token ${HF_TOKEN} &&
-      hf download nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8 --cache-dir /root/.cache/huggingface &&
-      vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8
+      hf download ${MODEL_ID:-nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8} --cache-dir /root/.cache/huggingface &&
+      vllm serve ${MODEL_ID:-nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8}
       --kv-cache-dtype fp8
       --max-num-seqs 8
       --tensor-parallel-size 1
@@ -69,4 +69,29 @@ services:
       retries: 3
       start_period: 60s
 
-
+  tei:
+    env_file:
+      - .env
+    image: ghcr.io/huggingface/text-embeddings-inference:1.8
+    container_name: data-refinery-tei
+    restart: unless-stopped
+    ports:
+      - "8101:80"
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - ./models/tei:/data
+    command: --model-id ${EMBEDDING_MODEL_ID:-Snowflake/snowflake-arctic-embed-l-v2.0}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
