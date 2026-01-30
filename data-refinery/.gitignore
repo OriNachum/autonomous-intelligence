@@ -1,0 +1,17 @@
+# Models directory (large files)
+models/
+
+# Data directory (neo4j, etc.)
+data/
+
+# Environment files
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Output files
+output/

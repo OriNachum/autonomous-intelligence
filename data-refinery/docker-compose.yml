@@ -1,0 +1,72 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: data-refinery-neo4j
+    ports:
+      - "7474:7474"  # Browser UI
+      - "7687:7687"  # Bolt protocol
+    environment:
+      NEO4J_AUTH: neo4j/refinerypass
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - ./data/neo4j/data:/data
+      - ./data/neo4j/logs:/logs
+      - ./output:/import  # Mount output folder for Cypher imports
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  vllm:
+    env_file:
+      - .env
+    image: nvcr.io/nvidia/vllm:25.12.post1-py3
+    container_name: data-refinery-vllm
+    restart: unless-stopped
+    ports:
+      - "8100:8100"  # Expose vLLM API server on port 8100
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+      - HF_TOKEN=${HF_TOKEN}  # Set your Hugging Face token in .env file or export it
+      # SET THIS IN YOUR DOCKER-COMPOSE ENVIRONMENT:
+      - VLLM_USE_FLASHINFER_MOE_FP8=1
+      - VLLM_ATTENTION_BACKEND=FLASHINFER
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+#      --reasoning-parser-plugin nano_v3_reasoning_parser.py
+#      --reasoning-parser nano_v3
+    command: >
+      sh -c "
+      hf auth login --token ${HF_TOKEN} &&
+      hf download nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8 --cache-dir /root/.cache/huggingface &&
+      vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8
+      --kv-cache-dtype fp8
+      --max-num-seqs 8
+      --tensor-parallel-size 1
+      --max-model-len 32768
+      --gpu-memory-utilization 0.85
+      --enable-chunked-prefill
+      --enable-prefix-caching
+      --trust-remote-code 
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --download-dir /data/models/huggingface 
+      --port 8100
+      "
+    volumes:
+      - ./models/huggingface:/root/.cache/huggingface  # Cache models locally
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+

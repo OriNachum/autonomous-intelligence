@@ -1,0 +1,25 @@
+[project]
+name = "data-refinery"
+version = "0.1.0"
+description = "Extract entities and relationships from documents using vLLM"
+readme = "docs/initia-request.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pymupdf>=1.24.0",
+    "pydantic>=2.0",
+    "openai>=1.0",
+    "httpx>=0.25",
+    "tenacity>=8.0",
+    "tqdm>=4.0",
+]
+
+[project.optional-dependencies]
+neo4j = ["neo4j>=5.0"]
+
+[project.scripts]
+refinery = "refinery:main"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0",
+]
