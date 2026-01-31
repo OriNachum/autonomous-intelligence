@@ -65,6 +65,26 @@ def main() -> None:
     # Create vLLM client
     client = create_client()
     
+    # Preload embeddings in background thread
+    import threading
+    from qq.embeddings import EmbeddingClient
+    
+    shared_embeddings = EmbeddingClient(prefer_local=True)  # Force local since TEI isn't running
+    
+    def preload_embeddings():
+        """Load embeddings model in background."""
+        try:
+            # Trigger initialization
+            if shared_embeddings.is_available:
+                if args.verbose:
+                    console.print_info(f"Embeddings backend: {shared_embeddings.backend_name}")
+        except Exception as e:
+            if args.verbose:
+                console.print_info(f"Embeddings not available: {e}")
+    
+    embeddings_thread = threading.Thread(target=preload_embeddings, daemon=True)
+    embeddings_thread.start()
+    
     # Initialize memory agents
     # Add agents directory to path for agent module imports
     agents_dir = Path(__file__).parent.parent.parent / "agents"
@@ -75,11 +95,12 @@ def main() -> None:
     from qq.knowledge import KnowledgeGraphAgent
     from qq.context import ContextRetrievalAgent
     
-    notes_agent = NotesAgent(llm_client=client)
-    knowledge_agent = KnowledgeGraphAgent(llm_client=client)
+    notes_agent = NotesAgent(llm_client=client, embeddings=shared_embeddings)
+    knowledge_agent = KnowledgeGraphAgent(llm_client=client, embeddings=shared_embeddings)
     context_agent = ContextRetrievalAgent(
         notes_agent=notes_agent,
         knowledge_agent=knowledge_agent,
+        embeddings=shared_embeddings,
     )
     
     if args.verbose:

@@ -2,11 +2,15 @@
 
 import json
 import hashlib
+import re
+import logging
 from typing import List, Dict, Any, Optional
 
 from qq.memory.notes import NotesManager
 from qq.memory.mongo_store import MongoNotesStore
 from qq.embeddings import EmbeddingClient
+
+logger = logging.getLogger(__name__)
 
 
 # Prompt for summarizing history and extracting notes updates
@@ -99,6 +103,54 @@ class NotesAgent:
                 # TEI not available, continue without embeddings
                 pass
     
+    def _extract_json(self, response: str) -> Dict[str, Any]:
+        """
+        Extract JSON from LLM response that may include thinking text.
+        
+        Some models prefix their JSON output with reasoning text. This method
+        attempts multiple strategies to extract the JSON:
+        1. Direct parse (if response is pure JSON)
+        2. Find JSON object starting with {
+        3. Regex-based extraction
+        """
+        # Strategy 1: Try direct parse first
+        try:
+            return json.loads(response.strip())
+        except json.JSONDecodeError:
+            pass
+        
+        # Strategy 2: Find the first { and try to parse from there
+        first_brace = response.find('{')
+        if first_brace != -1:
+            # Find matching closing brace
+            brace_count = 0
+            for i, char in enumerate(response[first_brace:]):
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        json_str = response[first_brace:first_brace + i + 1]
+                        try:
+                            return json.loads(json_str)
+                        except json.JSONDecodeError:
+                            break
+        
+        # Strategy 3: Use regex to find JSON-like structure
+        json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        matches = re.findall(json_pattern, response)
+        for match in matches:
+            try:
+                result = json.loads(match)
+                if isinstance(result, dict) and 'additions' in result:
+                    return result
+            except json.JSONDecodeError:
+                continue
+        
+        # Return default if all strategies fail
+        logger.warning(f"Failed to extract JSON from response: {response[:200]}...")
+        return {"additions": [], "removals": [], "summary": "Failed to parse LLM response"}
+    
     def process_messages(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
         """
         Process conversation messages and update notes.
@@ -130,21 +182,26 @@ class NotesAgent:
         try:
             response = self.llm_client.chat(
                 messages=[
-                    {"role": "system", "content": "You are a precise JSON-only assistant."},
+                    {"role": "system", "content": "You are a precise JSON-only assistant. Output ONLY valid JSON with no additional text."},
                     {"role": "user", "content": prompt},
                 ],
                 stream=False,
             )
             
-            # Parse JSON response
-            updates = json.loads(response)
+            logger.debug(f"LLM response length: {len(response)}")
+            
+            # Extract JSON from response (handles thinking text)
+            updates = self._extract_json(response)
             
             # Apply updates to notes file
-            self._apply_updates(updates)
+            if updates.get("additions") or updates.get("removals"):
+                self._apply_updates(updates)
+                logger.info(f"Applied updates: {len(updates.get('additions', []))} additions, {len(updates.get('removals', []))} removals")
             
             return updates
             
-        except (json.JSONDecodeError, Exception) as e:
+        except Exception as e:
+            logger.error(f"Error processing messages: {e}")
             return {"additions": [], "removals": [], "summary": f"Error: {e}"}
     
     def _apply_updates(self, updates: Dict[str, Any]) -> None:

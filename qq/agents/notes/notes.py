@@ -42,7 +42,8 @@ def parse_json_response(response: str) -> dict:
     """
     Parse JSON from LLM response, stripping thinking tags.
     
-    Handles responses that include <think>...</think> blocks before JSON.
+    Handles responses that include <think>...</think> blocks or other
+    text before/after the JSON object.
     """
     logger.debug(f"Raw LLM response length: {len(response)}")
     logger.debug(f"Raw response first 500 chars: {response[:500]}")
@@ -51,9 +52,7 @@ def parse_json_response(response: str) -> dict:
     cleaned = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
     cleaned = cleaned.strip()
     
-    logger.debug(f"Cleaned response: {cleaned[:500]}")
-    
-    # Try direct parse first
+    # Strategy 1: Try direct parse first
     try:
         result = json.loads(cleaned)
         logger.info(f"Direct JSON parse succeeded: {result}")
@@ -61,15 +60,48 @@ def parse_json_response(response: str) -> dict:
     except json.JSONDecodeError as e:
         logger.debug(f"Direct parse failed: {e}")
     
-    # Find JSON object in response
-    match = re.search(r'\{.*\}', cleaned, flags=re.DOTALL)
-    if match:
+    # Strategy 2: Find first { and use brace counting to find matching }
+    first_brace = cleaned.find('{')
+    if first_brace != -1:
+        brace_count = 0
+        in_string = False
+        escape_next = False
+        
+        for i, char in enumerate(cleaned[first_brace:]):
+            if escape_next:
+                escape_next = False
+                continue
+            if char == '\\':
+                escape_next = True
+                continue
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    json_str = cleaned[first_brace:first_brace + i + 1]
+                    try:
+                        result = json.loads(json_str)
+                        logger.info(f"Brace-matched JSON parse succeeded: {result}")
+                        return result
+                    except json.JSONDecodeError as e:
+                        logger.debug(f"Brace-matched parse failed: {e}")
+                    break
+    
+    # Strategy 3: Look for JSON in code block (```json ... ```)
+    code_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', cleaned, flags=re.DOTALL)
+    if code_match:
         try:
-            result = json.loads(match.group())
-            logger.info(f"Regex JSON parse succeeded: {result}")
+            result = json.loads(code_match.group(1))
+            logger.info(f"Code block JSON parse succeeded: {result}")
             return result
-        except json.JSONDecodeError as e:
-            logger.error(f"Regex parse failed: {e}")
+        except json.JSONDecodeError:
+            pass
     
     logger.error(f"Failed to parse JSON from response")
     return {"additions": [], "removals": [], "summary": "Failed to parse response"}
@@ -107,8 +139,9 @@ class NotesAgent:
         self._role_prompt = None
         
         # Lazy initialization of optional dependencies
-        self._mongo_initialized = False
-        self._embeddings_initialized = False
+        # Mark as initialized if already provided
+        self._mongo_initialized = mongo_store is not None
+        self._embeddings_initialized = embeddings is not None
     
     @property
     def role_prompt(self) -> str:
