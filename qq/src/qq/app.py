@@ -65,6 +65,26 @@ def main() -> None:
     # Create vLLM client
     client = create_client()
     
+    # Initialize memory agents
+    # Add agents directory to path for agent module imports
+    agents_dir = Path(__file__).parent.parent.parent / "agents"
+    if str(agents_dir) not in sys.path:
+        sys.path.insert(0, str(agents_dir))
+    
+    from notes.notes import NotesAgent
+    from qq.knowledge import KnowledgeGraphAgent
+    from qq.context import ContextRetrievalAgent
+    
+    notes_agent = NotesAgent(llm_client=client)
+    knowledge_agent = KnowledgeGraphAgent(llm_client=client)
+    context_agent = ContextRetrievalAgent(
+        notes_agent=notes_agent,
+        knowledge_agent=knowledge_agent,
+    )
+    
+    if args.verbose:
+        console.print_info("Memory agents initialized")
+    
     # Run in appropriate mode
     if args.mode == "cli":
         run_cli_mode(
@@ -76,6 +96,9 @@ def main() -> None:
             tool_executor=tool_executor,
             console=console,
             message=args.message or "",
+            notes_agent=notes_agent,
+            knowledge_agent=knowledge_agent,
+            context_agent=context_agent,
         )
     else:
         run_console_mode(
@@ -86,6 +109,9 @@ def main() -> None:
             mcp_tools=mcp_tools,
             tool_executor=tool_executor,
             console=console,
+            notes_agent=notes_agent,
+            knowledge_agent=knowledge_agent,
+            context_agent=context_agent,
         )
 
 
@@ -98,6 +124,9 @@ def run_cli_mode(
     tool_executor,
     console,
     message: str,
+    notes_agent=None,
+    knowledge_agent=None,
+    context_agent=None,
 ) -> None:
     """Run in CLI mode - single message and response."""
     from qq.skills import find_relevant_skills, inject_skills
@@ -109,6 +138,10 @@ def run_cli_mode(
     # Find relevant skills
     relevant_skills = find_relevant_skills(message, skills)
     system_prompt = inject_skills(agent.system_prompt, relevant_skills)
+    
+    # Inject retrieved context from memory agents
+    if context_agent:
+        system_prompt = context_agent.inject_context(system_prompt, message)
     
     # Build messages
     messages = [{"role": "system", "content": system_prompt}]
@@ -129,6 +162,19 @@ def run_cli_mode(
     history.add("user", message)
     history.add("assistant", response)
     
+    # Update memory agents with new conversation
+    full_history = history.get_messages()
+    if notes_agent:
+        try:
+            notes_agent.process_messages(full_history)
+        except Exception:
+            pass  # Silently handle if storage unavailable
+    if knowledge_agent:
+        try:
+            knowledge_agent.process_messages(full_history)
+        except Exception:
+            pass
+    
     # Output response
     console.print_assistant_message(response)
 
@@ -141,6 +187,9 @@ def run_console_mode(
     mcp_tools,
     tool_executor,
     console,
+    notes_agent=None,
+    knowledge_agent=None,
+    context_agent=None,
 ) -> None:
     """Run in console mode - interactive REPL."""
     from qq.skills import find_relevant_skills, inject_skills
@@ -167,12 +216,25 @@ def run_console_mode(
                 console.print_info(f"History: {history.count} total, {history.windowed_count} in window")
                 continue
             
+            if user_input.lower() == "memory":
+                # Show memory summary
+                if context_agent:
+                    summary = context_agent.get_full_context_summary()
+                    console.print_info(summary)
+                else:
+                    console.print_info("Memory agents not initialized")
+                continue
+            
             if not user_input.strip():
                 continue
             
             # Find relevant skills for this message
             relevant_skills = find_relevant_skills(user_input, skills)
             system_prompt = inject_skills(agent.system_prompt, relevant_skills)
+            
+            # Inject retrieved context from memory agents
+            if context_agent:
+                system_prompt = context_agent.inject_context(system_prompt, user_input)
             
             # Build messages
             messages = [{"role": "system", "content": system_prompt}]
@@ -196,6 +258,19 @@ def run_console_mode(
             # Save to history
             history.add("user", user_input)
             history.add("assistant", response)
+            
+            # Update memory agents with new conversation (background)
+            full_history = history.get_messages()
+            if notes_agent:
+                try:
+                    notes_agent.process_messages(full_history)
+                except Exception:
+                    pass  # Silently handle if storage unavailable
+            if knowledge_agent:
+                try:
+                    knowledge_agent.process_messages(full_history)
+                except Exception:
+                    pass
             
         except KeyboardInterrupt:
             console.print_goodbye()

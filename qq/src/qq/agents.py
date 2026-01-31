@@ -60,15 +60,20 @@ def load_agent(name: str) -> Agent:
             return _create_default_agent(agent_dir)
         raise FileNotFoundError(f"Agent '{name}' not found in {agents_dir}")
     
-    # Load system prompt (required)
+    # Load system prompt (required) - check .system.md first, then .system.md
     system_file = agent_dir / f"{name}.system.md"
     if not system_file.exists():
-        # Try any .system.md file
+        system_file = agent_dir / f"{name}.system.md"
+    if not system_file.exists():
+        # Try any .system.md or .system.md file
+        role_files = list(agent_dir.glob("*.system.md"))
         system_files = list(agent_dir.glob("*.system.md"))
-        if system_files:
+        if role_files:
+            system_file = role_files[0]
+        elif system_files:
             system_file = system_files[0]
         else:
-            raise FileNotFoundError(f"No system prompt found for agent '{name}'")
+            raise FileNotFoundError(f"No system/role prompt found for agent '{name}'")
     
     system_prompt = system_file.read_text().strip()
     
