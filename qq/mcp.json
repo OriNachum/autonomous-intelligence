@@ -1,3 +1,13 @@
 {
-  "servers": []
+  "mcpServers": {
+    "qq-files": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "qq.mcp_server"
+      ]
+    }
+  }
 }
