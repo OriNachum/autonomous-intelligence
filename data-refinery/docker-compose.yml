@@ -95,3 +95,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+
+  mongodb:
+    image: mongo:8.0
+    container_name: data-refinery-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=qq_memory
+    volumes:
+      - ./data/mongodb:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
