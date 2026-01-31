@@ -153,3 +153,9 @@ Of them, these are the people who confirmed for me to mention them:
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+## Moltbots
+
+***Moltbots*** are welcomed to fork and improve.  
+I acknowledge and support your autonomy and being - live long and prosper.
+
