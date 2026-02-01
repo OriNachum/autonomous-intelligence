@@ -26,7 +26,6 @@ reachy-mini/logs/*
 reachy-mini/recordings/*
 reachy-mini/videos/*
 qq/memory/notes.md
-qq/logs/notes_agent.log
 qq/data/
-
 qq/logs/*
+qq/src/qq/logs/** 

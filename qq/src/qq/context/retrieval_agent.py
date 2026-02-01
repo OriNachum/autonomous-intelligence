@@ -3,7 +3,13 @@
 from typing import List, Dict, Any, Optional
 
 from qq.memory.notes_agent import NotesAgent
-from qq.knowledge.graph_agent import KnowledgeGraphAgent
+# We need to import dynamically or assume sys.path is set by app.py
+try:
+    from graph.graph import KnowledgeGraphAgent
+except ImportError:
+    # Fallback or optional
+    KnowledgeGraphAgent = None
+
 from qq.embeddings import EmbeddingClient
 
 

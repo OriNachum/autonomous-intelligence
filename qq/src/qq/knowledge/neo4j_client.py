@@ -125,8 +125,8 @@ class Neo4jClient:
             set_clause = ""
         
         query = f"""
-            MATCH (a {{name: $source}})
-            MATCH (b {{name: $target}})
+            MERGE (a {{name: $source}})
+            MERGE (b {{name: $target}})
             MERGE (a)-[r:{relationship_type}]->(b)
             {set_clause}
             RETURN type(r) as rel_type

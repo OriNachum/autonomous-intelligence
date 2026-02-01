@@ -86,13 +86,9 @@ def main() -> None:
     embeddings_thread.start()
     
     # Initialize memory agents
-    # Add agents directory to path for agent module imports
-    agents_dir = Path(__file__).parent.parent.parent / "agents"
-    if str(agents_dir) not in sys.path:
-        sys.path.insert(0, str(agents_dir))
-    
-    from notes.notes import NotesAgent
-    from qq.knowledge import KnowledgeGraphAgent
+    # Initialize memory agents
+    from qq.agents.notes.notes import NotesAgent
+    from qq.services.graph import KnowledgeGraphAgent
     from qq.context import ContextRetrievalAgent
     
     notes_agent = NotesAgent(llm_client=client, embeddings=shared_embeddings)

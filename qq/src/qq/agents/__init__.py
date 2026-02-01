@@ -18,21 +18,8 @@ class Agent:
 
 def find_agents_dir() -> Path:
     """Find the agents directory relative to project root."""
-    # Try relative to qq package
-    package_dir = Path(__file__).parent.parent.parent  # src/qq -> qq root
-    agents_dir = package_dir / "agents"
-    
-    if agents_dir.exists():
-        return agents_dir
-    
-    # Try current working directory
-    cwd_agents = Path.cwd() / "agents"
-    if cwd_agents.exists():
-        return cwd_agents
-    
-    # Create default
-    agents_dir.mkdir(parents=True, exist_ok=True)
-    return agents_dir
+    # Since this file is in src/qq/agents/__init__.py, the agents directory is this directory
+    return Path(__file__).parent
 
 
 def load_agent(name: str) -> Agent:

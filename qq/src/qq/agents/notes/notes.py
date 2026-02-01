@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from qq.memory.notes import NotesManager
-
+from qq.agents.prompt_loader import get_agent_prompts
 
 # Set up logging to file
 def setup_logging():
@@ -28,14 +28,6 @@ def setup_logging():
     return logging.getLogger("notes_agent")
 
 logger = setup_logging()
-
-
-def load_role_prompt() -> str:
-    """Load the notes extraction prompt from notes.system.md."""
-    role_file = Path(__file__).parent / "notes.system.md"
-    if role_file.exists():
-        return role_file.read_text().strip()
-    raise FileNotFoundError(f"Notes role prompt not found: {role_file}")
 
 
 def parse_json_response(response: str) -> dict:
@@ -136,19 +128,11 @@ class NotesAgent:
         self.mongo_store = mongo_store
         self.embeddings = embeddings
         self.llm_client = llm_client
-        self._role_prompt = None
         
         # Lazy initialization of optional dependencies
         # Mark as initialized if already provided
         self._mongo_initialized = mongo_store is not None
         self._embeddings_initialized = embeddings is not None
-    
-    @property
-    def role_prompt(self) -> str:
-        """Load role prompt on first access."""
-        if self._role_prompt is None:
-            self._role_prompt = load_role_prompt()
-        return self._role_prompt
     
     def _init_mongo(self) -> None:
         """Lazy initialize MongoDB store."""
@@ -196,8 +180,14 @@ class NotesAgent:
             for m in messages[-20:]  # Last 20 messages
         )
         
-        # Build prompt from role template
-        prompt = self.role_prompt.format(
+        # Load prompts dynamically
+        prompts = get_agent_prompts("notes")
+        if "user" not in prompts:
+            logger.error("Missing user prompt for notes agent")
+            return {"additions": [], "removals": [], "summary": ""}
+
+        # Build prompt from role template (now user prompt)
+        prompt = prompts["user"].format(
             current_notes=current_notes,
             messages=formatted_messages,
         )
@@ -207,7 +197,7 @@ class NotesAgent:
             logger.info("Calling LLM for notes extraction...")
             response = self.llm_client.chat(
                 messages=[
-                    {"role": "system", "content": "You are a precise JSON-only assistant. Output ONLY valid JSON."},
+                    {"role": "system", "content": prompts.get("system", "You are a precise JSON-only assistant. Output ONLY valid JSON.")},
                     {"role": "user", "content": prompt},
                 ],
                 stream=False,
