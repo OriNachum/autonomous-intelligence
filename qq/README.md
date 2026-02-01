@@ -1,6 +1,7 @@
-# qq - Conversational AI CLI
+# qq - Quick Question CLI
 
-A CLI/Console conversational app using vLLM with agent support, skills, and MCP integration.
+*Quick Question* is there to reside on your device and assist however it can.
+It remembers, it can read files, MCPs and Skills.
 
 ## Quick Start
 
