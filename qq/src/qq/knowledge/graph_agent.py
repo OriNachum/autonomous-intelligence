@@ -7,6 +7,29 @@ from qq.knowledge.neo4j_client import Neo4jClient
 from qq.embeddings import EmbeddingClient
 
 
+import logging
+from pathlib import Path
+
+# Set up logging
+def setup_logging():
+    """Configure logging for graph agent."""
+    log_dir = Path(__file__).parent.parent.parent.parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "graph_agent.log"
+    
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()  # Also print to stderr
+        ]
+    )
+    return logging.getLogger("graph_agent")
+
+logger = setup_logging()
+
+
 # Prompt for extracting entities and relationships
 ENTITY_EXTRACTION_PROMPT = """Analyze the following conversation and extract entities and relationships for a knowledge graph.
 
@@ -79,8 +102,9 @@ class KnowledgeGraphAgent:
             try:
                 self.neo4j = Neo4jClient()
                 self._neo4j_initialized = True
-            except Exception:
-                pass
+                logger.info("Neo4j client initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Neo4j client: {e}", exc_info=True)
     
     def _init_embeddings(self) -> None:
         """Lazy initialize embeddings client."""
@@ -88,8 +112,9 @@ class KnowledgeGraphAgent:
             try:
                 self.embeddings = EmbeddingClient()
                 self._embeddings_initialized = True
-            except Exception:
-                pass
+                logger.info("Embeddings client initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize embedding client: {e}", exc_info=True)
     
     def process_messages(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
         """
@@ -101,7 +126,18 @@ class KnowledgeGraphAgent:
         Returns:
             Dict with 'entities' and 'relationships' extracted
         """
+    def process_messages(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+        """
+        Process conversation messages and update knowledge graph.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            
+        Returns:
+            Dict with 'entities' and 'relationships' extracted
+        """
         if not messages or not self.llm_client:
+            logger.warning(f"Skipping process_messages: messages={bool(messages)}, llm_client={bool(self.llm_client)}")
             return {"entities": [], "relationships": []}
         
         # Format messages for prompt
@@ -114,6 +150,7 @@ class KnowledgeGraphAgent:
         prompt = ENTITY_EXTRACTION_PROMPT.format(messages=formatted_messages)
         
         try:
+            logger.info("Requesting entity extraction from LLM...")
             response = self.llm_client.chat(
                 messages=[
                     {"role": "system", "content": "You are a precise JSON-only assistant."},
@@ -123,7 +160,9 @@ class KnowledgeGraphAgent:
             )
             
             # Parse JSON response
+            logger.debug("Received LLM response, parsing JSON...")
             extraction = json.loads(response)
+            logger.info(f"Extraction result: {len(extraction.get('entities', []))} entities, {len(extraction.get('relationships', []))} relationships")
             
             # Store in Neo4j
             self._store_extraction(extraction)
@@ -131,6 +170,7 @@ class KnowledgeGraphAgent:
             return extraction
             
         except (json.JSONDecodeError, Exception) as e:
+            logger.error(f"Error during message processing: {e}", exc_info=True)
             return {"entities": [], "relationships": [], "error": str(e)}
     
     def _store_extraction(self, extraction: Dict[str, Any]) -> None:
@@ -139,6 +179,7 @@ class KnowledgeGraphAgent:
         self._init_embeddings()
         
         if not self.neo4j:
+            logger.error("Neo4j client not available, skipping storage")
             return
         
         entities = extraction.get("entities", [])
@@ -159,8 +200,8 @@ class KnowledgeGraphAgent:
                 try:
                     embed_text = f"{name}: {description}"
                     embedding = self.embeddings.get_embedding(embed_text)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to generate embedding for {name}: {e}")
             
             # Create entity in Neo4j
             try:
@@ -170,8 +211,8 @@ class KnowledgeGraphAgent:
                     properties={"description": description},
                     embedding=embedding,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Failed to create entity {name}: {e}")
         
         # Create relationships
         for rel in relationships:
@@ -188,8 +229,8 @@ class KnowledgeGraphAgent:
                         relationship_type=rel_type,
                         properties={"description": description} if description else None,
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"Failed to create relationship {source}->{target}: {e}")
     
     def get_relevant_entities(
         self,

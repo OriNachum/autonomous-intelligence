@@ -69,7 +69,7 @@ def main() -> None:
     import threading
     from qq.embeddings import EmbeddingClient
     
-    shared_embeddings = EmbeddingClient(prefer_local=True)  # Force local since TEI isn't running
+    shared_embeddings = EmbeddingClient()
     
     def preload_embeddings():
         """Load embeddings model in background."""

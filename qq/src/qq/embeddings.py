@@ -18,7 +18,7 @@ class EmbeddingClient:
         self,
         tei_url: str | None = None,
         model: str = "text-embeddings-inference",
-        local_model: str = "Snowflake/snowflake-arctic-embed-l-v2.0",
+        local_model: str = "Qwen/Qwen3-Embedding-0.6B",
         prefer_local: bool = False,
     ):
         """
@@ -32,7 +32,7 @@ class EmbeddingClient:
         """
         self.tei_url = tei_url or os.getenv("TEI_URL", "http://localhost:8101/v1")
         self.model = model
-        self.local_model_name = local_model
+        self.local_model_name = local_model or os.getenv("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")
         self.prefer_local = prefer_local or os.getenv("EMBEDDINGS_LOCAL", "").lower() in ("1", "true", "yes")
         
         self._tei_client: Optional[object] = None
@@ -62,6 +62,7 @@ class EmbeddingClient:
             return True
         except Exception as e:
             logger.debug(f"TEI not available: {e}")
+            print(f"Warning: Failed to connect to embedding service at {self.tei_url}: {e}")
             return False
     
     def _init_local(self) -> bool:

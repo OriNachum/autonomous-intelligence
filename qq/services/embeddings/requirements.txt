@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+sentence-transformers
+torch --index-url https://download.pytorch.org/whl/cpu
+numpy
+pydantic
+scikit-learn
