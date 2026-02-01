@@ -31,42 +31,32 @@ logger = setup_logging()
 
 
 # Prompt for extracting entities and relationships
-ENTITY_EXTRACTION_PROMPT = """Analyze the following conversation and extract entities and relationships for a knowledge graph.
-
-Entity types to extract:
-- Person: People, names, users mentioned
-- Concept: Ideas, technologies, methods, frameworks
-- Topic: Subjects of discussion
-- Location: Places, systems, services
-- Event: Actions, events, occurrences
-
-For each entity, extract:
-- type: One of the entity types above
-- name: A unique identifier name
-- description: Brief description of the entity
-
-For relationships between entities:
-- source: Source entity name
-- target: Target entity name  
-- type: Relationship type (KNOWS, RELATES_TO, USES, PART_OF, CAUSES, etc.)
-- description: Brief description of the relationship
+# Prompt for extracting relationships given entities
+RELATIONSHIP_EXTRACTION_PROMPT = """Analyze the following conversation and the provided list of entities. Identify relationships between these entities based on the conversation.
 
 Conversation:
 {messages}
 
+Entities found:
+{entities}
+
+Relationship types:
+- KNOWS: Person knows Person
+- RELATES_TO: General relationship
+- USES: Person uses Concept/Tool
+- PART_OF: Concept is part of Concept
+- CAUSES: Event causes Event/State
+- WORKS_ON: Person works on Topic/Project
+- LOCATED_IN: Entity located in Location
+
 Respond with ONLY valid JSON in this format:
 {{
-  "entities": [
-    {{"type": "Person", "name": "...", "description": "..."}},
-    {{"type": "Concept", "name": "...", "description": "..."}}
-  ],
   "relationships": [
-    {{"source": "...", "target": "...", "type": "RELATES_TO", "description": "..."}}
+    {{"source": "Source Entity Name", "target": "Target Entity Name", "type": "RELATES_TO", "description": "Brief description"}}
   ]
 }}
 
-Only extract genuinely significant entities and relationships. Skip trivial mentions.
-If nothing significant to extract, return empty lists."""
+Only extract genuinely significant relationships. If nothing significant, return empty list."""
 
 
 class KnowledgeGraphAgent:
@@ -80,6 +70,7 @@ class KnowledgeGraphAgent:
         neo4j_client: Optional[Neo4jClient] = None,
         embeddings: Optional[EmbeddingClient] = None,
         llm_client: Any = None,
+        model_name: str = "urchade/gliner_small-v2.1",
     ):
         """
         Initialize the Knowledge Graph Agent.
@@ -88,13 +79,29 @@ class KnowledgeGraphAgent:
             neo4j_client: Neo4jClient instance
             embeddings: EmbeddingClient instance
             llm_client: LLM client for entity extraction
+            model_name: GLiNER model name
         """
         self.neo4j = neo4j_client
         self.embeddings = embeddings
         self.llm_client = llm_client
+        self.gliner_model_name = model_name
+        self.gliner = None
         
         self._neo4j_initialized = False
         self._embeddings_initialized = False
+        self._gliner_initialized = False
+
+    def _init_gliner(self) -> None:
+        """Lazy initialize GLiNER model."""
+        if not self._gliner_initialized and self.gliner is None:
+            try:
+                logger.info(f"Loading GLiNER model: {self.gliner_model_name}...")
+                from gliner import GLiNER
+                self.gliner = GLiNER.from_pretrained(self.gliner_model_name)
+                self._gliner_initialized = True
+                logger.info("GLiNER model loaded successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize GLiNER: {e}", exc_info=True)
     
     def _init_neo4j(self) -> None:
         """Lazy initialize Neo4j client."""
@@ -136,21 +143,69 @@ class KnowledgeGraphAgent:
         Returns:
             Dict with 'entities' and 'relationships' extracted
         """
-        if not messages or not self.llm_client:
-            logger.warning(f"Skipping process_messages: messages={bool(messages)}, llm_client={bool(self.llm_client)}")
+        if not messages:
             return {"entities": [], "relationships": []}
         
-        # Format messages for prompt
-        formatted_messages = "\n".join(
-            f"{m['role'].upper()}: {m['content']}"
-            for m in messages[-20:]  # Last 20 messages
-        )
+        # Initialize GLiNER
+        self._init_gliner()
         
-        # Get LLM to extract entities and relationships
-        prompt = ENTITY_EXTRACTION_PROMPT.format(messages=formatted_messages)
+        if not self.gliner:
+            logger.warning("GLiNER not initialized, skipping extraction")
+            return {"entities": [], "relationships": []}
+
+        # 1. Prepare text for GLiNER (last 20 messages)
+        recent_messages = messages[-20:]
+        combined_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in recent_messages])
+        
+        # 2. Extract Entities with GLiNER
+        labels = ["Person", "Concept", "Topic", "Location", "Event"]
         
         try:
-            logger.info("Requesting entity extraction from LLM...")
+            logger.info("Extracting entities with GLiNER...")
+            # GLiNER works best on sentences/paragraphs. We'll pass the whole block.
+            gliner_entities = self.gliner.predict_entities(combined_text, labels, threshold=0.3)
+            
+            # Deduplicate and format entities
+            unique_entities = {}
+            for ent in gliner_entities:
+                name = ent["text"].strip()
+                if not name or len(name) < 2:
+                    continue
+                # Simple dedup by name
+                if name not in unique_entities:
+                    unique_entities[name] = {
+                        "type": ent["label"],
+                        "name": name,
+                        "description": f"Extracted from conversation as {ent['label']}"
+                    }
+            
+            entities_list = list(unique_entities.values())
+            logger.info(f"GLiNER found {len(entities_list)} entities")
+            
+            if not entities_list:
+                return {"entities": [], "relationships": []}
+                
+        except Exception as e:
+            logger.error(f"GLiNER extraction failed: {e}", exc_info=True)
+            return {"entities": [], "relationships": []}
+
+        # 3. Extract Relationships with LLM
+        if not self.llm_client:
+             # If no LLM, just return entities
+            self._store_extraction({"entities": entities_list, "relationships": []})
+            return {"entities": entities_list, "relationships": []}
+
+        # Format inputs for LLM
+        formatted_messages = combined_text
+        formatted_entities = json.dumps([{"name": e["name"], "type": e["type"]} for e in entities_list], indent=2)
+        
+        prompt = RELATIONSHIP_EXTRACTION_PROMPT.format(
+            messages=formatted_messages,
+            entities=formatted_entities
+        )
+        
+        try:
+            logger.info("Requesting relationship extraction from LLM...")
             response = self.llm_client.chat(
                 messages=[
                     {"role": "system", "content": "You are a precise JSON-only assistant."},
@@ -161,17 +216,38 @@ class KnowledgeGraphAgent:
             
             # Parse JSON response
             logger.debug("Received LLM response, parsing JSON...")
-            extraction = json.loads(response)
-            logger.info(f"Extraction result: {len(extraction.get('entities', []))} entities, {len(extraction.get('relationships', []))} relationships")
+            # Clean potential markdown code blocks
+            response_clean = response.strip()
+            if response_clean.startswith("```json"):
+                response_clean = response_clean[7:]
+            if response_clean.endswith("```"):
+                response_clean = response_clean[:-3]
+            
+            relationships = []
+            if response_clean.strip():
+                try:
+                    llm_data = json.loads(response_clean)
+                    relationships = llm_data.get("relationships", [])
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse LLM JSON: {response_clean}")
+            
+            logger.info(f"Extraction result: {len(entities_list)} entities, {len(relationships)} relationships")
+            
+            result = {
+                "entities": entities_list,
+                "relationships": relationships
+            }
             
             # Store in Neo4j
-            self._store_extraction(extraction)
+            self._store_extraction(result)
             
-            return extraction
+            return result
             
-        except (json.JSONDecodeError, Exception) as e:
-            logger.error(f"Error during message processing: {e}", exc_info=True)
-            return {"entities": [], "relationships": [], "error": str(e)}
+        except Exception as e:
+            logger.error(f"Error during relationship extraction: {e}", exc_info=True)
+            # Return at least the entities
+            self._store_extraction({"entities": entities_list, "relationships": []})
+            return {"entities": entities_list, "relationships": []}
     
     def _store_extraction(self, extraction: Dict[str, Any]) -> None:
         """Store extracted entities and relationships in Neo4j."""

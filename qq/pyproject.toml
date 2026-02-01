@@ -12,6 +12,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pymongo>=4.0",
     "neo4j>=5.0",
+    "gliner>=0.1.0",
 ]
 
 [project.optional-dependencies]
