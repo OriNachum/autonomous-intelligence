@@ -45,6 +45,9 @@ This starts:
 
 Check status with `qq-memory` or `qq-test`.
 
+<img width="1109" height="1065" alt="image" src="https://github.com/user-attachments/assets/4a5211d1-e832-421c-9398-45477d0eba1c" />
+
+
 ## Configuration
 
 Copy `.env` and configure:
