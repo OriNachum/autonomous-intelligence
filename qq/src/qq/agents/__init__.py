@@ -124,6 +124,51 @@ def load_agent(name: str) -> Agent:
         # Logging error properly would be better
         print(f"Warning: Failed to load skills as tools: {e}")
 
+    # Initialize FileManager tools
+    try:
+        from qq.services.file_manager import FileManager
+        
+        # Store state in ~/.qq/<agent_name>
+        state_dir = Path.home() / ".qq" / name
+        file_manager = FileManager(state_dir)
+        
+        @tool
+        def read_file(path: str) -> str:
+            """
+            Read the content of a file.
+            
+            Args:
+                path: Absolute or relative path (relative to current session directory).
+            """
+            return file_manager.read_file(path)
+            
+        @tool
+        def list_files(pattern: str = "*", recursive: bool = False, use_regex: bool = False) -> str:
+            """
+            List files in the current session directory.
+            
+            Args:
+                pattern: Filter files by glob pattern (default "*") or regex.
+                recursive: Whether to search recursively.
+                use_regex: If True, pattern is treated as regex.
+            """
+            return file_manager.list_files(pattern, recursive, use_regex)
+
+        @tool
+        def set_directory(path: str) -> str:
+            """
+            Set the current session directory for file operations.
+            
+            Args:
+                path: Target directory path (absolute or relative).
+            """
+            return file_manager.set_directory(path)
+
+        agent_tools.extend([read_file, list_files, set_directory])
+        
+    except ImportError as e:
+        print(f"Warning: Failed to load FileManager: {e}")
+
     # Instantiate Strands Agent
     agent = Agent(
         name=name,
