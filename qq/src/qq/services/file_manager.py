@@ -202,13 +202,27 @@ class FileManager:
             # 3. Format Output with Metadata
             display_end_line = start_index + len(extracted_lines)
             
+            
             header = (
                 f"[File: {target_path.name} | Lines {start_line}-{display_end_line} of {total_lines}]\n"
                 f"[Note: Output limited to {MAX_LINES_PER_READ} lines max per request.]\n"
                 "----------------------------------------"
             )
+
+            # 4. Add Footer Guidance
+            if display_end_line < total_lines:
+                next_start = display_end_line + 1
+                footer = (
+                    f"\n----------------------------------------\n"
+                    f"[Note: to read more of the file, request this again with start-line {next_start}; total lines: {total_lines}]"
+                )
+            else:
+                 footer = (
+                    f"\n----------------------------------------\n"
+                    f"[File read completed. Total lines: {total_lines}]"
+                )
             
-            return f"{header}\n{output_text}"
+            return f"{header}\n{output_text}{footer}"
 
         except Exception as e:
              return f"Error reading file '{path}': {e}"
