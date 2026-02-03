@@ -62,8 +62,9 @@ def main() -> None:
     if args.verbose and skills:
         console.print_info(f"Loaded {len(skills)} skills")
     
-    # Create vLLM client
-    client = create_client()
+
+    # Create vLLM client - Removed in favor of strands Agent internal model
+    # client = create_client()
     
     # Preload embeddings in background thread
     import threading
@@ -85,132 +86,78 @@ def main() -> None:
     embeddings_thread = threading.Thread(target=preload_embeddings, daemon=True)
     embeddings_thread.start()
     
-    # Initialize memory agents
-    # Initialize memory agents
-    from qq.agents.notes.notes import NotesAgent
-    from qq.services.graph import KnowledgeGraphAgent
-    from qq.context import ContextRetrievalAgent
+    # Memory agents initialization commented out for Phase 1
+    # Will be migrated to Tools in Phase 3
     
-    notes_agent = NotesAgent(llm_client=client, embeddings=shared_embeddings)
-    knowledge_agent = KnowledgeGraphAgent(llm_client=client, embeddings=shared_embeddings)
-    context_agent = ContextRetrievalAgent(
-        notes_agent=notes_agent,
-        knowledge_agent=knowledge_agent,
-        embeddings=shared_embeddings,
-    )
+    # Initialize memory agents
+    # from qq.agents.notes.notes import NotesAgent
+    # from qq.services.graph import KnowledgeGraphAgent
+    # from qq.context import ContextRetrievalAgent
+    
+    # notes_agent = NotesAgent(llm_client=client, embeddings=shared_embeddings)
+    # knowledge_agent = KnowledgeGraphAgent(llm_client=client, embeddings=shared_embeddings)
+    # context_agent = ContextRetrievalAgent(
+    #     notes_agent=notes_agent,
+    #     knowledge_agent=knowledge_agent,
+    #     embeddings=shared_embeddings,
+    # )
     
     if args.verbose:
-        console.print_info("Memory agents initialized")
+        console.print_info("Agent initialized (Memory agents pending migration)")
     
     # Run in appropriate mode
     if args.mode == "cli":
         run_cli_mode(
-            client=client,
             agent=agent,
             history=history,
-            skills=skills,
-            mcp_tools=mcp_tools,
-            tool_executor=tool_executor,
             console=console,
             message=args.message or "",
-            notes_agent=notes_agent,
-            knowledge_agent=knowledge_agent,
-            context_agent=context_agent,
         )
     else:
         run_console_mode(
-            client=client,
             agent=agent,
             history=history,
-            skills=skills,
-            mcp_tools=mcp_tools,
-            tool_executor=tool_executor,
             console=console,
-            notes_agent=notes_agent,
-            knowledge_agent=knowledge_agent,
-            context_agent=context_agent,
         )
 
 
 def run_cli_mode(
-    client,
     agent,
     history,
-    skills,
-    mcp_tools,
-    tool_executor,
     console,
     message: str,
-    notes_agent=None,
-    knowledge_agent=None,
-    context_agent=None,
 ) -> None:
     """Run in CLI mode - single message and response."""
-    from qq.skills import find_relevant_skills, inject_skills
     
     if not message:
         console.print_error("No message provided. Use -m 'your message'")
         sys.exit(1)
     
-    # Find relevant skills
-    relevant_skills = find_relevant_skills(message, skills)
-    system_prompt = inject_skills(agent.system_prompt, relevant_skills)
+    # Note: Skills and Context injection disabled for Phase 1
     
-    # Inject retrieved context from memory agents
-    if context_agent:
-        system_prompt = context_agent.inject_context(system_prompt, message)
-    
-    # Build messages
-    messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(history.get_messages())
-    messages.append({"role": "user", "content": message})
-    
-    # Get response
-    if mcp_tools:
-        response, _ = client.chat_with_tools(
-            messages=messages,
-            tools=mcp_tools,
-            tool_executor=tool_executor,
-        )
-    else:
-        response = client.chat(messages=messages, stream=False)
-    
-    # Save to history
-    history.add("user", message)
-    history.add("assistant", response)
-    
-    # Update memory agents with new conversation
-    full_history = history.get_messages()
-    if notes_agent:
-        try:
-            notes_agent.process_messages(full_history)
-        except Exception:
-            pass  # Silently handle if storage unavailable
-    if knowledge_agent:
-        try:
-            knowledge_agent.process_messages(full_history)
-        except Exception:
-            pass
-    
-    # Output response
-    console.print_assistant_message(response)
+    # Strands Agent execution
+    try:
+        # We pass the message directly. 
+        # TODO: Handle history if Strands Agent doesn't automatically load persistence
+        response = agent(message)
+        
+        # Save to history
+        history.add("user", message)
+        history.add("assistant", str(response))
+        
+        # Output response
+        console.print_assistant_message(str(response))
+        
+    except Exception as e:
+        console.print_error(f"Error executing agent: {e}")
 
 
 def run_console_mode(
-    client,
     agent,
     history,
-    skills,
-    mcp_tools,
-    tool_executor,
     console,
-    notes_agent=None,
-    knowledge_agent=None,
-    context_agent=None,
 ) -> None:
     """Run in console mode - interactive REPL."""
-    from qq.skills import find_relevant_skills, inject_skills
-    from qq.console import stream_to_console
     
     console.print_welcome(agent.name, history.windowed_count)
     
@@ -233,67 +180,32 @@ def run_console_mode(
                 console.print_info(f"History: {history.count} total, {history.windowed_count} in window")
                 continue
             
-            if user_input.lower() == "memory":
-                # Show memory summary
-                if context_agent:
-                    summary = context_agent.get_full_context_summary()
-                    console.print_info(summary)
-                else:
-                    console.print_info("Memory agents not initialized")
-                continue
+            # Memory command disabled for now
+            # if user_input.lower() == "memory": ...
             
             if not user_input.strip():
                 continue
             
-            # Find relevant skills for this message
-            relevant_skills = find_relevant_skills(user_input, skills)
-            system_prompt = inject_skills(agent.system_prompt, relevant_skills)
+            # Note: Skills and Context injection disabled for Phase 1
             
-            # Inject retrieved context from memory agents
-            if context_agent:
-                system_prompt = context_agent.inject_context(system_prompt, user_input)
-            
-            # Build messages
-            messages = [{"role": "system", "content": system_prompt}]
-            messages.extend(history.get_messages())
-            messages.append({"role": "user", "content": user_input})
-            
-            # Get response
-            if mcp_tools:
-                # Tool calling mode (non-streaming for simplicity)
-                response, _ = client.chat_with_tools(
-                    messages=messages,
-                    tools=mcp_tools,
-                    tool_executor=tool_executor,
-                )
-                console.print_assistant_message(response)
-            else:
-                # Streaming mode
-                stream = client.chat(messages=messages, stream=True)
-                response = stream_to_console(console, stream)
+            # Strands Agent execution
+            # Streaming support to be verified. agent() might return full response.
+            response = agent(user_input)
             
             # Save to history
             history.add("user", user_input)
-            history.add("assistant", response)
+            history.add("assistant", str(response))
             
-            # Update memory agents with new conversation (background)
-            full_history = history.get_messages()
-            if notes_agent:
-                try:
-                    notes_agent.process_messages(full_history)
-                except Exception:
-                    pass  # Silently handle if storage unavailable
-            if knowledge_agent:
-                try:
-                    knowledge_agent.process_messages(full_history)
-                except Exception:
-                    pass
+            # Output Result (Streaming handled by Agent callbacks if configured, 
+            # otherwise we print the result)
+            console.print_assistant_message(str(response))
             
         except KeyboardInterrupt:
             console.print_goodbye()
             break
         except Exception as e:
             console.print_error(str(e))
+
 
 
 if __name__ == "__main__":
