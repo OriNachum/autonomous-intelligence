@@ -5,6 +5,25 @@ from pathlib import Path
 from fnmatch import fnmatch
 from typing import List, Optional
 
+class DocumentReader:
+    def __init__(self):
+        self._md = None
+
+    @property
+    def md(self):
+        if self._md is None:
+            # Lazy import to avoid startup overhead if not used
+            from markitdown import MarkItDown
+            self._md = MarkItDown()
+        return self._md
+
+    def convert(self, path: Path) -> str:
+        try:
+            result = self.md.convert(str(path))
+            return result.text_content
+        except Exception as e:
+            return f"Error converting detected binary file '{path.name}': {e}"
+
 class FileManager:
     def __init__(self, state_dir: Path):
         self.state_dir = state_dir
@@ -15,6 +34,7 @@ class FileManager:
         
         self._cwd = os.getcwd()
         self._load_state()
+        self.document_reader = DocumentReader()
 
     def _load_state(self):
         """Load state from file."""
@@ -136,6 +156,11 @@ class FileManager:
             if not target_path.is_file():
                  return f"Error: '{target_path}' is not a file."
             
+            # Extension check
+            suffix = target_path.suffix.lower()
+            if suffix in ['.pdf', '.docx', '.xlsx', '.pptx']:
+                 return self.document_reader.convert(target_path)
+
             return target_path.read_text()
         except Exception as e:
              return f"Error reading file '{path}': {e}"
