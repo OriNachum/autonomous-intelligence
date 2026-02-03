@@ -13,6 +13,7 @@ dependencies = [
     "pymongo>=4.0",
     "neo4j>=5.0",
     "gliner>=0.1.0",
+    "strands-agents>=1.24.0",
 ]
 
 [project.optional-dependencies]
