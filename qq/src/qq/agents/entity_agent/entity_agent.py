@@ -1,4 +1,4 @@
-from torch.cuda import temperature
+from strands import Agent
 import json
 import logging
 from pathlib import Path
@@ -11,8 +11,8 @@ logger = logging.getLogger("entity_agent")
 class EntityAgent:
     """Agent responsible for extracting entities from conversation history."""
     
-    def __init__(self, llm_client: Any):
-        self.llm_client = llm_client
+    def __init__(self, model: Any):
+        self.model = model
 
 
     def _clean_json_response(self, response: str) -> str:
@@ -50,8 +50,8 @@ class EntityAgent:
         Returns:
             List of extracted entities
         """
-        if not self.llm_client:
-            logger.warning("LLM client not available, skipping extraction")
+        if not self.model:
+            logger.warning("Model not available, skipping extraction")
             return []
 
         if not messages:
@@ -71,14 +71,17 @@ class EntityAgent:
             prompt = prompts["user"].format(messages=combined_text)
             logger.info("Requesting entity extraction from LLM...")
             
-            response = self.llm_client.chat(
-                messages=[
-                    {"role": "system", "content": prompts.get("system", "You are a precise JSON-only assistant.")},
-                    {"role": "user", "content": prompt}
-                ],
-                stream=False,
-                temperature=0.2
+            # Create a temporary agent
+            agent = Agent(
+                name="entity_extractor",
+                system_prompt=prompts.get("system", "You are a precise JSON-only assistant."),
+                model=self.model
             )
+            
+            # Get response (strands agent doesn't take temperature in call usually, relies on model config or kwargs)
+            # The model configuration handles temperature if possible, looking at __init__.py it is configurable.
+            # But the agent call interface is likely agent(text).
+            response = str(agent(prompt))
             
             response_clean = self._clean_json_response(response)
             data = json.loads(response_clean)

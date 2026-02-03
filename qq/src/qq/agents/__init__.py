@@ -10,11 +10,24 @@ from typing import Optional
 from strands import Agent, tool
 from strands.models import OpenAIModel
 
-# We no longer need the dataclass as we are using strands.Agent
-# However, to avoid immediate breakage in app.py before we fix it, 
-# we might need to ensure the returned Agent has expected attributes 
-# or we fix app.py immediately after.
-# The plan implies we switch the type.
+def get_model() -> OpenAIModel:
+    """
+    Get the configured OpenAI/vLLM model.
+    
+    Returns:
+        Configured OpenAIModel instance
+    """
+    start_url = os.getenv("OPENAI_BASE_URL", os.getenv("VLLM_URL", "http://localhost:8000/v1"))
+    api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
+    model_name = os.getenv("MODEL_NAME", os.getenv("MODEL_ID", "model-name"))
+    
+    return OpenAIModel(
+        model_id=model_name,
+        client_args={
+            "base_url": start_url,
+            "api_key": api_key,
+        }
+    )
 
 def find_agents_dir() -> Path:
     """Find the agents directory relative to project root."""
@@ -93,20 +106,8 @@ def load_agent(name: str) -> Agent:
 
 
 
-    # Configure Model to use vLLM or OpenAI
-    # (Checking env vars again or passing them)
-    # Support both standard OpenAI env vars and existing project VLLM vars
-    start_url = os.getenv("OPENAI_BASE_URL", os.getenv("VLLM_URL", "http://localhost:8000/v1"))
-    api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
-    model_name = os.getenv("MODEL_NAME", os.getenv("MODEL_ID", "model-name"))
-    
-    model = OpenAIModel(
-        model_id=model_name,
-        client_args={
-            "base_url": start_url,
-            "api_key": api_key,
-        }
-    )
+    # Configure Model
+    model = get_model()
     
     # Load Skills and convert to Tools
     agent_tools = []
@@ -149,17 +150,7 @@ Keep responses focused and actionable. Use markdown formatting when it improves 
     system_file = agent_dir / "default.system.md"
     system_file.write_text(system_prompt)
     
-    start_url = os.getenv("OPENAI_BASE_URL", os.getenv("VLLM_URL", "http://localhost:8000/v1"))
-    api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
-    model_name = os.getenv("MODEL_NAME", os.getenv("MODEL_ID", "model-name"))
-    
-    model = OpenAIModel(
-        model_id=model_name,
-        client_args={
-            "base_url": start_url,
-            "api_key": api_key,
-        }
-    )
+    model = get_model()
     
     # Also load skills for default agent
     agent_tools = []

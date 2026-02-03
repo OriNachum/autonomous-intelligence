@@ -1,58 +1,60 @@
-# Plan: Finish Migration to Strands Agents
-
-This plan outlines the final steps to fully migrate the `qq` application to use the `strands` library for all LLM interactions, replacing the direct `vllm` / `openai` client usage in the memory and graph agents.
+# Strands Agents Migration Plan
 
 ## Goal
-Remove all legacy `create_client()` calls and direct `OpenAI` client usage. Ensure `NotesAgent`, `EntityAgent`, and `RelationshipAgent` utilize the `strands` library (specifically `strands.Agent` and `strands.models.OpenAIModel`) for their operations.
+Replace all instances of direct `openai` or custom `VLLMClient` usage with `strands-agents` library components (`Agent`, `OpenAIModel`), ensuring consistent agent interaction patterns across the entire application.
 
 ## User Review Required
 > [!IMPORTANT]
-> This refactor changes how the memory and graph agents interact with the LLM. We are replacing the `llm_client.chat` method calls with `strands.Agent` execution or direct model usage via `strands`.
-> The `app.py` file will also be modified to uncomment and re-enable the memory agents.
+> This migration modifies how `NotesAgent` and `KnowledgeGraphAgent` intersect with the LLM backend. The custom `VLLMClient` at `src/qq/client.py` will be removed.
 
 ## Proposed Changes
 
-### Refactor Memory Agents
-The following agents currently depend on a raw `llm_client` (OpenAI compatible client). They will be updated to accept a `strands.models.OpenAIModel` (or `strands.models.Model`) and use `strands.Agent` internally.
+### 1. Infrastructure (`src/qq/agents/`)
+#### [MODIFY] [__init__.py](file:///home/spark/git/autonomous-intelligence/qq/src/qq/agents/__init__.py)
+- Extract `OpenAIModel` configuration logic from `load_agent` into a reusable `get_model()` function.
+- Ensure `get_model()` handles environment variables (`VLLM_URL`, `OPENAI_API_KEY`, etc.) consistently.
+
+### 2. Memory Agents Migration
+Each agent class currently accepting `llm_client` will be updated to accept a `strands.models.Model` instance (or use `get_model` internally if appropriate, but dependency injection is better).
 
 #### [MODIFY] [notes.py](file:///home/spark/git/autonomous-intelligence/qq/src/qq/agents/notes/notes.py)
-- Change `__init__` to accept `model` instead of `llm_client`.
+- Update `NotesAgent.__init__` to accept `model: Any` instead of `llm_client`.
 - In `process_messages`:
-  - Construct a `strands.Agent` using the dynamically loaded system prompt and the provided `model`.
-  - Use `agent(user_prompt)` to get the response.
-  - Parse the response (the existing JSON parsing logic can remain or be simplified if `strands` handles cleanup, though `strands` output is raw text).
-
-#### [MODIFY] [entity_agent.py](file:///home/spark/git/autonomous-intelligence/qq/src/qq/agents/entity_agent/entity_agent.py)
-- Change `__init__` to accept `model` instead of `llm_client`.
-- In `extract`:
-  - Create a temporary `strands.Agent` with the entity extraction system prompt.
-  - Call the agent with the formatted user prompt.
-
-#### [MODIFY] [relationship_agent.py](file:///home/spark/git/autonomous-intelligence/qq/src/qq/agents/relationship_agent/relationship_agent.py)
-- Change `__init__` to accept `model` instead of `llm_client`.
-- In `extract`:
-  - Create a temporary `strands.Agent` with the relationship extraction system prompt.
-  - Call the agent with the formatted user prompt.
+    - Instantiate a temporary `strands.Agent` with the shared `model` and the dynamically loaded system prompt.
+    - Call the agent with the user prompt: `response = agent(prompt)`.
+    - Continue to use existing `parse_json_response` to handle valid/invalid JSON and `<think>` tags.
 
 #### [MODIFY] [graph.py](file:///home/spark/git/autonomous-intelligence/qq/src/qq/services/graph.py)
-- Update `KnowledgeGraphAgent` to accept `model` instead of `llm_client`.
-- Pass this `model` to the `EntityAgent` and `RelationshipAgent` instances.
+- Update `KnowledgeGraphAgent.__init__` to accept `model`.
+- Pass `model` to `EntityAgent` and `RelationshipAgent` constructors.
 
-### Update Application Entry Point
+#### [MODIFY] [entity_agent.py](file:///home/spark/git/autonomous-intelligence/qq/src/qq/agents/entity_agent/entity_agent.py)
+- Update `EntityAgent.__init__` to accept `model`.
+- In `extract`:
+    - Instantiate `strands.Agent` with `model` and the system prompt.
+    - Call agent to get response.
 
+#### [MODIFY] [relationship_agent.py](file:///home/spark/git/autonomous-intelligence/qq/src/qq/agents/relationship_agent/relationship_agent.py)
+- Update `RelationshipAgent.__init__` to accept `model`.
+- In `extract`:
+    - Instantiate `strands.Agent` with `model` and the system prompt.
+    - Call agent to get response.
+
+### 3. Cleanup
+#### [DELETE] [client.py](file:///home/spark/git/autonomous-intelligence/qq/src/qq/client.py)
+- Remove the stale `VLLMClient` implementation.
+
+### 4. Application Entry Point
 #### [MODIFY] [app.py](file:///home/spark/git/autonomous-intelligence/qq/src/qq/app.py)
+- Update commented-out memory agent initialization code to reflect the new API (passing `model` from `load_agent` or `get_model()` instead of `client`).
 - Remove `create_client` import and usage.
-- Retrieve the `model` from the loaded main agent (e.g., `agent.model`).
-- **Uncomment** the initialization of `NotesAgent`, `KnowledgeGraphAgent`, and `ContextRetrievalAgent`.
-- Pass `model=agent.model` to `NotesAgent` and `KnowledgeGraphAgent`.
 
 ## Verification Plan
 
 ### Automated Tests
-- Run `qq` in console mode.
-- Verify that `qq` starts without errors.
+- Run `qq --help` to ensure no import errors.
+- Run `pytest src/qq/test_systems.py` (if applicable, or create a new verification script).
 
 ### Manual Verification
-- Send a message in `qq` console that contains factual information (e.g., "My name is saved in notes").
-- Check `logs/notes_agent.log` to see if the Notes Agent effectively called the LLM and extracted the note.
-- Check `logs/graph_agent.log` to see if entities were extracted.
+- Since memory agents are currently disabled in `app.py`, verification primarily involves ensuring the code is valid and imports are correct.
+- If possible, temporarily enable memory agents in `app.py` and run a simple CLI query to verify they don't crash and attempt to call the model (logs will show "Sending HTTP Request").

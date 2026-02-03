@@ -1,4 +1,5 @@
 import json
+from strands import Agent
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
@@ -10,8 +11,8 @@ logger = logging.getLogger("relationship_agent")
 class RelationshipAgent:
     """Agent responsible for extracting relationships between entities from conversation history."""
     
-    def __init__(self, llm_client: Any):
-        self.llm_client = llm_client
+    def __init__(self, model: Any):
+        self.model = model
 
 
     def _clean_json_response(self, response: str) -> str:
@@ -50,8 +51,8 @@ class RelationshipAgent:
         Returns:
             List of extracted relationships
         """
-        if not self.llm_client:
-            logger.warning("LLM client not available, skipping relationship extraction")
+        if not self.model:
+            logger.warning("Model not available, skipping relationship extraction")
             return []
 
         if not messages:
@@ -81,14 +82,15 @@ class RelationshipAgent:
             
             logger.info("Requesting relationship extraction from LLM...")
             
-            response = self.llm_client.chat(
-                messages=[
-                    {"role": "system", "content": prompts.get("system", "You are a precise JSON-only assistant.")},
-                    {"role": "user", "content": prompt}
-                ],
-                stream=False,
-                temperature=0.2
+            # Create a temporary agent
+            agent = Agent(
+                name="relationship_extractor",
+                system_prompt=prompts.get("system", "You are a precise JSON-only assistant."),
+                model=self.model
             )
+            
+            # Get response
+            response = str(agent(prompt))
             
             response_clean = self._clean_json_response(response)
             data = json.loads(response_clean)

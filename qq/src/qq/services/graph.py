@@ -38,7 +38,7 @@ class KnowledgeGraphAgent:
         self,
         neo4j_client: Optional[Neo4jClient] = None,
         embeddings: Optional[EmbeddingClient] = None,
-        llm_client: Any = None,
+        model: Any = None,
     ):
         """
         Initialize the Knowledge Graph Agent.
@@ -46,15 +46,15 @@ class KnowledgeGraphAgent:
         Args:
             neo4j_client: Neo4jClient instance
             embeddings: EmbeddingClient instance
-            llm_client: LLM client for extraction
+            model: Model instance for extraction
         """
         self.neo4j = neo4j_client
         self.embeddings = embeddings
-        self.llm_client = llm_client
+        self.model = model
         
         # Initialize sub-agents
-        self.entity_agent = EntityAgent(llm_client)
-        self.relationship_agent = RelationshipAgent(llm_client)
+        self.entity_agent = EntityAgent(model)
+        self.relationship_agent = RelationshipAgent(model)
         
         self._neo4j_initialized = False
         self._embeddings_initialized = False
@@ -92,13 +92,13 @@ class KnowledgeGraphAgent:
         if not messages:
             return {"entities": [], "relationships": []}
             
-        if not self.llm_client:
-            logger.warning("LLM client not available, skipping extraction")
+        if not self.model:
+            logger.warning("Model not available, skipping extraction")
             return {"entities": [], "relationships": []}
             
         # Update clients for sub-agents in case they changed
-        self.entity_agent.llm_client = self.llm_client
-        self.relationship_agent.llm_client = self.llm_client
+        self.entity_agent.model = self.model
+        self.relationship_agent.model = self.model
 
         # Step 1: Extract Entities
         entities_list = self.entity_agent.extract(messages)

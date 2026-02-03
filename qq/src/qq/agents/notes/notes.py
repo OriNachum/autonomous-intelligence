@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
+from strands import Agent
 from qq.memory.notes import NotesManager
 from qq.agents.prompt_loader import get_agent_prompts
 
@@ -113,7 +114,7 @@ class NotesAgent:
         notes_manager: Optional[NotesManager] = None,
         mongo_store: Optional[Any] = None,
         embeddings: Optional[Any] = None,
-        llm_client: Any = None,
+        model: Any = None,
     ):
         """
         Initialize the Notes Agent.
@@ -122,12 +123,12 @@ class NotesAgent:
             notes_manager: NotesManager instance (created if not provided)
             mongo_store: MongoNotesStore instance (optional)
             embeddings: EmbeddingClient instance (optional)
-            llm_client: LLM client for summarization (required for processing)
+            model: Model instance for summarization (required for processing)
         """
         self.notes_manager = notes_manager or NotesManager()
         self.mongo_store = mongo_store
         self.embeddings = embeddings
-        self.llm_client = llm_client
+        self.model = model
         
         # Lazy initialization of optional dependencies
         # Mark as initialized if already provided
@@ -166,8 +167,8 @@ class NotesAgent:
         """
         logger.info(f"process_messages called with {len(messages) if messages else 0} messages")
         
-        if not messages or not self.llm_client:
-            logger.warning(f"Early return: messages={bool(messages)}, llm_client={bool(self.llm_client)}")
+        if not messages or not self.model:
+            logger.warning(f"Early return: messages={bool(messages)}, model={bool(self.model)}")
             return {"additions": [], "removals": [], "summary": ""}
         
         # Load current notes
@@ -195,13 +196,16 @@ class NotesAgent:
         
         try:
             logger.info("Calling LLM for notes extraction...")
-            response = self.llm_client.chat(
-                messages=[
-                    {"role": "system", "content": prompts.get("system", "You are a precise JSON-only assistant. Output ONLY valid JSON.")},
-                    {"role": "user", "content": prompt},
-                ],
-                stream=False,
+            
+            # Create a temporary agent for this extraction task
+            agent = Agent(
+                name="notes_extractor",
+                system_prompt=prompts.get("system", "You are a precise JSON-only assistant. Output ONLY valid JSON."),
+                model=self.model
             )
+            
+            # Get response from agent
+            response = str(agent(prompt))
             logger.info(f"LLM response received, length: {len(response)}")
             
             # Parse JSON response (handles <think> tags)
