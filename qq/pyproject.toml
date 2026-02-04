@@ -24,6 +24,7 @@ dev = ["pytest>=8.0"]
 [project.scripts]
 qq = "qq:main"
 qq-memory = "qq.memory_status:main"
+qq-backup = "qq.backup.cli:main"
 qq-test = "qq.test_systems:main"
 
 [build-system]

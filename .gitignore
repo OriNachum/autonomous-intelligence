@@ -29,3 +29,4 @@ qq/memory/notes.md
 qq/data/
 qq/logs/*
 qq/src/qq/logs/** 
+qq/backups/**

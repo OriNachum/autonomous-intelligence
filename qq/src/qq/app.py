@@ -122,6 +122,21 @@ def main() -> None:
     if args.verbose:
         console.print_info("Agent initialized (Memory agents pending migration)")
 
+    # Check for daily backup (before first interaction)
+    from qq.backup.manager import BackupManager
+
+    backup_manager = BackupManager()
+    if backup_manager.should_backup_today():
+        if args.verbose:
+            console.print_info("Creating daily memory backup...")
+        try:
+            backup_path = backup_manager.create_backup(trigger="daily")
+            if args.verbose:
+                console.print_info(f"Backup created: {backup_path}")
+        except Exception as e:
+            if args.verbose:
+                console.print_info(f"Backup skipped: {e}")
+
     # Run in appropriate mode
     if args.mode == "cli":
         run_cli_mode(
@@ -262,8 +277,15 @@ def run_console_mode(
                 console.print_info(f"History: {history.count} total, {history.windowed_count} in window")
                 continue
 
-            # Memory command disabled for now
-            # if user_input.lower() == "memory": ...
+            if user_input.lower() == "backup":
+                from qq.backup.manager import BackupManager
+                try:
+                    manager = BackupManager()
+                    backup_path = manager.create_backup(trigger="manual")
+                    console.print_info(f"Backup created: {backup_path}")
+                except Exception as e:
+                    console.print_error(f"Backup failed: {e}")
+                continue
 
             if not user_input.strip():
                 continue
