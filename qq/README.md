@@ -3,6 +3,8 @@
 *Quick Question* is there to reside on your device and assist however it can.
 It remembers, it can read files, MCPs and Skills.
 
+<img width="2752" height="1536" alt="unnamed" src="https://github.com/user-attachments/assets/fe27c3c8-85fb-41a6-ac9f-a5878c4fc2e0" />
+
 ## Features
 
 - **Colored Console UI**: Rich terminal interface with markdown rendering.
