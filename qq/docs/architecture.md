@@ -8,25 +8,33 @@ QQ is designed as a local-first, modular AI agent that interacts through a CLI o
 graph TD
     User[User] -->|Input| CLI[CLI / Console]
     CLI --> App[Application Loop]
-    
+
     subgraph Core "Core System"
         App --> Memory[Memory System]
         App --> Tools[Tool Manager]
         App --> LLM[LLM Client]
     end
-    
+
     subgraph MemoryLayer "Memory Layer"
         Memory --> Mongo[(MongoDB - Notes)]
         Memory --> Neo4j[(Neo4j - Graph)]
         Memory --> Vector[Vector Embeddings]
     end
-    
+
     subgraph Capabilities "Capabilities"
         Tools --> Agents[Agents]
         Tools --> Skills[Skills]
         Tools --> MCP[MCP Servers]
+        Tools --> SubAgents[Sub-Agents]
     end
-    
+
+    subgraph SubAgentLayer "Sub-Agent Execution"
+        SubAgents --> ChildProcess[ChildProcess Service]
+        ChildProcess --> Child1[Child QQ #1]
+        ChildProcess --> Child2[Child QQ #2]
+        ChildProcess --> ChildN[Child QQ #N]
+    end
+
     LLM -->|Generation| App
     App -->|Output| User
 ```
@@ -67,6 +75,13 @@ Skills are "folders of instructions" that extend the agent's capabilities.
 QQ supports the Model Context Protocol (MCP) to connect with external tools and data sources.
 - **Configuration**: Defined in `mcp.json`.
 - **Functionality**: Allows QQ to call tools exposed by external servers (e.g., file reading, web search).
+
+### 7. Sub-Agent System (`src/qq/services/child_process.py`)
+QQ can spawn child instances of itself to handle delegated tasks. For detailed documentation, see [sub-agents.md](./sub-agents.md).
+- **Task Delegation**: `delegate_task` tool spawns a child agent for a single task.
+- **Parallel Execution**: `run_parallel_tasks` tool runs multiple tasks concurrently.
+- **Session Isolation**: Each child runs with `--new-session` to prevent state pollution.
+- **Safety**: Recursion depth limits, timeouts, and output truncation prevent runaway execution.
 
 ## Data Flow
 

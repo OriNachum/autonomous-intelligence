@@ -1,5 +1,9 @@
 # Recursive Calling Module for QQ
 
+> **Status**: ✅ Implemented (2024-02-04)
+>
+> See [docs/sub-agents.md](../sub-agents.md) for user documentation.
+
 ## Overview
 
 This document outlines the implementation of a `ChildProcess` service module that enables QQ agents to spawn and coordinate new QQ instances as subprocesses. This allows the primary agent to delegate tasks to specialized child agents, enabling hierarchical problem decomposition and parallel task execution.

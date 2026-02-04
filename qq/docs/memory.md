@@ -2,6 +2,8 @@
 
 The `qq` agent employs a sophisticated multi-layered memory architecture designed to maintain long-term context, structure knowledge, and provide relevant information during interactions. This system is composed of three main components: **Notes**, **Knowledge Graph**, and **RAG (Retrieval Augmented Generation)**.
 
+> **Note**: Each QQ session (including sub-agent child processes) maintains isolated memory state. See [sub-agents.md](./sub-agents.md) for details on session isolation.
+
 ## 1. Notes System
 The Notes system is responsible for maintaining a human-readable summary of conversations and key facts, while also identifying these facts for vector-based retrieval.
 
