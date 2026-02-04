@@ -14,6 +14,8 @@ class CLIArgs:
     clear_history: bool
     no_color: bool
     verbose: bool
+    session: Optional[str]  # Session ID for resuming
+    new_session: bool  # Force new session
 
 
 def parse_args() -> CLIArgs:
@@ -66,7 +68,18 @@ Examples:
         action="store_true",
         help="Enable verbose output",
     )
-    
+
+    parser.add_argument(
+        "-s", "--session",
+        help="Session ID to resume (for parallel execution)",
+    )
+
+    parser.add_argument(
+        "--new-session",
+        action="store_true",
+        help="Force a new session (ignore any existing session)",
+    )
+
     args = parser.parse_args()
     
     # If message is provided, force CLI mode
@@ -79,4 +92,6 @@ Examples:
         clear_history=args.clear_history,
         no_color=args.no_color,
         verbose=args.verbose,
+        session=args.session,
+        new_session=args.new_session,
     )

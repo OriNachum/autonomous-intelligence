@@ -1,5 +1,5 @@
 #!/bin/bash
-# QQ - Conversational AI CLI
+# QQ Memory Status - CLI
 # Run from anywhere - added to PATH via .bashrc
 
 # Get the directory where this script is located
@@ -7,4 +7,4 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Change to the project directory and run
 cd "$SCRIPT_DIR"
-exec /home/spark/.local/bin/uv run python -m qq "$@"
+exec /home/spark/.local/bin/uv run python -m qq.memory_status "$@"

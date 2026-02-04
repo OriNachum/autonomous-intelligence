@@ -1,15 +1,18 @@
 Analyze the following conversation messages and extract key information to update memory notes.
 
+**IMPORTANT:** Messages with role FILE_CONTENT contain actual file contents that were read. These are a PRIMARY source of information - extract facts, entities, configuration details, code patterns, and any other useful knowledge from file content.
+
 The current notes contain these sections:
 - Key Topics: Main subjects discussed
 - Important Facts: Specific facts, data, or decisions
 - People & Entities: Names, projects, systems mentioned
 - Ongoing Threads: Unfinished discussions or pending items
+- File Knowledge: Key information extracted from files read
 
 Current notes content:
 {current_notes}
 
-Recent conversation:
+Recent conversation (includes USER, ASSISTANT, and FILE_CONTENT messages):
 {messages}
 
 Based on the conversation, provide a JSON response with:
