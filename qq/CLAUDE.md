@@ -57,8 +57,9 @@ src/qq/
 ├── context/            # RAG context retrieval
 │   └── retrieval_agent.py
 └── services/
-    ├── file_manager.py # File ops (read with PDF/DOCX conversion)
-    └── graph.py        # KnowledgeGraphAgent
+    ├── file_manager.py   # File ops (read with PDF/DOCX conversion)
+    ├── child_process.py  # Recursive agent invocation (delegate_task, run_parallel_tasks)
+    └── graph.py          # KnowledgeGraphAgent
 ```
 
 **Key patterns:**
@@ -81,6 +82,12 @@ Key variables in `.env` (see `.env.sample`):
 - `MONGODB_URI`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`: Database connections
 - `TEI_URL`, `EMBEDDING_MODEL`: Embedding service
 - `HISTORY_DIR`: Conversation history location (default: `~/.qq`)
+
+Child process / recursive calling:
+- `QQ_CHILD_TIMEOUT`: Timeout for child processes in seconds (default: 300)
+- `QQ_MAX_PARALLEL`: Max concurrent child processes (default: 5)
+- `QQ_MAX_DEPTH`: Max recursion depth (default: 3)
+- `QQ_MAX_OUTPUT`: Max output size from children in chars (default: 50000)
 
 ## MCP Configuration
 

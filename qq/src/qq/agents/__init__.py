@@ -3,19 +3,22 @@
 Updated for parallel execution support:
 - FileManager uses session-isolated state directories
 - Default agent creation is atomic (race-safe)
+- ChildProcess enables recursive agent invocation
 """
 
+import json
 import os
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 from strands import Agent, tool
 from strands.models import OpenAIModel
 
 from qq.session import get_session_dir
 from qq.services.file_manager import FileManager
+from qq.services.child_process import ChildProcess
 
 
 def get_model() -> OpenAIModel:
@@ -130,6 +133,118 @@ def _create_default_agent_safely(agent_dir: Path, system_prompt: str) -> None:
             pass
 
 
+def _create_common_tools(file_manager: FileManager, child_process: ChildProcess) -> List:
+    """Create common tools shared by all agents.
+
+    Args:
+        file_manager: FileManager instance for file operations.
+        child_process: ChildProcess instance for recursive agent calls.
+
+    Returns:
+        List of tool-decorated functions.
+    """
+    # File operation tools
+    @tool
+    def read_file(path: str, start_line: int = 1, num_lines: int = 100) -> str:
+        """
+        Read the content of a file.
+
+        Args:
+            path: Absolute or relative path (relative to current session directory).
+            start_line: Line number to start reading from (1-indexed). Default 1.
+            num_lines: Number of lines to read. Default 100, max 100.
+        """
+        return file_manager.read_file(path, start_line, num_lines)
+
+    @tool
+    def list_files(pattern: str = "*", recursive: bool = False, use_regex: bool = False) -> str:
+        """
+        List files in the current session directory.
+
+        Args:
+            pattern: Filter files by glob pattern (default "*") or regex.
+            recursive: Whether to search recursively.
+            use_regex: If True, pattern is treated as regex.
+        """
+        return file_manager.list_files(pattern, recursive, use_regex)
+
+    @tool
+    def set_directory(path: str) -> str:
+        """
+        Set the current session directory for file operations.
+
+        Args:
+            path: Target directory path (absolute or relative).
+        """
+        return file_manager.set_directory(path)
+
+    # Child process tools for recursive agent invocation
+    @tool
+    def delegate_task(task: str, agent: str = "default") -> str:
+        """
+        Delegate a task to a child QQ agent.
+
+        Use this to break down complex tasks or leverage specialized agents.
+        The child agent runs in isolation with its own session.
+
+        When to use:
+        - Complex tasks that benefit from focused attention
+        - Tasks requiring a specialized agent (coder, researcher)
+        - Subtasks that can be handled independently
+
+        Args:
+            task: The task description or prompt for the child agent.
+            agent: Which agent to use (default, coder, etc.).
+
+        Returns:
+            The child agent's response.
+        """
+        result = child_process.spawn_agent(task, agent)
+        if result.success:
+            return result.output
+        else:
+            return f"Child agent error: {result.error}"
+
+    @tool
+    def run_parallel_tasks(tasks_json: str) -> str:
+        """
+        Run multiple tasks in parallel using child QQ agents.
+
+        Use this for batch operations where tasks don't depend on each other.
+
+        Args:
+            tasks_json: JSON array of task objects, each with:
+                - task: The task description (required)
+                - agent: Agent to use (optional, default: "default")
+
+        Example:
+            tasks_json = '[{"task": "Summarize file A"}, {"task": "Analyze file B", "agent": "coder"}]'
+
+        Returns:
+            JSON array of results with task, agent, success, output, and error fields.
+        """
+        try:
+            tasks = json.loads(tasks_json)
+            if not isinstance(tasks, list):
+                return "Error: tasks_json must be a JSON array"
+
+            results = child_process.run_parallel(tasks)
+            return json.dumps([
+                {
+                    "task": r.task,
+                    "agent": r.agent,
+                    "success": r.success,
+                    "output": r.output,
+                    "error": r.error,
+                }
+                for r in results
+            ], indent=2)
+        except json.JSONDecodeError as e:
+            return f"Invalid JSON: {e}"
+
+    return [read_file, list_files, set_directory, delegate_task, run_parallel_tasks]
+
+
 def load_agent(name: str) -> Tuple[Agent, FileManager]:
     """
     Load an agent by name from the agents directory.
@@ -182,39 +297,12 @@ def load_agent(name: str) -> Tuple[Agent, FileManager]:
     session_dir = get_session_dir(base_dir, name)
     file_manager = FileManager(session_dir)
 
-    @tool
-    def read_file(path: str) -> str:
-        """
-        Read the content of a file.
+    # Initialize ChildProcess for recursive agent invocation
+    child_process = ChildProcess()
 
-        Args:
-            path: Absolute or relative path (relative to current session directory).
-        """
-        return file_manager.read_file(path)
-
-    @tool
-    def list_files(pattern: str = "*", recursive: bool = False, use_regex: bool = False) -> str:
-        """
-        List files in the current session directory.
-
-        Args:
-            pattern: Filter files by glob pattern (default "*") or regex.
-            recursive: Whether to search recursively.
-            use_regex: If True, pattern is treated as regex.
-        """
-        return file_manager.list_files(pattern, recursive, use_regex)
-
-    @tool
-    def set_directory(path: str) -> str:
-        """
-        Set the current session directory for file operations.
-
-        Args:
-            path: Target directory path (absolute or relative).
-        """
-        return file_manager.set_directory(path)
-
-    agent_tools.extend([read_file, list_files, set_directory])
+    # Add common tools (file ops + child process)
+    common_tools = _create_common_tools(file_manager, child_process)
+    agent_tools.extend(common_tools)
 
     # Instantiate Strands Agent
     agent = Agent(
@@ -258,39 +346,12 @@ Keep responses focused and actionable. Use markdown formatting when it improves 
     session_dir = get_session_dir(base_dir, "default")
     file_manager = FileManager(session_dir)
 
-    @tool
-    def read_file(path: str) -> str:
-        """
-        Read the content of a file.
+    # Initialize ChildProcess for recursive agent invocation
+    child_process = ChildProcess()
 
-        Args:
-            path: Absolute or relative path (relative to current session directory).
-        """
-        return file_manager.read_file(path)
-
-    @tool
-    def list_files(pattern: str = "*", recursive: bool = False, use_regex: bool = False) -> str:
-        """
-        List files in the current session directory.
-
-        Args:
-            pattern: Filter files by glob pattern (default "*") or regex.
-            recursive: Whether to search recursively.
-            use_regex: If True, pattern is treated as regex.
-        """
-        return file_manager.list_files(pattern, recursive, use_regex)
-
-    @tool
-    def set_directory(path: str) -> str:
-        """
-        Set the current session directory for file operations.
-
-        Args:
-            path: Target directory path (absolute or relative).
-        """
-        return file_manager.set_directory(path)
-
-    agent_tools.extend([read_file, list_files, set_directory])
+    # Add common tools (file ops + child process)
+    common_tools = _create_common_tools(file_manager, child_process)
+    agent_tools.extend(common_tools)
 
     agent = Agent(
         name="default",
