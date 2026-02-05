@@ -8,6 +8,8 @@ from qq.knowledge.neo4j_client import Neo4jClient
 from qq.embeddings import EmbeddingClient
 from qq.agents.entity_agent.entity_agent import EntityAgent
 from qq.agents.relationship_agent.relationship_agent import RelationshipAgent
+from qq.agents.normalization_agent.normalization_agent import NormalizationAgent
+from qq.agents.graph_linking_agent.graph_linking_agent import GraphLinkingAgent
 
 # Set up logging
 def setup_logging():
@@ -55,7 +57,9 @@ class KnowledgeGraphAgent:
         # Initialize sub-agents
         self.entity_agent = EntityAgent(model)
         self.relationship_agent = RelationshipAgent(model)
-        
+        self.normalization_agent = NormalizationAgent(model)
+        self._graph_linking_agent = None  # Lazy init
+
         self._neo4j_initialized = False
         self._embeddings_initialized = False
         
@@ -79,6 +83,25 @@ class KnowledgeGraphAgent:
             except Exception as e:
                 logger.error(f"Failed to initialize embedding client: {e}", exc_info=True)
 
+    def _get_existing_entity_names(self) -> List[Dict[str, Any]]:
+        """Get existing entities from Neo4j for normalization."""
+        self._init_neo4j()
+
+        if not self.neo4j:
+            return []
+
+        try:
+            query = """
+                MATCH (n)
+                WHERE n.name IS NOT NULL
+                RETURN n.name as name, labels(n)[0] as type, n.description as description
+                LIMIT 100
+            """
+            return self.neo4j.execute(query)
+        except Exception as e:
+            logger.warning(f"Failed to get existing entities: {e}")
+            return []
+
     def process_messages(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
         """
         Process conversation messages and update knowledge graph.
@@ -99,20 +122,26 @@ class KnowledgeGraphAgent:
         # Update clients for sub-agents in case they changed
         self.entity_agent.model = self.model
         self.relationship_agent.model = self.model
+        self.normalization_agent.model = self.model
 
         # Step 1: Extract Entities
         entities_list = self.entity_agent.extract(messages)
         print(f"[GraphAgent] Found entities: {[e.get('name') for e in entities_list]}")
 
-        # Step 2: Extract Relationships
+        # Step 2: Extract Relationships (now more aggressive)
         relationships = self.relationship_agent.extract(messages, entities_list)
         print(f"[GraphAgent] Found relationships: {len(relationships)}")
-            
+
+        # Step 3: Normalize entities
+        existing_entities = self._get_existing_entity_names()
+        normalized_entities = self.normalization_agent.normalize(entities_list, existing_entities)
+        print(f"[GraphAgent] Normalized entities: {len(normalized_entities)}")
+
         result = {
-            "entities": entities_list,
-            "relationships": relationships
+            "entities": normalized_entities,
+            "relationships": relationships,
         }
-        
+
         self._store_extraction(result)
         return result
 
@@ -131,12 +160,12 @@ class KnowledgeGraphAgent:
         # Create entities with embeddings
         for entity in entities:
             entity_type = entity.get("type", "Concept")
-            name = entity.get("name", "")
+            name = entity.get("canonical_name") or entity.get("name", "")
             description = entity.get("description", "")
-            
+
             if not name:
                 continue
-            
+
             # Generate embedding for entity
             embedding = None
             if self.embeddings:
@@ -145,14 +174,23 @@ class KnowledgeGraphAgent:
                     embedding = self.embeddings.get_embedding(embed_text)
                 except Exception as e:
                     logger.warning(f"Failed to generate embedding for {name}: {e}")
-            
+
+            # Build properties dict with new fields
+            properties = {
+                "description": description,
+                "notes": entity.get("notes", ""),
+                "confidence": entity.get("confidence", 1.0),
+            }
+
             # Create entity in Neo4j
             try:
                 self.neo4j.create_entity(
                     entity_type=entity_type,
                     name=name,
-                    properties={"description": description},
+                    properties=properties,
                     embedding=embedding,
+                    aliases=entity.get("aliases", []),
+                    canonical_name=entity.get("canonical_name"),
                 )
             except Exception as e:
                 logger.error(f"Failed to create entity {name}: {e}")
@@ -162,15 +200,22 @@ class KnowledgeGraphAgent:
             source = rel.get("source", "")
             target = rel.get("target", "")
             rel_type = rel.get("type", "RELATES_TO").upper().replace(" ", "_")
-            description = rel.get("description", "")
-            
+
             if source and target:
+                # Build properties dict with new fields
+                properties = {
+                    "description": rel.get("description", ""),
+                    "notes": rel.get("notes", ""),
+                    "confidence": rel.get("confidence", 1.0),
+                    "evidence": rel.get("evidence", ""),
+                }
+
                 try:
                     self.neo4j.create_relationship(
                         source_name=source,
                         target_name=target,
                         relationship_type=rel_type,
-                        properties={"description": description} if description else None,
+                        properties=properties,
                     )
                 except Exception as e:
                     logger.error(f"Failed to create relationship {source}->{target}: {e}")
@@ -213,11 +258,63 @@ class KnowledgeGraphAgent:
     def get_graph_summary(self) -> Dict[str, Any]:
         """Get summary of the knowledge graph."""
         self._init_neo4j()
-        
+
         if not self.neo4j:
             return {"entity_counts": {}, "relationship_counts": {}}
-        
+
         try:
             return self.neo4j.get_graph_summary()
         except Exception:
             return {"entity_counts": {}, "relationship_counts": {}}
+
+    def link_orphan_entities(self) -> Dict[str, Any]:
+        """Run graph linking agent to connect orphan entities."""
+        self._init_neo4j()
+
+        if not self.neo4j:
+            logger.error("Neo4j client not available, skipping orphan linking")
+            return {"linked": 0, "suggested_relationships": []}
+
+        if not self.model:
+            logger.warning("Model not available, skipping orphan linking")
+            return {"linked": 0, "suggested_relationships": []}
+
+        # Lazy init the graph linking agent
+        if not self._graph_linking_agent:
+            self._graph_linking_agent = GraphLinkingAgent(self.model, self.neo4j)
+        else:
+            self._graph_linking_agent.model = self.model
+
+        result = self._graph_linking_agent.link_orphans()
+        suggestions = result.get("suggested_relationships", [])
+
+        # Store suggested relationships
+        linked = 0
+        for rel in suggestions:
+            source = rel.get("source", "")
+            target = rel.get("target", "")
+            rel_type = rel.get("type", "ASSOCIATED_WITH").upper().replace(" ", "_")
+
+            if source and target:
+                properties = {
+                    "description": rel.get("description", ""),
+                    "notes": rel.get("notes", ""),
+                    "confidence": rel.get("confidence", 0.5),
+                    "reasoning": rel.get("reasoning", ""),
+                    "source": "graph_linking_agent",
+                }
+
+                try:
+                    created = self.neo4j.create_relationship(
+                        source_name=source,
+                        target_name=target,
+                        relationship_type=rel_type,
+                        properties=properties,
+                    )
+                    if created:
+                        linked += 1
+                except Exception as e:
+                    logger.error(f"Failed to create link {source}->{target}: {e}")
+
+        print(f"[GraphAgent] Linked {linked} orphan entities")
+        return {"linked": linked, "suggested_relationships": suggestions}

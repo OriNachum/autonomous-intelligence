@@ -9,7 +9,14 @@ Conversation (includes USER, ASSISTANT, and FILE_CONTENT messages):
 Respond with ONLY valid JSON in this format:
 {{
   "entities": [
-    {{"name": "Entity Name", "type": "Person", "description": "Brief description based on context", "reasoning": "F1: ..., F2: ... > type choice"}}
+    {{
+      "name": "Entity Name",
+      "type": "Person",
+      "description": "Brief description based on context",
+      "notes": "Additional observations or metadata",
+      "confidence": 0.9,
+      "reasoning": "F1: ..., F2: ... > type choice"
+    }}
   ]
 }}
 

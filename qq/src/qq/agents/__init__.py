@@ -180,6 +180,30 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
         """
         return file_manager.set_directory(path)
 
+    @tool
+    def count_files(
+        path: str = ".",
+        pattern: str = "*",
+        recursive: bool = False,
+        use_regex: bool = False,
+    ) -> str:
+        """
+        Count files in a directory with breakdown by extension.
+
+        Use this to quickly assess folder contents before processing.
+        Helpful for planning batch operations or understanding project structure.
+
+        Args:
+            path: Directory to count files in (default: current directory).
+            pattern: Filter by glob pattern (default "*") or regex.
+            recursive: If True, count files in subdirectories too.
+            use_regex: If True, treat pattern as regex instead of glob.
+
+        Returns:
+            Summary with total count and breakdown by file extension.
+        """
+        return file_manager.count_files(path, pattern, recursive, use_regex)
+
     # Child process tools for recursive agent invocation
     @tool
     def delegate_task(task: str, agent: str = "default", context: str = "") -> str:
@@ -362,6 +386,7 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
         read_file,
         list_files,
         set_directory,
+        count_files,
         delegate_task,
         run_parallel_tasks,
         schedule_tasks,

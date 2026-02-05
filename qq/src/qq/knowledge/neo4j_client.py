@@ -65,34 +65,50 @@ class Neo4jClient:
         name: str,
         properties: Optional[Dict[str, Any]] = None,
         embedding: Optional[List[float]] = None,
+        aliases: Optional[List[str]] = None,
+        canonical_name: Optional[str] = None,
     ) -> str:
         """
         Create or update an entity node.
-        
+
         Args:
             entity_type: Entity label (Person, Concept, Topic, Location, Event)
             name: Entity name (used as identifier)
-            properties: Additional properties
+            properties: Additional properties (description, notes, confidence, etc.)
             embedding: Optional vector embedding
-            
+            aliases: Optional list of alternative names for this entity
+            canonical_name: Optional normalized/canonical form of the name
+
         Returns:
             Entity ID (the name itself)
         """
         props = properties or {}
         props["name"] = name
-        
+
         if embedding:
             props["embedding"] = embedding
-        
+
+        if aliases:
+            props["aliases"] = aliases
+
+        if canonical_name:
+            props["canonical_name"] = canonical_name
+
         # Build property set clause
         prop_items = ", ".join(f"n.{k} = ${k}" for k in props.keys())
-        
+
         query = f"""
             MERGE (n:{entity_type} {{name: $name}})
-            SET {prop_items}
+            ON CREATE SET {prop_items},
+                n.mention_count = 1,
+                n.first_seen = datetime(),
+                n.last_seen = datetime()
+            ON MATCH SET {prop_items},
+                n.mention_count = coalesce(n.mention_count, 0) + 1,
+                n.last_seen = datetime()
             RETURN n.name as id
         """
-        
+
         result = self.execute(query, props)
         return result[0]["id"] if result else name
     
@@ -105,33 +121,47 @@ class Neo4jClient:
     ) -> bool:
         """
         Create a relationship between two entities.
-        
+
         Args:
             source_name: Source entity name
             target_name: Target entity name
             relationship_type: Relationship type (e.g., KNOWS, RELATES_TO)
-            properties: Optional relationship properties
-            
+            properties: Optional relationship properties (description, notes, confidence, evidence)
+
         Returns:
             True if relationship was created
         """
         props = properties or {}
-        
+
         # Build property set if any
         if props:
             prop_items = ", ".join(f"r.{k} = ${k}" for k in props.keys())
-            set_clause = f"SET {prop_items}"
+            set_clause = f"""
+                ON CREATE SET {prop_items},
+                    r.mention_count = 1,
+                    r.first_seen = datetime(),
+                    r.last_seen = datetime()
+                ON MATCH SET {prop_items},
+                    r.mention_count = coalesce(r.mention_count, 0) + 1,
+                    r.last_seen = datetime()
+            """
         else:
-            set_clause = ""
-        
+            set_clause = """
+                ON CREATE SET r.mention_count = 1,
+                    r.first_seen = datetime(),
+                    r.last_seen = datetime()
+                ON MATCH SET r.mention_count = coalesce(r.mention_count, 0) + 1,
+                    r.last_seen = datetime()
+            """
+
         query = f"""
-            MERGE (a {{name: $source}})
-            MERGE (b {{name: $target}})
+            MATCH (a {{name: $source}})
+            MATCH (b {{name: $target}})
             MERGE (a)-[r:{relationship_type}]->(b)
             {set_clause}
             RETURN type(r) as rel_type
         """
-        
+
         params = {"source": source_name, "target": target_name, **props}
         result = self.execute(query, params)
         return len(result) > 0

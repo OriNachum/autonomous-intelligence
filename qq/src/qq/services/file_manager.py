@@ -178,6 +178,82 @@ class FileManager:
         except Exception as e:
             return f"Error listing files: {e}"
 
+    def count_files(
+        self,
+        path: str = ".",
+        pattern: str = "*",
+        recursive: bool = False,
+        use_regex: bool = False,
+    ) -> str:
+        """
+        Counts files in a directory.
+
+        Args:
+            path: Directory path to count files in. Defaults to current directory.
+            pattern: Glob pattern or Regex pattern to filter files. Defaults to "*".
+            recursive: If True, counts files recursively in subdirectories.
+            use_regex: If True, treats 'pattern' as a regex.
+
+        Returns:
+            Summary with file count and optional breakdown by extension.
+        """
+        try:
+            target_path = self._resolve_path(path)
+
+            if not target_path.exists():
+                return f"Error: Directory '{target_path}' does not exist."
+
+            if not target_path.is_dir():
+                return f"Error: '{target_path}' is not a directory."
+
+            files = []
+            ext_counts: Dict[str, int] = {}
+
+            if recursive:
+                iterator = target_path.rglob("*")
+            else:
+                iterator = target_path.iterdir()
+
+            for p in iterator:
+                if p.is_file():
+                    try:
+                        rel_path = p.relative_to(target_path)
+                        rel_path_str = str(rel_path)
+
+                        match = False
+                        if use_regex:
+                            if re.search(pattern, rel_path_str):
+                                match = True
+                        else:
+                            if fnmatch(rel_path_str, pattern):
+                                match = True
+
+                        if match:
+                            files.append(rel_path_str)
+                            ext = p.suffix.lower() if p.suffix else "(no extension)"
+                            ext_counts[ext] = ext_counts.get(ext, 0) + 1
+                    except ValueError:
+                        continue
+
+            total = len(files)
+            mode = "recursively" if recursive else "in directory"
+
+            lines = [
+                f"Directory: {target_path}",
+                f"Pattern: {pattern}" + (" (regex)" if use_regex else ""),
+                f"Total files {mode}: {total}",
+            ]
+
+            if ext_counts:
+                lines.append("")
+                lines.append("By extension:")
+                for ext, count in sorted(ext_counts.items(), key=lambda x: -x[1]):
+                    lines.append(f"  {ext}: {count}")
+
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error counting files: {e}"
+
     def read_file(self, path: str, start_line: int = 1, num_lines: int = MAX_LINES_PER_READ) -> str:
         """
         Reads the content of a file with a sliding window mechanism.
