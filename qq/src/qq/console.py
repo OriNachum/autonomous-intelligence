@@ -16,6 +16,7 @@ qq_THEME = Theme({
     "system": "dim white",
     "tool": "yellow",
     "error": "bold red",
+    "warning": "bold yellow",
     "info": "blue",
 })
 
@@ -100,7 +101,11 @@ class qqConsole:
     def print_info(self, message: str) -> None:
         """Print info message."""
         self.console.print(f"[info]{message}[/info]")
-    
+
+    def print_warning(self, message: str) -> None:
+        """Print warning message."""
+        self.console.print(f"[warning]{message}[/warning]")
+
     def print_system(self, message: str) -> None:
         """Print system message."""
         self.console.print(f"[system]{message}[/system]")
