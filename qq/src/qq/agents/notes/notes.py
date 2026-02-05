@@ -10,6 +10,8 @@ from typing import List, Dict, Any, Optional
 
 from strands import Agent
 from qq.memory.notes import NotesManager
+from qq.memory.core_notes import CoreNotesManager, PROTECTED_CATEGORIES
+from qq.memory.importance import ImportanceScorer, IMPORTANCE_LEVELS
 from qq.agents.prompt_loader import get_agent_prompts
 
 # Set up logging to file
@@ -100,36 +102,54 @@ def parse_json_response(response: str) -> dict:
     return {"additions": [], "removals": [], "summary": "Failed to parse response"}
 
 
+# Maximum notes to keep in working memory
+import os
+MAX_WORKING_NOTES = int(os.getenv("QQ_MAX_WORKING_NOTES", "50"))
+
+
 class NotesAgent:
     """
     Agent that summarizes conversation history and maintains notes.
-    
+
     Analyzes the last N messages and incrementally updates:
-    1. The notes.md file on disk
-    2. MongoDB with vector embeddings (optional)
+    1. The notes.md file on disk (working memory)
+    2. The core.md file (protected core notes)
+    3. MongoDB with vector embeddings (optional)
+
+    Notes are scored for importance and core notes are routed
+    to protected storage that won't be forgotten.
+
+    Automatically enforces size limits on working memory.
     """
-    
+
     def __init__(
         self,
         notes_manager: Optional[NotesManager] = None,
+        core_manager: Optional[CoreNotesManager] = None,
         mongo_store: Optional[Any] = None,
         embeddings: Optional[Any] = None,
         model: Any = None,
+        max_notes: int = MAX_WORKING_NOTES,
     ):
         """
         Initialize the Notes Agent.
-        
+
         Args:
             notes_manager: NotesManager instance (created if not provided)
+            core_manager: CoreNotesManager instance (created if not provided)
             mongo_store: MongoNotesStore instance (optional)
             embeddings: EmbeddingClient instance (optional)
             model: Model instance for summarization (required for processing)
+            max_notes: Maximum notes to keep in working memory
         """
         self.notes_manager = notes_manager or NotesManager()
+        self.core_manager = core_manager or CoreNotesManager()
+        self.importance_scorer = ImportanceScorer()
         self.mongo_store = mongo_store
         self.embeddings = embeddings
         self.model = model
-        
+        self.max_notes = max_notes
+
         # Lazy initialization of optional dependencies
         # Mark as initialized if already provided
         self._mongo_initialized = mongo_store is not None
@@ -222,39 +242,88 @@ class NotesAgent:
             return {"additions": [], "removals": [], "summary": f"Error: {e}"}
     
     def _apply_updates(self, updates: Dict[str, Any]) -> None:
-        """Apply extracted updates to notes file and MongoDB."""
+        """Apply extracted updates to notes file, core notes, and MongoDB."""
         additions = updates.get("additions", [])
         removals = updates.get("removals", [])
-        
+
         logger.info(f"Applying updates: {len(additions)} additions, {len(removals)} removals")
-        
-        # Update notes.md file
-        self.notes_manager.apply_diff(additions, removals)
-        logger.info("Notes file updated via apply_diff")
-        
+
+        # Separate core notes from working notes
+        core_additions = []
+        working_additions = []
+
+        for addition in additions:
+            item = addition.get("item", "")
+            section = addition.get("section", "")
+            importance_hint = addition.get("importance", "medium")
+
+            if not item:
+                continue
+
+            # Score importance
+            importance = self.importance_scorer.score_note(item, section, importance_hint)
+            addition["_importance"] = importance
+
+            # Route to core if high importance and matches core category
+            is_core_candidate, suggested_category = CoreNotesManager.is_core_candidate(item)
+
+            if importance_hint == "core" or (importance >= 0.8 and is_core_candidate):
+                # Map section to core category
+                category = self._map_to_core_category(section, suggested_category)
+                if category:
+                    core_additions.append({
+                        "content": item,
+                        "category": category,
+                        "importance": importance,
+                    })
+                    logger.info(f"Routed to core ({category}): {item[:50]}...")
+                else:
+                    working_additions.append(addition)
+            else:
+                working_additions.append(addition)
+
+        # Apply core notes
+        for core_add in core_additions:
+            self.core_manager.add_core(
+                content=core_add["content"],
+                category=core_add["category"],
+                source="auto",
+            )
+
+        # Update working notes (notes.md file)
+        self.notes_manager.apply_diff(working_additions, removals)
+        logger.info(f"Notes file updated: {len(working_additions)} working, {len(core_additions)} core")
+
         # Update MongoDB with embeddings
         self._init_mongo()
         self._init_embeddings()
-        
+
         if self.mongo_store and self.embeddings:
-            for addition in additions:
+            # Store working notes in MongoDB
+            for addition in working_additions:
                 item = addition.get("item", "")
                 section = addition.get("section", "")
-                
+                importance = addition.get("_importance", 0.5)
+
                 if item:
                     # Generate ID from content hash
                     note_id = hashlib.sha256(item.encode()).hexdigest()[:16]
-                    
+
+                    # Suggest decay rate based on importance
+                    decay_rate = self.importance_scorer.suggest_decay_rate(item, section)
+
                     # Generate embedding
                     try:
                         embedding = self.embeddings.get_embedding(item)
-                        
-                        # Store in MongoDB
+
+                        # Store in MongoDB with importance
                         self.mongo_store.upsert_note(
                             note_id=note_id,
                             content=item,
                             embedding=embedding,
                             section=section,
+                            importance=importance,
+                            decay_rate=decay_rate,
                         )
                     except Exception:
                         # Embedding service unavailable, store without embedding
@@ -263,7 +332,73 @@ class NotesAgent:
                             content=item,
                             embedding=[],
                             section=section,
+                            importance=importance,
+                            decay_rate=decay_rate,
                         )
+
+        # Enforce size limit on notes.md
+        self._enforce_size_limit()
+
+    def _map_to_core_category(self, section: str, suggested: str) -> Optional[str]:
+        """Map a notes section to a core category."""
+        # Direct mappings
+        section_to_category = {
+            "People & Entities": "Relationships",
+            "Important Facts": "Identity",  # May contain identity info
+        }
+
+        if suggested and suggested in PROTECTED_CATEGORIES:
+            return suggested
+
+        if section in section_to_category:
+            return section_to_category[section]
+
+        return None
+
+    def _enforce_size_limit(self) -> int:
+        """
+        Enforce maximum size limit on notes.md.
+
+        Removes lowest-importance items to stay under max_notes.
+
+        Returns:
+            Number of items removed
+        """
+        all_items = self.notes_manager.get_all_items()
+        current_count = len(all_items)
+
+        if current_count <= self.max_notes:
+            return 0
+
+        logger.info(f"Notes exceed limit ({current_count} > {self.max_notes}), trimming...")
+
+        # Score all items
+        scored_items = []
+        for item in all_items:
+            content = item["item"].strip()
+            if not content:
+                continue
+
+            importance = self.importance_scorer.score_note(content, item["section"])
+            scored_items.append({
+                "section": item["section"],
+                "item": content,
+                "importance": importance,
+            })
+
+        # Sort by importance (highest first)
+        scored_items.sort(key=lambda x: x["importance"], reverse=True)
+
+        # Keep only top max_notes
+        kept_items = scored_items[:self.max_notes]
+
+        # Rebuild notes.md
+        self.notes_manager.rebuild_with_items(kept_items)
+
+        removed = current_count - len(kept_items)
+        logger.info(f"Trimmed {removed} low-importance items")
+
+        return removed
     
     def get_relevant_notes(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """

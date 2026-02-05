@@ -294,3 +294,134 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
         # Process additions
         for addition in additions:
             self.add_item(addition["section"], addition["item"])
+
+    def get_all_items(self) -> List[dict]:
+        """
+        Get all items from all sections.
+
+        Returns:
+            List of {"section": str, "item": str}
+        """
+        if self._content is None:
+            self.load_notes()
+
+        items = []
+        sections = ["Key Topics", "Important Facts", "People & Entities", "Ongoing Threads", "File Knowledge"]
+
+        for section in sections:
+            section_items = self.get_section_items(section)
+            for item in section_items:
+                items.append({"section": section, "item": item})
+
+        return items
+
+    def get_section_items(self, section: str) -> List[str]:
+        """
+        Get all items from a specific section.
+
+        Args:
+            section: Section name
+
+        Returns:
+            List of item strings
+        """
+        if self._content is None:
+            self.load_notes()
+
+        # Find section boundaries
+        section_start = rf"## {re.escape(section)}\n"
+        next_section = r"\n## "
+
+        match = re.search(section_start, self._content)
+        if not match:
+            return []
+
+        start_pos = match.end()
+
+        # Find next section or end
+        next_match = re.search(next_section, self._content[start_pos:])
+        if next_match:
+            end_pos = start_pos + next_match.start()
+        else:
+            end_pos = len(self._content)
+
+        section_content = self._content[start_pos:end_pos]
+
+        # Extract bullet items
+        items = []
+        for line in section_content.split('\n'):
+            line = line.strip()
+            if line.startswith('- '):
+                items.append(line[2:])
+
+        return items
+
+    def remove_exact_item(self, item: str) -> bool:
+        """
+        Remove an item by exact content match.
+
+        Args:
+            item: Exact item text to remove
+
+        Returns:
+            True if item was removed
+        """
+        with self._file_lock(exclusive=True):
+            if self.notes_file.exists():
+                self._content = self.notes_file.read_text()
+            else:
+                return False
+
+            original = self._content
+            # Escape special regex chars and remove the exact line
+            escaped = re.escape(item.strip())
+            pattern = rf"^- {escaped}\n"
+            self._content = re.sub(pattern, "", self._content, flags=re.MULTILINE)
+
+            if self._content != original:
+                self._save_unlocked()
+                return True
+
+            return False
+
+    def count_items(self) -> int:
+        """Count total number of items across all sections."""
+        return len(self.get_all_items())
+
+    def rebuild_with_items(self, items: List[dict]) -> None:
+        """
+        Rebuild notes.md with a specific set of items.
+
+        Args:
+            items: List of {"section": str, "item": str}
+        """
+        with self._file_lock(exclusive=True):
+            # Start with fresh template
+            self._content = self._create_template()
+
+            # Group items by section
+            by_section = {}
+            for item in items:
+                section = item.get("section", "Key Topics")
+                if section not in by_section:
+                    by_section[section] = []
+                by_section[section].append(item["item"])
+
+            # Update each section
+            for section, section_items in by_section.items():
+                # Find section and add items
+                section_pattern = rf"(## {re.escape(section)}\n)"
+                match = re.search(section_pattern, self._content)
+
+                if match:
+                    insert_pos = match.end()
+                    items_text = "\n".join(f"- {item.strip()}" for item in section_items if item.strip())
+                    if items_text:
+                        items_text += "\n"
+                    self._content = (
+                        self._content[:insert_pos] +
+                        items_text +
+                        self._content[insert_pos:]
+                    )
+
+            self._save_unlocked()

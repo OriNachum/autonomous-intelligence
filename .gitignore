@@ -30,3 +30,4 @@ qq/data/
 qq/logs/*
 qq/src/qq/logs/** 
 qq/backups/**
+qq/memory/*

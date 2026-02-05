@@ -1,8 +1,12 @@
-"""MongoDB store for notes with vector embeddings."""
+"""MongoDB store for notes with vector embeddings and importance tracking."""
 
 import os
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+
+# Default importance for new notes
+DEFAULT_IMPORTANCE = 0.5
+DEFAULT_DECAY_RATE = 0.01
 
 
 class MongoNotesStore:
@@ -46,6 +50,10 @@ class MongoNotesStore:
         self.collection.create_index("section")
         # Index on updated_at for recency
         self.collection.create_index("updated_at")
+        # Index on importance for filtering low-importance notes
+        self.collection.create_index("importance")
+        # Index on last_accessed for staleness queries
+        self.collection.create_index("last_accessed")
     
     def upsert_note(
         self,
@@ -54,26 +62,52 @@ class MongoNotesStore:
         embedding: List[float],
         section: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        importance: Optional[float] = None,
+        decay_rate: Optional[float] = None,
     ) -> None:
         """
         Insert or update a note with its embedding.
-        
+
         Args:
             note_id: Unique identifier for the note
             content: Note text content
             embedding: Vector embedding of the content
             section: Optional section name (Key Topics, etc.)
             metadata: Optional additional metadata
+            importance: Importance score (0.0-1.0)
+            decay_rate: How fast importance decays
         """
+        now = datetime.utcnow()
+
+        # Check if this is a new note or update
+        existing = self.collection.find_one({"note_id": note_id})
+
         doc = {
             "note_id": note_id,
             "content": content,
             "embedding": embedding,
             "section": section,
             "metadata": metadata or {},
-            "updated_at": datetime.utcnow(),
+            "updated_at": now,
         }
-        
+
+        # Add importance fields
+        if importance is not None:
+            doc["importance"] = importance
+        elif existing is None:
+            doc["importance"] = DEFAULT_IMPORTANCE
+
+        if decay_rate is not None:
+            doc["decay_rate"] = decay_rate
+        elif existing is None:
+            doc["decay_rate"] = DEFAULT_DECAY_RATE
+
+        # Set created_at only for new notes
+        if existing is None:
+            doc["created_at"] = now
+            doc["access_count"] = 0
+            doc["last_accessed"] = None
+
         self.collection.update_one(
             {"note_id": note_id},
             {"$set": doc},
@@ -190,9 +224,158 @@ class MongoNotesStore:
     def clear_all(self) -> int:
         """
         Clear all notes from collection.
-        
+
         Returns:
             Number of deleted documents
         """
         result = self.collection.delete_many({})
         return result.deleted_count
+
+    def increment_access(self, note_id: str) -> bool:
+        """
+        Increment access count and update last_accessed timestamp.
+
+        Args:
+            note_id: ID of the note
+
+        Returns:
+            True if note was updated
+        """
+        result = self.collection.update_one(
+            {"note_id": note_id},
+            {
+                "$inc": {"access_count": 1},
+                "$set": {"last_accessed": datetime.utcnow()},
+            }
+        )
+        return result.modified_count > 0
+
+    def update_importance(self, note_id: str, importance: float) -> bool:
+        """
+        Update the importance score of a note.
+
+        Args:
+            note_id: ID of the note
+            importance: New importance score (0.0-1.0)
+
+        Returns:
+            True if note was updated
+        """
+        importance = max(0.0, min(1.0, importance))
+        result = self.collection.update_one(
+            {"note_id": note_id},
+            {"$set": {"importance": importance, "updated_at": datetime.utcnow()}}
+        )
+        return result.modified_count > 0
+
+    def get_by_importance_range(
+        self,
+        min_importance: float = 0.0,
+        max_importance: float = 1.0,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get notes within an importance range.
+
+        Args:
+            min_importance: Minimum importance (inclusive)
+            max_importance: Maximum importance (inclusive)
+            limit: Maximum results
+
+        Returns:
+            List of notes within the range
+        """
+        cursor = (
+            self.collection
+            .find({
+                "importance": {"$gte": min_importance, "$lte": max_importance}
+            })
+            .sort("importance", -1)
+            .limit(limit)
+        )
+
+        return [
+            {
+                "note_id": doc["note_id"],
+                "content": doc["content"],
+                "section": doc.get("section"),
+                "importance": doc.get("importance", DEFAULT_IMPORTANCE),
+                "access_count": doc.get("access_count", 0),
+                "last_accessed": doc.get("last_accessed"),
+                "created_at": doc.get("created_at"),
+            }
+            for doc in cursor
+        ]
+
+    def get_stale_notes(
+        self,
+        days_threshold: int = 30,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get notes that haven't been accessed recently.
+
+        Args:
+            days_threshold: Days since last access to consider stale
+            limit: Maximum results
+
+        Returns:
+            List of stale notes
+        """
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(days=days_threshold)
+
+        # Notes that have never been accessed or accessed before cutoff
+        cursor = (
+            self.collection
+            .find({
+                "$or": [
+                    {"last_accessed": None},
+                    {"last_accessed": {"$lt": cutoff}},
+                ]
+            })
+            .sort("importance", 1)  # Lowest importance first
+            .limit(limit)
+        )
+
+        return [
+            {
+                "note_id": doc["note_id"],
+                "content": doc["content"],
+                "section": doc.get("section"),
+                "importance": doc.get("importance", DEFAULT_IMPORTANCE),
+                "access_count": doc.get("access_count", 0),
+                "last_accessed": doc.get("last_accessed"),
+                "created_at": doc.get("created_at"),
+            }
+            for doc in cursor
+        ]
+
+    def bulk_update_importance(
+        self,
+        updates: List[Dict[str, Any]],
+    ) -> int:
+        """
+        Bulk update importance scores.
+
+        Args:
+            updates: List of {"note_id": str, "importance": float}
+
+        Returns:
+            Number of notes updated
+        """
+        from pymongo import UpdateOne
+
+        if not updates:
+            return 0
+
+        operations = [
+            UpdateOne(
+                {"note_id": u["note_id"]},
+                {"$set": {"importance": u["importance"], "updated_at": datetime.utcnow()}}
+            )
+            for u in updates
+        ]
+
+        result = self.collection.bulk_write(operations)
+        return result.modified_count

@@ -20,14 +20,26 @@ Based on the conversation, provide a JSON response with:
 2. "removals": List of items to REMOVE (no longer relevant or resolved)
 3. "summary": A brief 1-2 sentence summary of the key new information
 
-Each addition should have "section" and "item" fields.
+**IMPORTANCE CLASSIFICATION:**
+For each addition, classify its importance:
+- "core": User identity, preferences, name, location, role, their projects - MOST IMPORTANT, never forget
+- "high": Specific decisions, important facts, key relationships, hardware/setup
+- "medium": Research topics, ongoing investigations, technical details
+- "low": Temporary observations, single-mention facts, generic info
+
+**DEDUPLICATION:**
+Before adding, check if a similar item already exists. If so, skip it or suggest a removal.
+Prefer specific, concrete facts over vague observations.
+
+Each addition should have "section", "item", and "importance" fields.
 Only include genuinely new information. Do not duplicate existing notes.
 If nothing significant to add, return empty lists.
 
 Response format:
 {{
   "additions": [
-    {{"section": "Key Topics", "item": "..."}}
+    {{"section": "Key Topics", "item": "...", "importance": "medium"}},
+    {{"section": "People & Entities", "item": "User's name is Ori", "importance": "core"}}
   ],
   "removals": ["pattern to remove"],
   "summary": "..."

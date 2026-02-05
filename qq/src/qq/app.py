@@ -4,10 +4,14 @@ Updated for parallel execution support:
 - Session initialization from CLI args
 - FileManager instance methods (no module globals)
 - Embeddings preload is still daemon thread but safe (per-instance)
+- Token limit recovery with progressive context reduction
 """
 
 import sys
 from pathlib import Path
+
+from qq.recovery import execute_with_recovery
+from qq.errors import is_token_error
 
 from dotenv import load_dotenv
 
@@ -208,35 +212,52 @@ def run_cli_mode(
     # Note: Skills and Context injection disabled for Phase 1
 
 
-    # Strands Agent execution
+    # Strands Agent execution with token recovery
     try:
         # Prepare context
         formatted_message = message
         if context_agent:
-            # We inject context by prepending it to the message essentially
-            # Or by modifying system prompt. Strands Agent might not allow easy dynamic system prompt modification per call
-            # So standard way: Prepend context to user message
             context_data = context_agent.prepare_context(message)
             if context_data.get("context_text"):
                 formatted_message = f"{context_data['context_text']}\n\n{message}"
 
-        # Strands Agent execution
-        response = agent(formatted_message)
+        # Execute with automatic token limit recovery
+        def on_retry(attempt, strategy):
+            console.print_warning(f"[Token limit: retrying with {strategy}]")
 
-        # Save to history match real user message
+        result = execute_with_recovery(
+            agent_fn=lambda msg: agent(msg),
+            message=formatted_message,
+            history=history,
+            max_retries=4,
+            on_retry=on_retry,
+        )
+
+        if not result.success:
+            if result.warnings:
+                for warn in result.warnings:
+                    console.print_warning(warn)
+            raise result.error or Exception("Token recovery failed")
+
+        response = result.response
+
+        # Log recovery if it happened
+        if result.attempts > 1:
+            console.print_warning(
+                f"[Recovered: {result.strategy}, {result.attempts} attempts]"
+            )
+
+        # Save to history
         history.add("user", message)
-
-        # Capture file reads to history (before assistant response)
         _capture_file_reads_to_history(file_manager, history)
-
         history.add("assistant", str(response))
 
-        # Update memory in background (or sync for CLI)
+        # Update memory
         messages = history.get_messages()
         if notes_agent:
-             notes_agent.process_messages(messages)
+            notes_agent.process_messages(messages)
         if knowledge_agent:
-             knowledge_agent.process_messages(messages)
+            knowledge_agent.process_messages(messages)
 
         # Output response
         console.print_assistant_message(str(response))
@@ -297,32 +318,54 @@ def run_console_mode(
             if context_agent:
                 context_data = context_agent.prepare_context(user_input)
                 if context_data.get("context_text"):
-                     # Debug print
-                     # console.print_info("Context injected")
-                     formatted_input = f"{context_data['context_text']}\n\n{user_input}"
+                    formatted_input = f"{context_data['context_text']}\n\n{user_input}"
 
-            # Strands Agent execution
-            # Streaming support to be verified. agent() might return full response.
-            response = agent(formatted_input)
+            # Execute with automatic token limit recovery
+            def on_retry(attempt, strategy):
+                console.print_warning(f"[Token limit: retrying with {strategy}]")
+
+            result = execute_with_recovery(
+                agent_fn=lambda msg: agent(msg),
+                message=formatted_input,
+                history=history,
+                max_retries=4,
+                on_retry=on_retry,
+            )
+
+            if not result.success:
+                if is_token_error(result.error):
+                    # Last resort: clear history and retry once
+                    console.print_warning("[Clearing history for fresh start]")
+                    history.clear()
+                    try:
+                        response = agent(user_input)  # No context
+                    except Exception as final_err:
+                        console.print_error(f"Unrecoverable: {final_err}")
+                        continue
+                else:
+                    raise result.error or Exception("Agent execution failed")
+            else:
+                response = result.response
+
+            # Log recovery if it happened
+            if result.attempts > 1:
+                console.print_warning(
+                    f"[Recovered: {result.strategy}, {result.attempts} attempts]"
+                )
 
             # Save to history
             history.add("user", user_input)
-
-            # Capture file reads to history (before assistant response)
             _capture_file_reads_to_history(file_manager, history)
-
             history.add("assistant", str(response))
 
             # Update memory
             messages = history.get_messages()
             if notes_agent:
-                 # TODO: Thread this?
-                 notes_agent.process_messages(messages)
+                notes_agent.process_messages(messages)
             if knowledge_agent:
-                 knowledge_agent.process_messages(messages)
+                knowledge_agent.process_messages(messages)
 
-            # Output Result (Streaming handled by Agent callbacks if configured,
-            # otherwise we print the result)
+            # Output response
             console.print_assistant_message(str(response))
 
         except KeyboardInterrupt:

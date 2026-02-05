@@ -1,8 +1,11 @@
 """Context Retrieval Agent - pulls relevant context from Notes and Knowledge Graph."""
 
+import logging
 from typing import List, Dict, Any, Optional
 
 from qq.memory.notes_agent import NotesAgent
+from qq.memory.core_notes import CoreNotesManager
+
 # We need to import dynamically or assume sys.path is set by app.py
 try:
     from graph.graph import KnowledgeGraphAgent
@@ -12,61 +15,83 @@ except ImportError:
 
 from qq.embeddings import EmbeddingClient
 
+logger = logging.getLogger("qq.retrieval")
+
 
 class ContextRetrievalAgent:
     """
     Agent that retrieves relevant context before each interaction.
-    
+
     Pulls from:
-    1. Notes (MongoDB with vector search)
-    2. Knowledge Graph (Neo4j with embedding similarity)
-    
+    1. Core Notes (protected, always included)
+    2. Working Notes (MongoDB with vector search)
+    3. Knowledge Graph (Neo4j with embedding similarity)
+
     Combines results into a context injection for the system prompt.
+    Also tracks access counts for importance decay.
     """
-    
+
     def __init__(
         self,
         notes_agent: Optional[NotesAgent] = None,
+        core_manager: Optional[CoreNotesManager] = None,
         knowledge_agent: Optional[KnowledgeGraphAgent] = None,
         embeddings: Optional[EmbeddingClient] = None,
     ):
         """
         Initialize the Context Retrieval Agent.
-        
+
         Args:
             notes_agent: NotesAgent for note retrieval
+            core_manager: CoreNotesManager for core note retrieval
             knowledge_agent: KnowledgeGraphAgent for entity retrieval
             embeddings: EmbeddingClient for query embedding
         """
         self.notes_agent = notes_agent
+        self.core_manager = core_manager
         self.knowledge_agent = knowledge_agent
         self.embeddings = embeddings
-        
+
         self._initialized = False
+        self._mongo_store = None
     
     def _ensure_initialized(self) -> None:
         """Lazy initialize agents if not provided."""
         if self._initialized:
             return
-        
+
         if self.notes_agent is None:
             try:
                 self.notes_agent = NotesAgent()
             except Exception:
                 pass
-        
+
+        if self.core_manager is None:
+            try:
+                self.core_manager = CoreNotesManager()
+            except Exception:
+                pass
+
         if self.knowledge_agent is None:
             try:
                 self.knowledge_agent = KnowledgeGraphAgent()
             except Exception:
                 pass
-        
+
         if self.embeddings is None:
             try:
                 self.embeddings = EmbeddingClient()
             except Exception:
                 pass
-        
+
+        # Initialize MongoDB store for access tracking
+        if self._mongo_store is None:
+            try:
+                from qq.memory.mongo_store import MongoNotesStore
+                self._mongo_store = MongoNotesStore()
+            except Exception:
+                pass
+
         self._initialized = True
     
     def prepare_context(
@@ -77,30 +102,40 @@ class ContextRetrievalAgent:
     ) -> Dict[str, Any]:
         """
         Prepare context for the next interaction.
-        
+
         Args:
             user_input: The user's current message
             max_notes: Maximum notes to retrieve
             max_entities: Maximum entities to retrieve
-            
+
         Returns:
-            Dict with 'notes', 'entities', and 'context_text'
+            Dict with 'core_notes', 'notes', 'entities', and 'context_text'
         """
         self._ensure_initialized()
-        
+
+        core_notes = {}
         notes = []
         entities = []
-        
-        # Retrieve relevant notes
+
+        # Always retrieve core notes (protected, high priority)
+        if self.core_manager:
+            try:
+                core_notes = self.core_manager.get_all_items()
+            except Exception as e:
+                logger.debug(f"Could not retrieve core notes: {e}")
+
+        # Retrieve relevant working notes
         if self.notes_agent:
             try:
                 notes = self.notes_agent.get_relevant_notes(
                     query=user_input,
                     limit=max_notes,
                 )
-            except Exception:
-                pass
-        
+                # Track access for importance decay
+                self._track_access(notes)
+            except Exception as e:
+                logger.debug(f"Could not retrieve notes: {e}")
+
         # Retrieve relevant entities
         if self.knowledge_agent:
             try:
@@ -108,36 +143,68 @@ class ContextRetrievalAgent:
                     query=user_input,
                     limit=max_entities,
                 )
-            except Exception:
-                pass
-        
+            except Exception as e:
+                logger.debug(f"Could not retrieve entities: {e}")
+
         # Format context text for system prompt injection
-        context_text = self._format_context(notes, entities)
-        
+        context_text = self._format_context(core_notes, notes, entities)
+
         return {
+            "core_notes": core_notes,
             "notes": notes,
             "entities": entities,
             "context_text": context_text,
         }
+
+    def _track_access(self, notes: List[Dict[str, Any]]) -> None:
+        """
+        Track access to notes for importance scoring.
+
+        Args:
+            notes: List of retrieved notes
+        """
+        if not self._mongo_store:
+            return
+
+        for note in notes:
+            note_id = note.get("note_id")
+            if note_id:
+                try:
+                    self._mongo_store.increment_access(note_id)
+                except Exception as e:
+                    logger.debug(f"Could not track access for {note_id}: {e}")
     
     def _format_context(
         self,
+        core_notes: Dict[str, List[str]],
         notes: List[Dict[str, Any]],
         entities: List[Dict[str, Any]],
     ) -> str:
         """
         Format retrieved context into a text block for system prompt.
-        
+
         Args:
-            notes: Retrieved notes with scores
+            core_notes: Core notes organized by category
+            notes: Retrieved working notes with scores
             entities: Retrieved entities with scores
-            
+
         Returns:
             Formatted context text
         """
         parts = []
-        
-        # Format notes section
+
+        # Format core notes section (always included, high priority)
+        core_items = []
+        for category, items in core_notes.items():
+            for item in items:
+                if item.strip():
+                    core_items.append(f"- {item}")
+
+        if core_items:
+            parts.append("**Core Memory (User Profile):**")
+            parts.extend(core_items[:10])  # Limit to avoid context bloat
+
+        # Format working notes section
         if notes:
             note_items = []
             for note in notes:
@@ -145,11 +212,13 @@ class ContextRetrievalAgent:
                 score = note.get("score", 0)
                 if content and score > 0.3:  # Only include relevant notes
                     note_items.append(f"- {content}")
-            
+
             if note_items:
+                if parts:
+                    parts.append("")  # Blank line separator
                 parts.append("**Relevant Memory Notes:**")
                 parts.extend(note_items[:5])  # Limit to top 5
-        
+
         # Format entities section
         if entities:
             entity_items = []
@@ -158,22 +227,22 @@ class ContextRetrievalAgent:
                 etype = entity.get("type", "")
                 description = entity.get("description", "")
                 score = entity.get("score", 0)
-                
+
                 if name and score > 0.3:  # Only include relevant entities
                     if description:
                         entity_items.append(f"- **{name}** ({etype}): {description}")
                     else:
                         entity_items.append(f"- **{name}** ({etype})")
-            
+
             if entity_items:
                 if parts:
                     parts.append("")  # Blank line separator
                 parts.append("**Related Knowledge:**")
                 parts.extend(entity_items[:5])  # Limit to top 5
-        
+
         if not parts:
             return ""
-        
+
         return "\n".join(parts)
     
     def inject_context(
