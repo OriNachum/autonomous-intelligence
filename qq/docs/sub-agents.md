@@ -37,9 +37,11 @@ The sub-agent system allows a parent QQ agent to:
 
 ## Tools
 
-### `delegate_task`
+### Immediate Execution Tools
 
-Delegates a single task to a child QQ agent.
+#### `delegate_task`
+
+Delegates a single task to a child QQ agent (executes immediately).
 
 **Parameters:**
 | Parameter | Type | Default | Description |
@@ -61,9 +63,9 @@ delegate_task("Write a Python function to calculate fibonacci numbers", agent="c
 
 ---
 
-### `run_parallel_tasks`
+#### `run_parallel_tasks`
 
-Executes multiple tasks concurrently using child QQ agents.
+Executes multiple tasks concurrently using child QQ agents (executes immediately).
 
 **Parameters:**
 | Parameter | Type | Description |
@@ -100,6 +102,84 @@ Each task object can have:
   },
   ...
 ]
+```
+
+---
+
+### Queue-Based Execution Tools
+
+For large-scale processing (100+ files), use queue-based tools to schedule tasks in batches.
+
+#### `schedule_tasks`
+
+Queue multiple tasks for batch execution without immediately running them.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tasks_json` | string | JSON array of task objects |
+
+Each task object can have:
+- `task` (required): The task description
+- `agent` (optional): Agent to use (default: "default")
+- `priority` (optional): Higher numbers execute first (default: 0)
+
+**When to use:**
+- Processing many files (10+)
+- Need to control execution order via priorities
+- Want to batch up work before executing
+
+**Example:**
+```json
+[
+  {"task": "Process critical file", "priority": 10},
+  {"task": "Process normal file", "priority": 1},
+  {"task": "Process low priority file"}
+]
+```
+
+**Returns:** JSON object with queuing status:
+```json
+{
+  "queued": 3,
+  "task_ids": ["task_0001", "task_0002", "task_0003"],
+  "pending": 3,
+  "message": "Queued 3 tasks. Call execute_scheduled_tasks() to run them."
+}
+```
+
+---
+
+#### `execute_scheduled_tasks`
+
+Execute all previously scheduled tasks and return results.
+
+**Parameters:** None
+
+**When to use:**
+- After scheduling tasks with `schedule_tasks`
+- When ready to process the batched work
+
+**Returns:** JSON array of results (same format as `run_parallel_tasks`)
+
+---
+
+#### `get_queue_status`
+
+Check current status of the task queue.
+
+**Parameters:** None
+
+**Returns:** JSON object with queue statistics:
+```json
+{
+  "pending": 5,
+  "max_queued": 10,
+  "max_parallel": 5,
+  "current_depth": 1,
+  "max_depth": 3,
+  "can_spawn": true
+}
 ```
 
 ## How It Works
@@ -150,6 +230,7 @@ Parent (depth=0)
 | `QQ_MAX_PARALLEL` | 5 | Maximum concurrent child processes |
 | `QQ_MAX_DEPTH` | 3 | Maximum recursion depth |
 | `QQ_MAX_OUTPUT` | 50000 | Maximum output size (characters) |
+| `QQ_MAX_QUEUED` | 10 | Maximum tasks in queue per agent |
 
 ### Setting Configuration
 
@@ -158,6 +239,7 @@ Parent (depth=0)
 export QQ_CHILD_TIMEOUT=600      # 10 minute timeout
 export QQ_MAX_PARALLEL=10        # Allow 10 concurrent children
 export QQ_MAX_DEPTH=5            # Allow deeper recursion
+export QQ_MAX_QUEUED=20          # Allow 20 tasks per queue
 ```
 
 ## Safety Features
@@ -189,6 +271,27 @@ Each child runs with `--new-session`, ensuring:
 - Separate conversation history
 - Independent file manager state
 - No cross-contamination between tasks
+
+### Ephemeral Notes (Per-Agent Memory)
+
+Each child agent can have its own ephemeral notes file:
+
+- **Root agent**: Uses `notes.md` (shared, persistent)
+- **Child agents**: Use `notes.{notes_id}.md` (ephemeral, auto-cleaned)
+- **Core notes**: `core.md` remains shared across all agents
+
+**Passing context to children:**
+
+When delegating tasks, you can provide initial context that seeds the child's working memory:
+
+```json
+{
+  "task": "Analyze files 1-10 in /src/api/",
+  "context": "This is batch 1 of 10. Focus on API endpoint patterns. Report function names and HTTP methods."
+}
+```
+
+The context is written to `notes.{task_id}.md` before the child spawns, giving it an anchor to its specific subtask. The ephemeral notes file is automatically cleaned up after the child completes.
 
 ## Use Cases
 
@@ -239,6 +342,38 @@ delegate_task("Optimize this SQL query", agent="database")
 delegate_task("Write unit tests for this function", agent="coder")
 ```
 
+### 5. Large-Scale File Processing (Queue-Based)
+
+Process hundreds of files using hierarchical task distribution:
+
+```
+# Root agent schedules directory processors
+schedule_tasks('[
+    {"task": "Process all files in /src/api/", "priority": 10},
+    {"task": "Process all files in /src/models/", "priority": 9},
+    {"task": "Process all files in /src/utils/", "priority": 8}
+]')
+execute_scheduled_tasks()
+
+# Each directory processor schedules file processors
+# With depth=3 and queue_size=10:
+# 10 dirs × 10 files × 10 items = 1,000 items processable
+```
+
+### 6. Priority-Based Processing
+
+Process critical files first using priorities:
+
+```
+schedule_tasks('[
+    {"task": "Analyze security-critical auth.py", "priority": 100},
+    {"task": "Analyze user-facing api.py", "priority": 50},
+    {"task": "Analyze internal helper.py", "priority": 10},
+    {"task": "Analyze test files", "priority": 1}
+]')
+execute_scheduled_tasks()  # Runs in priority order
+```
+
 ## Architecture
 
 ### Source Files
@@ -246,13 +381,24 @@ delegate_task("Write unit tests for this function", agent="coder")
 | File | Description |
 |------|-------------|
 | `src/qq/services/child_process.py` | Core ChildProcess service |
-| `src/qq/agents/__init__.py` | Tool integration (delegate_task, run_parallel_tasks) |
+| `src/qq/services/task_queue.py` | TaskQueue for batch scheduling |
+| `src/qq/agents/__init__.py` | Tool integration |
 
 ### Classes
 
 **`ChildProcess`**: Manages spawning and coordinating child processes
 - `spawn_agent(task, agent, timeout, working_dir)` → `ChildResult`
 - `run_parallel(tasks, timeout)` → `List[ChildResult]`
+- `queue_task(task, agent, priority, ...)` → `str` (task_id)
+- `queue_batch(tasks)` → `List[str]` (task_ids)
+- `execute_queue(timeout)` → `List[ChildResult]`
+
+**`TaskQueue`**: Bounded queue for batch task scheduling
+- `queue_task(task, agent, priority, ...)` → `str`
+- `queue_batch(tasks)` → `List[str]`
+- `execute_all(timeout)` → `List[ChildResult]`
+- `pending_count()` → `int`
+- `clear()` → `int`
 
 **`ChildResult`**: Dataclass for subprocess results
 - `success: bool`

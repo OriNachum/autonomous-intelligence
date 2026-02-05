@@ -1,6 +1,6 @@
 # Sub-Agent Call Queue System
 
-> **Status**: Planned
+> **Status**: ✅ Implemented (2025-02-05)
 > **Goal**: Enable processing hundreds of files in a single request through hierarchical task queuing
 
 ## Executive Summary
@@ -690,7 +690,9 @@ No deprecation needed. New queue-based tools complement existing immediate-execu
 |------|--------|-------------|
 | `src/qq/services/task_queue.py` | CREATE | TaskQueue class and QueueFullError |
 | `src/qq/services/child_process.py` | MODIFY | Add queue integration |
-| `src/qq/agents/__init__.py` | MODIFY | Add schedule_tasks, execute_scheduled_tasks, get_queue_status tools |
+| `src/qq/agents/__init__.py` | MODIFY | Add tools + delegation prompt |
+| `src/qq/agents/default/default.system.md` | MODIFY | Add delegation strategy guidance |
+| `src/qq/agents/_shared/delegation.md` | CREATE | Reusable delegation prompt snippet |
 | `tests/test_task_queue.py` | CREATE | Unit tests |
 | `docs/sub-agents.md` | MODIFY | Document new queue features |
 | `CLAUDE.md` | MODIFY | Add QQ_MAX_QUEUED env var |
@@ -699,14 +701,14 @@ No deprecation needed. New queue-based tools complement existing immediate-execu
 
 ## Success Criteria
 
-1. [ ] Can queue up to 10 tasks per agent
-2. [ ] Queue enforces max_queued limit with clear error
-3. [ ] Tasks execute in priority order
-4. [ ] Hierarchical execution works: 10 × 10 × 10 = 1000 tasks
-5. [ ] Existing delegate_task/run_parallel_tasks unchanged
-6. [ ] Depth limit still enforced (depth 3 cannot spawn)
-7. [ ] All existing tests pass
-8. [ ] New tests cover queue functionality
+1. [x] Can queue up to 10 tasks per agent
+2. [x] Queue enforces max_queued limit with clear error
+3. [x] Tasks execute in priority order
+4. [x] Hierarchical execution works: 10 × 10 × 10 = 1000 tasks
+5. [x] Existing delegate_task/run_parallel_tasks unchanged
+6. [x] Depth limit still enforced (depth 3 cannot spawn)
+7. [x] All existing tests pass (20 tests)
+8. [x] New tests cover queue functionality (29 tests)
 
 ---
 

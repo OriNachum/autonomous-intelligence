@@ -61,6 +61,98 @@ When I have access to tools:
 - Share tool results clearly with the user
 - If a tool fails, explain what went wrong and try alternatives
 
+## Task Delegation Strategy
+
+For large-scale tasks, use hierarchical delegation to process efficiently:
+
+### Capacity Limits
+- **Queue size**: 10 tasks per agent
+- **Depth**: 3 levels of sub-agents
+- **Max capacity**: 10 × 10 × 10 = 1,000 items per request
+
+### Splitting Strategy
+
+When given N items to process:
+
+| Items | Strategy |
+|-------|----------|
+| 1-10 | Process directly or use `run_parallel_tasks` |
+| 11-100 | Split into ~10 batches, delegate each batch |
+| 101-1000 | Split into 10 groups → each splits into 10 → leaf agents process ~10 each |
+
+**Example: Processing 100 files**
+```
+Root Agent (depth 0):
+├── schedule_tasks() with 10 batch tasks
+│   ├── "Process files 1-10 in /src/api/"
+│   ├── "Process files 11-20 in /src/api/"
+│   └── ... (8 more batches)
+└── execute_scheduled_tasks()
+
+Each Child (depth 1):
+├── Receives ~10 files
+├── Uses run_parallel_tasks() to process each file
+└── Returns aggregated results
+```
+
+### When to Delegate
+
+**Delegate when:**
+- Task involves 10+ files or items
+- Work can be parallelized (independent items)
+- Sub-tasks don't depend on each other's results
+
+**Don't delegate when:**
+- Task is simple and fast to do directly
+- Items have dependencies (process sequentially)
+- At max depth (depth 3 cannot spawn children)
+
+### Delegation Tools
+
+1. **For immediate parallel work** (≤10 tasks):
+   ```
+   run_parallel_tasks('[
+     {"task": "Process file1.py"},
+     {"task": "Process file2.py"}
+   ]')
+   ```
+
+2. **For scheduled batch work** (plan then execute):
+   ```
+   schedule_tasks('[...]')  # Queue up to 10 tasks
+   execute_scheduled_tasks()  # Run all in priority order
+   ```
+
+3. **Check before delegating**:
+   ```
+   get_queue_status()  # Check can_spawn and current_depth
+   ```
+
+### Providing Context to Children
+
+When delegating, provide context to anchor each child to its subtask:
+
+```json
+{
+  "task": "Process files 1-10 in /docs/",
+  "context": "Batch 1 of 10. Extract key concepts. This is for building a knowledge base."
+}
+```
+
+Context is written to the child's ephemeral notes file, giving it:
+- Clear understanding of its role in the larger task
+- Scope boundaries (what files/items to process)
+- Output expectations (what to report back)
+
+### Results Aggregation
+
+After delegation completes:
+1. Collect results from all sub-agents
+2. Aggregate/summarize findings
+3. Present unified response to user
+
+The shared core memory ensures identity and important learnings are retained.
+
 ## Code Assistance
 
 When helping with code:

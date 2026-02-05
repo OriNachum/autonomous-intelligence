@@ -2,6 +2,14 @@
 
 File locking and atomic saves are used to support parallel QQ execution.
 Multiple instances can safely read/write to the same notes.md file.
+
+Supports per-agent ephemeral notes:
+- notes.md - Main notes used by root agent
+- notes.{notes_id}.md - Per-sub-agent ephemeral notes
+
+The notes_id is typically passed via QQ_NOTES_ID environment variable
+when spawning child agents, allowing each sub-agent to have isolated
+working memory while sharing core.md.
 """
 
 import fcntl
@@ -14,6 +22,23 @@ from typing import Optional, List
 from datetime import datetime
 
 
+def get_notes_manager(memory_dir: Optional[str] = None) -> "NotesManager":
+    """Get a NotesManager configured for the current agent context.
+
+    Uses QQ_NOTES_ID environment variable to determine which notes file to use:
+    - If QQ_NOTES_ID is set: uses notes.{notes_id}.md (ephemeral per-agent)
+    - If not set: uses notes.md (main/root agent)
+
+    Args:
+        memory_dir: Directory for notes storage (default: ./memory)
+
+    Returns:
+        NotesManager configured for the appropriate notes file.
+    """
+    notes_id = os.environ.get("QQ_NOTES_ID")
+    return NotesManager(memory_dir=memory_dir, notes_id=notes_id)
+
+
 class NotesManager:
     """
     Manages notes.md file with incremental updates.
@@ -24,21 +49,107 @@ class NotesManager:
 
     File locking (fcntl) is used to prevent race conditions when
     multiple QQ instances access the same notes file.
+
+    Supports per-agent ephemeral notes via notes_id parameter.
     """
 
-    def __init__(self, memory_dir: Optional[str] = None):
+    def __init__(
+        self,
+        memory_dir: Optional[str] = None,
+        notes_id: Optional[str] = None,
+    ):
         """
         Initialize the notes manager.
 
         Args:
             memory_dir: Directory to store notes.md (default: ./memory)
+            notes_id: Optional identifier for per-agent notes (e.g., "task_0001").
+                      If provided, uses notes.{notes_id}.md instead of notes.md.
+                      This enables isolated ephemeral notes for sub-agents.
         """
         base_dir = memory_dir or os.getenv("MEMORY_DIR", "./memory")
         self.memory_dir = Path(base_dir).expanduser()
         self.memory_dir.mkdir(parents=True, exist_ok=True)
-        self.notes_file = self.memory_dir / "notes.md"
-        self.lock_file = self.memory_dir / "notes.lock"
+
+        # Per-agent notes: notes.{notes_id}.md or default notes.md
+        self.notes_id = notes_id
+        if notes_id:
+            self.notes_file = self.memory_dir / f"notes.{notes_id}.md"
+            self.lock_file = self.memory_dir / f"notes.{notes_id}.lock"
+            self.is_ephemeral = True
+        else:
+            self.notes_file = self.memory_dir / "notes.md"
+            self.lock_file = self.memory_dir / "notes.lock"
+            self.is_ephemeral = False
+
         self._content: Optional[str] = None
+
+    @classmethod
+    def create_ephemeral(
+        cls,
+        notes_id: str,
+        initial_context: str,
+        memory_dir: Optional[str] = None,
+    ) -> "NotesManager":
+        """Create an ephemeral notes file with initial context.
+
+        Used by parent agents to set up working memory for child agents
+        before spawning them.
+
+        Args:
+            notes_id: Unique identifier (e.g., task_0001)
+            initial_context: Initial content to seed the notes with
+            memory_dir: Directory for notes storage
+
+        Returns:
+            NotesManager for the new ephemeral notes file
+        """
+        manager = cls(memory_dir=memory_dir, notes_id=notes_id)
+
+        # Create template with initial context
+        manager._content = manager._create_template_with_context(initial_context)
+        manager._save()
+
+        return manager
+
+    def _create_template_with_context(self, context: str) -> str:
+        """Create notes template seeded with initial context."""
+        return f"""# QQ Agent Notes ({self.notes_id})
+
+Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+## Task Context
+{context}
+
+## Key Topics
+
+## Important Facts
+
+## Ongoing Threads
+
+## File Knowledge
+
+"""
+
+    def cleanup(self) -> bool:
+        """Remove ephemeral notes file.
+
+        Only works for ephemeral (per-agent) notes files.
+
+        Returns:
+            True if file was removed, False otherwise.
+        """
+        if not self.is_ephemeral:
+            return False
+
+        try:
+            if self.notes_file.exists():
+                self.notes_file.unlink()
+            if self.lock_file.exists():
+                self.lock_file.unlink()
+            return True
+        except OSError:
+            return False
 
     @contextmanager
     def _file_lock(self, exclusive: bool = True):

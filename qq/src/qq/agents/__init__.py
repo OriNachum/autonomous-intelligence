@@ -19,6 +19,7 @@ from strands.models import OpenAIModel
 from qq.session import get_session_dir
 from qq.services.file_manager import FileManager
 from qq.services.child_process import ChildProcess
+from qq.services.task_queue import QueueFullError
 from qq.services.summarizer import summarize_if_needed
 
 
@@ -181,12 +182,12 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
 
     # Child process tools for recursive agent invocation
     @tool
-    def delegate_task(task: str, agent: str = "default") -> str:
+    def delegate_task(task: str, agent: str = "default", context: str = "") -> str:
         """
         Delegate a task to a child QQ agent.
 
         Use this to break down complex tasks or leverage specialized agents.
-        The child agent runs in isolation with its own session.
+        The child agent runs in isolation with its own session and ephemeral notes.
 
         When to use:
         - Complex tasks that benefit from focused attention
@@ -196,11 +197,17 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
         Args:
             task: The task description or prompt for the child agent.
             agent: Which agent to use (default, coder, etc.).
+            context: Initial context to seed the child's working memory.
+                     This helps anchor the child to its specific subtask.
 
         Returns:
             The child agent's response (summarized if large).
         """
-        result = child_process.spawn_agent(task, agent)
+        result = child_process.spawn_agent(
+            task=task,
+            agent=agent,
+            initial_context=context if context else None,
+        )
         if result.success:
             # Summarize large outputs to prevent token overflow
             return summarize_if_needed(result.output, task)
@@ -218,9 +225,13 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
             tasks_json: JSON array of task objects, each with:
                 - task: The task description (required)
                 - agent: Agent to use (optional, default: "default")
+                - context: Initial context for child's working memory (optional)
 
         Example:
-            tasks_json = '[{"task": "Summarize file A"}, {"task": "Analyze file B", "agent": "coder"}]'
+            tasks_json = '[
+                {"task": "Summarize file A", "context": "Focus on API endpoints"},
+                {"task": "Analyze file B", "agent": "coder", "context": "Check for bugs"}
+            ]'
 
         Returns:
             JSON array of results with task, agent, success, output (summarized), and error fields.
@@ -245,7 +256,118 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
         except json.JSONDecodeError as e:
             return f"Invalid JSON: {e}"
 
-    return [read_file, list_files, set_directory, delegate_task, run_parallel_tasks]
+    # Queue-based task scheduling tools
+    @tool
+    def schedule_tasks(tasks_json: str) -> str:
+        """
+        Schedule multiple tasks for batch execution.
+
+        This queues tasks without immediately executing them, allowing you to
+        build up a batch of work before running it all at once. Use this when
+        you have many tasks to process and want efficient scheduling.
+
+        Tasks are executed in priority order when execute_scheduled_tasks() is called.
+
+        Args:
+            tasks_json: JSON array of task objects, each with:
+                - task: The task description (required)
+                - agent: Agent to use (optional, default: "default")
+                - priority: Higher numbers execute first (optional, default: 0)
+                - context: Initial context for child's working memory (optional)
+
+        Example:
+            schedule_tasks('[
+                {"task": "Process files 1-10", "priority": 2, "context": "Batch 1 of 10"},
+                {"task": "Process files 11-20", "priority": 1, "context": "Batch 2 of 10"},
+                {"task": "Process files 21-30", "context": "Batch 3 of 10"}
+            ]')
+
+        Returns:
+            JSON object with queued count, task_ids, and pending count.
+        """
+        try:
+            tasks = json.loads(tasks_json)
+            if not isinstance(tasks, list):
+                return json.dumps({"error": "tasks_json must be a JSON array"})
+
+            task_ids = child_process.queue_batch(tasks)
+            return json.dumps({
+                "queued": len(task_ids),
+                "task_ids": task_ids,
+                "pending": child_process.task_queue.pending_count(),
+                "message": f"Queued {len(task_ids)} tasks. Call execute_scheduled_tasks() to run them."
+            })
+        except QueueFullError as e:
+            return json.dumps({"error": str(e)})
+        except json.JSONDecodeError as e:
+            return json.dumps({"error": f"Invalid JSON: {e}"})
+
+    @tool
+    def execute_scheduled_tasks() -> str:
+        """
+        Execute all scheduled tasks and return results.
+
+        This runs all tasks that were queued via schedule_tasks() and blocks
+        until all complete. Tasks are executed in priority order (higher first)
+        with up to max_parallel concurrent executions.
+
+        Returns:
+            JSON array of results with task, agent, success, output (summarized), and error fields.
+        """
+        try:
+            results = child_process.execute_queue()
+            if not results:
+                return json.dumps({"message": "No tasks in queue to execute"})
+
+            return json.dumps([
+                {
+                    "task": r.task,
+                    "agent": r.agent,
+                    "success": r.success,
+                    "output": summarize_if_needed(r.output, r.task) if r.success else r.output,
+                    "error": r.error,
+                }
+                for r in results
+            ], indent=2)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    @tool
+    def get_queue_status() -> str:
+        """
+        Get current status of the task queue.
+
+        Use this to check how many tasks are pending, the current recursion depth,
+        and whether new child agents can be spawned.
+
+        Returns:
+            JSON object with queue statistics including:
+            - pending: Number of tasks waiting in queue
+            - max_queued: Maximum queue capacity
+            - max_parallel: Maximum concurrent workers
+            - current_depth: Current recursion depth
+            - max_depth: Maximum allowed depth
+            - can_spawn: Whether new children can be spawned
+        """
+        return json.dumps({
+            "pending": child_process.task_queue.pending_count(),
+            "max_queued": child_process.max_queued,
+            "max_parallel": child_process.max_parallel,
+            "current_depth": child_process._get_current_depth(),
+            "max_depth": child_process.max_depth,
+            "can_spawn": child_process._get_current_depth() < child_process.max_depth,
+        })
+
+    return [
+        read_file,
+        list_files,
+        set_directory,
+        delegate_task,
+        run_parallel_tasks,
+        schedule_tasks,
+        execute_scheduled_tasks,
+        get_queue_status,
+    ]
 
 
 def load_agent(name: str) -> Tuple[Agent, FileManager]:
@@ -326,7 +448,28 @@ You are friendly, knowledgeable, and concise. You help users with their question
 
 When using tools, explain what you're doing and share the results clearly.
 
-Keep responses focused and actionable. Use markdown formatting when it improves readability."""
+Keep responses focused and actionable. Use markdown formatting when it improves readability.
+
+## Task Delegation
+
+For large tasks (10+ files/items), use hierarchical delegation:
+
+- **Queue limit**: 10 tasks per agent
+- **Depth limit**: 3 levels of sub-agents
+- **Max capacity**: 10 × 10 × 10 = 1,000 items
+
+**Strategy for N items:**
+- 1-10 items: Process directly or `run_parallel_tasks`
+- 11-100 items: Split into ~10 batches, delegate each
+- 100+ items: Split hierarchically (10 → 10 → 10)
+
+**Before delegating**: Use `get_queue_status()` to check `can_spawn`.
+
+**Example (100 files)**:
+1. `schedule_tasks` with 10 batch tasks (10 files each)
+2. `execute_scheduled_tasks` to run all
+3. Each child processes its 10 files via `run_parallel_tasks`
+4. Aggregate results for unified response"""
 
     # Atomic creation of default agent
     _create_default_agent_safely(agent_dir, system_prompt)

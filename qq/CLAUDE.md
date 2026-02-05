@@ -96,6 +96,7 @@ src/qq/
 └── services/
     ├── file_manager.py   # File ops (read with PDF/DOCX conversion)
     ├── child_process.py  # Recursive agent invocation (delegate_task, run_parallel_tasks)
+    ├── task_queue.py     # Bounded task queue for batch sub-agent scheduling
     ├── graph.py          # KnowledgeGraphAgent
     └── summarizer.py     # Summary service
 ```
@@ -129,6 +130,8 @@ Child process / recursive calling:
 - `QQ_MAX_PARALLEL`: Max concurrent child processes (default: 5)
 - `QQ_MAX_DEPTH`: Max recursion depth (default: 3)
 - `QQ_MAX_OUTPUT`: Max output size from children in chars (default: 50000)
+- `QQ_MAX_QUEUED`: Max tasks in queue per agent (default: 10)
+- `QQ_NOTES_ID`: Per-agent ephemeral notes ID (internal, auto-set for children)
 
 ## MCP Configuration
 
