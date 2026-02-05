@@ -19,6 +19,7 @@ from strands.models import OpenAIModel
 from qq.session import get_session_dir
 from qq.services.file_manager import FileManager
 from qq.services.child_process import ChildProcess
+from qq.services.summarizer import summarize_if_needed
 
 
 def get_model() -> OpenAIModel:
@@ -197,11 +198,12 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
             agent: Which agent to use (default, coder, etc.).
 
         Returns:
-            The child agent's response.
+            The child agent's response (summarized if large).
         """
         result = child_process.spawn_agent(task, agent)
         if result.success:
-            return result.output
+            # Summarize large outputs to prevent token overflow
+            return summarize_if_needed(result.output, task)
         else:
             return f"Child agent error: {result.error}"
 
@@ -221,7 +223,7 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
             tasks_json = '[{"task": "Summarize file A"}, {"task": "Analyze file B", "agent": "coder"}]'
 
         Returns:
-            JSON array of results with task, agent, success, output, and error fields.
+            JSON array of results with task, agent, success, output (summarized), and error fields.
         """
         try:
             tasks = json.loads(tasks_json)
@@ -234,7 +236,8 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
                     "task": r.task,
                     "agent": r.agent,
                     "success": r.success,
-                    "output": r.output,
+                    # Summarize each child's output to prevent token overflow
+                    "output": summarize_if_needed(r.output, r.task) if r.success else r.output,
                     "error": r.error,
                 }
                 for r in results
