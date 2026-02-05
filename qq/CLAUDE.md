@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-QQ (Quick Question) is a local-first conversational AI agent with CLI and rich console interfaces. It features multi-layered memory (Notes + Knowledge Graph), specialized agents, skills system, and MCP integration.
+QQ (Quick Question) is a local-first conversational AI agent with CLI and rich console interfaces. It features multi-layered memory (Notes + Knowledge Graph), specialized agents, skills system, MCP integration, and session-based parallel execution.
 
 ## Commands
 
@@ -22,8 +22,14 @@ uv sync
 # Clear history
 ./qq --clear-history
 
-# Memory status utility
-./qq-memory
+# Session management (for parallel execution)
+./qq -s <session-id>          # Resume a session
+./qq --new-session            # Force a new session
+
+# Utilities
+./qq-memory                   # Memory status utility
+./qq-backup                   # Backup/restore utility
+./qq-test                     # System tests utility
 
 # Start backend services (MongoDB, Neo4j, TEI embeddings)
 docker compose up -d
@@ -31,6 +37,19 @@ docker compose up -d
 # Run tests
 uv run pytest
 ```
+
+## CLI Options
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-a, --agent` | string | "default" | Agent to use from agents/ folder |
+| `--mode` | choice | "console" | "cli" for one-shot, "console" for REPL |
+| `-m, --message` | string | None | Message to send (implies --mode cli) |
+| `--clear-history` | bool | False | Clear conversation history before starting |
+| `--no-color` | bool | False | Disable colored output |
+| `-v, --verbose` | bool | False | Enable verbose output |
+| `-s, --session` | string | None | Session ID to resume (for parallel execution) |
+| `--new-session` | bool | False | Force a new session |
 
 ## Architecture
 
@@ -43,30 +62,51 @@ src/qq/
 ├── skills.py           # YAML frontmatter skill loader
 ├── embeddings.py       # TEI/local embedding client
 ├── mcp_loader.py       # MCP server integration
+├── mcp_server.py       # MCP server implementation
+├── recovery.py         # Token limit recovery with context reduction
+├── session.py          # Session management for parallel execution
+├── errors.py           # Error definitions
+├── memory_status.py    # Memory status CLI utility
+├── test_systems.py     # System testing utility
 ├── agents/             # Specialized agents
-│   ├── __init__.py     # load_agent() - dynamic agent loading
+│   ├── __init__.py     # load_agent(), list_agents() - dynamic agent loading
 │   ├── prompt_loader.py # Loads .system.md and .user.md prompts
-│   ├── default/        # General-purpose agent
+│   ├── default/        # General-purpose agent (system prompt only)
 │   ├── entity_agent/   # Entity extraction from conversations
 │   ├── relationship_agent/  # Relationship extraction
 │   └── notes/          # Notes summarization
-├── memory/             # MongoDB-backed notes storage
-│   └── mongo_store.py  # MongoNotesStore with vector search
+├── memory/             # Multi-layer notes storage system
+│   ├── mongo_store.py  # MongoNotesStore with vector search
+│   ├── notes.py        # NotesManager for notes.md file persistence
+│   ├── core_notes.py   # Core notes functionality
+│   ├── archive.py      # Notes archival system
+│   ├── deduplication.py # Note deduplication logic
+│   ├── importance.py   # Importance scoring for notes
+│   └── notes_agent.py  # Agent for note processing
 ├── knowledge/          # Neo4j knowledge graph
 │   └── neo4j_client.py # Neo4jClient for entity/relationship storage
 ├── context/            # RAG context retrieval
 │   └── retrieval_agent.py
+├── backup/             # Backup/restore system
+│   ├── cli.py          # Backup CLI interface
+│   ├── manager.py      # Backup manager
+│   ├── manifest.py     # Backup manifest handling
+│   ├── restore.py      # Backup restoration
+│   └── stores.py       # Backup storage backends
 └── services/
     ├── file_manager.py   # File ops (read with PDF/DOCX conversion)
     ├── child_process.py  # Recursive agent invocation (delegate_task, run_parallel_tasks)
-    └── graph.py          # KnowledgeGraphAgent
+    ├── graph.py          # KnowledgeGraphAgent
+    └── summarizer.py     # Summary service
 ```
 
 **Key patterns:**
-- Agents are directories with `*.system.md` and `*.user.md` files for prompts
+- Agents are directories with `*.system.md` prompts (and optional `*.user.md` and `*.py` modules)
 - Skills are markdown files with YAML frontmatter in `skills/` or `.agent/skills/`
 - Uses Strands Agent framework for LLM tool calling
 - Context injection happens before inference via retrieval_agent
+- Session isolation enables parallel execution of agent instances
+- Token limit recovery progressively reduces context when limits are hit
 
 ## Services (docker-compose.yml)
 
@@ -82,6 +122,7 @@ Key variables in `.env` (see `.env.sample`):
 - `MONGODB_URI`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`: Database connections
 - `TEI_URL`, `EMBEDDING_MODEL`: Embedding service
 - `HISTORY_DIR`: Conversation history location (default: `~/.qq`)
+- `MEMORY_DIR`: Memory storage location
 
 Child process / recursive calling:
 - `QQ_CHILD_TIMEOUT`: Timeout for child processes in seconds (default: 300)
@@ -92,3 +133,10 @@ Child process / recursive calling:
 ## MCP Configuration
 
 External MCP servers are configured in `mcp.json` at the project root.
+
+## Skills
+
+Skills are markdown files with YAML frontmatter that define reusable capabilities:
+
+- `skills/` - Global skills (e.g., `coding/SKILL.md`)
+- `.agent/skills/` - Agent-specific skills (e.g., `call-qq/`, `implement/`, `plan/`, `test-on-finish/`)
