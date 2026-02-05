@@ -9,6 +9,10 @@ Conversation (includes USER, ASSISTANT, and FILE_CONTENT messages):
 Respond with ONLY valid JSON in this format:
 {{
   "entities": [
-    {{"name": "Entity Name", "type": "Person", "description": "Brief description based on context"}}
+    {{"name": "Entity Name", "type": "Person", "description": "Brief description based on context", "reasoning": "F1: ..., F2: ... > type choice"}}
   ]
 }}
+
+The "reasoning" field is optional but recommended for ambiguous cases. Use compact notation:
+- `F1: [observation]` for facts
+- `>` for inference (e.g., `F1: class keyword, F2: has methods > Class type`)

@@ -37,6 +37,7 @@ If nothing significant to add, return empty lists.
 
 Response format:
 {{
+  "thinking": "F1: ...; F2: ... > C1; ...",
   "additions": [
     {{"section": "Key Topics", "item": "...", "importance": "medium"}},
     {{"section": "People & Entities", "item": "User's name is Ori", "importance": "core"}}
@@ -44,5 +45,11 @@ Response format:
   "removals": ["pattern to remove"],
   "summary": "..."
 }}
+
+The "thinking" field captures your deductive reasoning chain. Use compact notation:
+- `F1: [observation]` for facts
+- `>` for inference
+- `...` for intuitive leaps
+- `;` to end chains
 
 Respond with ONLY valid JSON, no other text.

@@ -28,8 +28,12 @@ Relationship types:
 Respond with ONLY valid JSON in this format:
 {{
   "relationships": [
-    {{"source": "Source Entity Name", "target": "Target Entity Name", "type": "RELATES_TO", "description": "Brief description"}}
+    {{"source": "Source Entity Name", "target": "Target Entity Name", "type": "RELATES_TO", "description": "Brief description", "reasoning": "F1: ..., F2: ... > relationship type"}}
   ]
 }}
+
+The "reasoning" field is optional but recommended for ambiguous cases. Use compact notation:
+- `F1: [observation]` for facts
+- `>` for inference (e.g., `F1: import present, F2: runtime call > USES not DEPENDS_ON`)
 
 Only extract genuinely significant relationships. If nothing significant, return empty list.
