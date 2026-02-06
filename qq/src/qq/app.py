@@ -234,6 +234,13 @@ def run_cli_mode(
         )
 
         if not result.success:
+            if result.overflow_severity == 'catastrophic':
+                console.print_error(
+                    "[Tool output too large]\n"
+                    "A tool returned more data than the model can process.\n"
+                    "Tip: Use count_files() before list_files() on large directories."
+                )
+                return
             if result.warnings:
                 for warn in result.warnings:
                     console.print_warning(warn)
@@ -333,7 +340,18 @@ def run_console_mode(
             )
 
             if not result.success:
-                if is_token_error(result.error):
+                if result.overflow_severity == 'catastrophic':
+                    # Tool output too large - clear and inform user
+                    console.print_error(
+                        "[Tool output too large]\n"
+                        "A tool returned more data than the model can process.\n"
+                        "Session context cleared. Try a more specific query.\n"
+                        "Tip: Use count_files() before list_files() on large directories."
+                    )
+                    history.clear()
+                    file_manager.clear_pending_file_reads()
+                    continue
+                elif is_token_error(result.error):
                     # Last resort: clear history and retry once
                     console.print_warning("[Clearing history for fresh start]")
                     history.clear()

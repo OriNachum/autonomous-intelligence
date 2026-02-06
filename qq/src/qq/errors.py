@@ -80,3 +80,27 @@ def is_token_error(error: Exception) -> bool:
     """Quick check if an exception is token-related."""
     is_token, _ = parse_token_error(error)
     return is_token
+
+
+def classify_overflow(info: Optional[TokenLimitInfo]) -> str:
+    """
+    Classify the severity of token overflow.
+
+    Args:
+        info: TokenLimitInfo from parse_token_error, or None.
+
+    Returns:
+        'unknown': info is None
+        'minor': <1000 tokens over, history reduction may help
+        'major': 1000-50000 tokens over, aggressive reduction needed
+        'catastrophic': >50000 tokens over, likely tool output problem
+    """
+    if info is None:
+        return 'unknown'
+
+    if info.overflow < 1000:
+        return 'minor'
+    elif info.overflow < 50000:
+        return 'major'
+    else:
+        return 'catastrophic'

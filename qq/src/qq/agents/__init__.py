@@ -21,6 +21,7 @@ from qq.services.file_manager import FileManager
 from qq.services.child_process import ChildProcess
 from qq.services.task_queue import QueueFullError
 from qq.services.summarizer import summarize_if_needed
+from qq.services.output_guard import guard_output
 
 
 def get_model() -> OpenAIModel:
@@ -159,16 +160,28 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
         return file_manager.read_file(path, start_line, num_lines)
 
     @tool
-    def list_files(pattern: str = "*", recursive: bool = False, use_regex: bool = False) -> str:
+    def list_files(
+        pattern: str = "*",
+        recursive: bool = False,
+        use_regex: bool = False,
+        offset: int = 0,
+        limit: int = 0,
+    ) -> str:
         """
-        List files in the current session directory.
+        List files in the current session directory with pagination.
 
         Args:
             pattern: Filter files by glob pattern (default "*") or regex.
             recursive: Whether to search recursively.
             use_regex: If True, pattern is treated as regex.
+            offset: Skip first N files (for pagination). Default 0.
+            limit: Max files to return. 0 = auto (warns if >20, suggests pagination).
+
+        Returns:
+            File listing with metadata, or warning with options if too many files.
         """
-        return file_manager.list_files(pattern, recursive, use_regex)
+        result = file_manager.list_files(pattern, recursive, use_regex, offset, limit)
+        return guard_output(result, "list_files")
 
     @tool
     def set_directory(path: str) -> str:

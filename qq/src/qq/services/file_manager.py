@@ -12,6 +12,8 @@ from fnmatch import fnmatch
 from typing import List, Optional, Dict
 
 MAX_LINES_PER_READ = 100
+MAX_FILES_WARNING_THRESHOLD = 20
+MAX_FILES_PER_LIST = 100
 
 
 class DocumentReader:
@@ -133,17 +135,26 @@ class FileManager:
         except Exception as e:
             return f"Error setting directory: {e}"
 
-    def list_files(self, pattern: str = "*", recursive: bool = False, use_regex: bool = False) -> str:
+    def list_files(
+        self,
+        pattern: str = "*",
+        recursive: bool = False,
+        use_regex: bool = False,
+        offset: int = 0,
+        limit: int = 0,
+    ) -> str:
         """
-        Lists files in the current working directory.
+        Lists files in the current working directory with optional pagination.
 
         Args:
             pattern: Glob pattern or Regex pattern to filter files. Defaults to "*".
             recursive: If True, lists files recursively.
             use_regex: If True, treats 'pattern' as a regex.
+            offset: Skip first N files (for pagination). Default 0.
+            limit: Max files to return. 0 = use warning threshold, then suggest pagination.
 
         Returns:
-            List of files matched.
+            List of files matched with metadata, or warning if too many files.
         """
         try:
             cwd_path = Path(self.cwd)
@@ -167,14 +178,50 @@ class FileManager:
                             if fnmatch(rel_path_str, pattern):
                                 files.append(rel_path_str)
                     except ValueError:
-                        # Should not happen if p is from iterdir/rglob of cwd_path,
-                        # but good for safety if we change iterator logic
                         continue
 
             if not files:
                 return "No files found matching the criteria."
 
-            return "\\n".join(sorted(files))
+            total_count = len(files)
+            files = sorted(files)
+
+            # If no explicit limit, apply warning threshold check
+            if limit == 0:
+                if total_count > MAX_FILES_WARNING_THRESHOLD:
+                    mode = "recursively" if recursive else "in current directory"
+                    return (
+                        f"Warning: {total_count} files match pattern '{pattern}' {mode}.\n"
+                        f"Listing all would overwhelm the context window.\n\n"
+                        f"Options:\n"
+                        f"1. Use count_files() to see breakdown by extension\n"
+                        f"2. Use a more specific pattern (e.g., '*.py' instead of '*')\n"
+                        f"3. Use list_files with pagination: list_files('{pattern}', offset=0, limit=20)\n"
+                    )
+                # Under threshold, return all
+                return "\n".join(files)
+
+            # Explicit limit provided - apply pagination
+            effective_limit = min(limit, MAX_FILES_PER_LIST)
+            paginated = files[offset:offset + effective_limit]
+
+            if not paginated:
+                return f"No files in range. Total: {total_count}, offset: {offset}"
+
+            # Build output with metadata
+            start_idx = offset + 1
+            end_idx = offset + len(paginated)
+
+            header = f"[Files {start_idx}-{end_idx} of {total_count}]"
+
+            if end_idx < total_count:
+                next_offset = offset + effective_limit
+                footer = f"\n[More files available. Use offset={next_offset} to continue.]"
+            else:
+                footer = f"\n[Listing complete. Total: {total_count} files]"
+
+            return f"{header}\n" + "\n".join(paginated) + footer
+
         except Exception as e:
             return f"Error listing files: {e}"
 

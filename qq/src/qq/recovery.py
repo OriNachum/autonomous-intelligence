@@ -4,7 +4,7 @@ import logging
 from typing import Any, Callable, Optional, List
 from dataclasses import dataclass, field
 
-from qq.errors import parse_token_error, TokenLimitInfo
+from qq.errors import parse_token_error, TokenLimitInfo, classify_overflow
 
 logger = logging.getLogger("qq.recovery")
 
@@ -19,6 +19,7 @@ class RecoveryResult:
     tokens_reduced: int = 0
     error: Optional[Exception] = None
     warnings: List[str] = field(default_factory=list)
+    overflow_severity: str = "none"  # none, minor, major, catastrophic, unknown
 
 
 class TokenRecovery:
@@ -93,13 +94,28 @@ class TokenRecovery:
                         strategy=self._strategy_name(attempt),
                     )
 
+                severity = classify_overflow(info)
                 last_error = e
                 last_info = info
 
                 logger.warning(
                     f"Token limit hit (attempt {attempt + 1}): "
-                    f"{info.overflow if info else '?'} tokens over"
+                    f"{info.overflow if info else '?'} tokens over, severity: {severity}"
                 )
+
+                # For catastrophic overflow, don't bother retrying - history reduction won't help
+                if severity == 'catastrophic':
+                    return RecoveryResult(
+                        success=False,
+                        error=e,
+                        attempts=attempt + 1,
+                        strategy="tool_output_overflow",
+                        overflow_severity=severity,
+                        warnings=[
+                            "A tool returned too much data for the context window.",
+                            "Use more specific parameters or pagination.",
+                        ],
+                    )
 
                 if on_retry:
                     on_retry(attempt + 1, self._strategy_name(attempt + 1))
@@ -107,11 +123,13 @@ class TokenRecovery:
                 attempt += 1
 
         # All retries exhausted
+        severity = classify_overflow(last_info) if last_info else 'unknown'
         return RecoveryResult(
             success=False,
             error=last_error,
             attempts=attempt,
             strategy="exhausted",
+            overflow_severity=severity,
             warnings=[
                 "Token limit recovery exhausted",
                 f"Last overflow: {last_info.overflow if last_info else 'unknown'} tokens",
