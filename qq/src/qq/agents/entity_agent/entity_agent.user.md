@@ -14,12 +14,7 @@ Respond with ONLY valid JSON in this format:
       "type": "Person",
       "description": "Brief description based on context",
       "notes": "Additional observations or metadata",
-      "confidence": 0.9,
-      "reasoning": "F1: ..., F2: ... > type choice"
+      "confidence": 0.9
     }}
   ]
 }}
-
-The "reasoning" field is optional but recommended for ambiguous cases. Use compact notation:
-- `F1: [observation]` for facts
-- `>` for inference (e.g., `F1: class keyword, F2: has methods > Class type`)

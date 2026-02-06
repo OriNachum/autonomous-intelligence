@@ -46,15 +46,10 @@ Respond with ONLY valid JSON in this format:
       "description": "Brief description",
       "notes": "Additional context or observations",
       "confidence": 0.85,
-      "evidence": "Quote from conversation supporting this",
-      "reasoning": "F1: ..., F2: ... > relationship type"
+      "evidence": "Quote from conversation supporting this"
     }}
   ]
 }}
-
-The "reasoning" field is optional but recommended for ambiguous cases. Use compact notation:
-- `F1: [observation]` for facts
-- `>` for inference (e.g., `F1: import present, F2: runtime call > USES not DEPENDS_ON`)
 
 Extract ALL relationships you can identify, including:
 - Explicit relationships stated directly

@@ -87,8 +87,7 @@ Update JSON format (around line 10-14):
       "type": "Person",
       "description": "Brief description",
       "notes": "Additional observations or metadata",
-      "confidence": 0.9,
-      "reasoning": "F1: ..., F2: ... > type choice"
+      "confidence": 0.9
     }}
   ]
 }}
@@ -208,8 +207,7 @@ Respond with JSON:
       "target": "...",
       "type": "ASSOCIATED_WITH",
       "description": "...",
-      "confidence": 0.6,
-      "reasoning": "..."
+      "confidence": 0.6
     }}
   ]
 }}
