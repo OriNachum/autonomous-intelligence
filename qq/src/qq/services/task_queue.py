@@ -123,6 +123,15 @@ class TaskQueue:
         Raises:
             QueueFullError: If queue is at max_queued capacity.
         """
+        # Validate agent parameter - must be a string, not an Agent object
+        if not isinstance(agent, str):
+            if hasattr(agent, 'name') and isinstance(agent.name, str):
+                logger.warning(f"Agent object passed instead of string, using agent.name: {agent.name}")
+                agent = agent.name
+            else:
+                logger.warning(f"Invalid agent type {type(agent).__name__}, falling back to 'default'")
+                agent = "default"
+
         with self._lock:
             if len(self._pending) >= self.max_queued:
                 raise QueueFullError(

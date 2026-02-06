@@ -213,6 +213,64 @@ class TestChildProcess:
         assert results[1].task == "second task"
 
 
+class TestAgentParameterValidation:
+    """Tests for agent parameter validation (fixes Agent object passing bug)."""
+
+    @patch("subprocess.run")
+    def test_spawn_agent_with_agent_object(self, mock_run):
+        """Test that passing an Agent object instead of string is handled gracefully."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="Success",
+            stderr="",
+        )
+
+        # Create a mock Agent object (like strands.agent.agent.Agent)
+        mock_agent = MagicMock()
+        mock_agent.name = "coder"
+
+        cp = ChildProcess(qq_executable="qq")
+        result = cp.spawn_agent("test task", agent=mock_agent)
+
+        # Should succeed by extracting agent.name
+        assert result.success is True
+        # Verify the command used the string name, not the object
+        call_args = mock_run.call_args
+        cmd = call_args[0][0]  # First positional arg is the command list
+        assert "coder" in cmd
+
+    @patch("subprocess.run")
+    def test_spawn_agent_with_object_no_name(self, mock_run):
+        """Test that passing an object without .name falls back to 'default'."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="Success",
+            stderr="",
+        )
+
+        # Object without .name attribute
+        mock_agent = MagicMock(spec=[])
+
+        cp = ChildProcess(qq_executable="qq")
+        result = cp.spawn_agent("test task", agent=mock_agent)
+
+        # Should succeed using default agent
+        assert result.success is True
+        call_args = mock_run.call_args
+        cmd = call_args[0][0]
+        assert "default" in cmd
+
+    def test_spawn_agent_with_invalid_task_type(self):
+        """Test that passing non-string task returns error."""
+        cp = ChildProcess(qq_executable="qq")
+
+        # Pass a dict instead of string for task
+        result = cp.spawn_agent(task={"invalid": "task"}, agent="default")
+
+        assert result.success is False
+        assert "must be a string" in result.error
+
+
 class TestFindQQExecutable:
     """Tests for executable discovery."""
 

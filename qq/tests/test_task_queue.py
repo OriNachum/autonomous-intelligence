@@ -383,3 +383,36 @@ class TestThreadSafety:
 
         assert len(errors) == 0
         assert queue.pending_count() == 50  # 5 threads * 10 tasks
+
+
+class TestAgentParameterValidation:
+    """Test agent parameter validation in queue_task."""
+
+    def test_queue_task_with_agent_object(self, mock_child_process):
+        """Test that passing an Agent object instead of string is handled gracefully."""
+        queue = TaskQueue(mock_child_process, max_queued=10)
+
+        # Create a mock Agent object (like strands.agent.agent.Agent)
+        mock_agent = MagicMock()
+        mock_agent.name = "coder"
+
+        # Should extract agent.name and use it
+        task_id = queue.queue_task("test task", agent=mock_agent)
+
+        assert task_id.startswith("task_")
+        # Verify the stored agent is the string, not the object
+        status = queue._results[task_id]
+        assert status.agent == "coder"
+
+    def test_queue_task_with_object_no_name(self, mock_child_process):
+        """Test that passing an object without .name falls back to 'default'."""
+        queue = TaskQueue(mock_child_process, max_queued=10)
+
+        # Object without .name attribute
+        mock_agent = MagicMock(spec=[])
+
+        task_id = queue.queue_task("test task", agent=mock_agent)
+
+        # Should fall back to 'default'
+        status = queue._results[task_id]
+        assert status.agent == "default"

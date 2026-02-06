@@ -145,6 +145,29 @@ class ChildProcess:
         from uuid import uuid4
         trace_id = uuid4().hex[:8]
 
+        # Validate agent parameter - must be a string, not an Agent object
+        if not isinstance(agent, str):
+            # If an Agent object was passed (common LLM tool-call error), extract name or use default
+            if hasattr(agent, 'name') and isinstance(agent.name, str):
+                logger.warning(f"[{trace_id}] Agent object passed instead of string, using agent.name: {agent.name}")
+                agent = agent.name
+            else:
+                logger.warning(f"[{trace_id}] Invalid agent type {type(agent).__name__}, falling back to 'default'")
+                agent = "default"
+
+        # Validate task parameter - must be a string
+        if not isinstance(task, str):
+            error_msg = f"Task must be a string, got {type(task).__name__}"
+            logger.error(f"[{trace_id}] {error_msg}")
+            return ChildResult(
+                success=False,
+                output="",
+                error=error_msg,
+                exit_code=-1,
+                agent=agent if isinstance(agent, str) else "default",
+                task=str(task)[:100],
+            )
+
         # Check recursion depth before spawning
         current_depth = self._get_current_depth()
         if current_depth >= self.max_depth:
