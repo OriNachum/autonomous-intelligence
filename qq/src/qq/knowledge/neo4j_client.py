@@ -438,6 +438,27 @@ class Neo4jClient:
         
         return self.execute(query, {"name": entity_name, "limit": limit})
     
+    def increment_mention_count(self, entity_name: str) -> bool:
+        """
+        Increment mention_count and update last_seen on an entity node.
+
+        Used by memory_reinforce when existing knowledge is re-encountered.
+
+        Args:
+            entity_name: Name of the entity to reinforce
+
+        Returns:
+            True if the entity was found and updated
+        """
+        query = """
+            MATCH (n {name: $name})
+            SET n.mention_count = coalesce(n.mention_count, 0) + 1,
+                n.last_seen = datetime()
+            RETURN n.name as name
+        """
+        result = self.execute(query, {"name": entity_name})
+        return len(result) > 0
+
     def get_graph_summary(self) -> Dict[str, Any]:
         """Get a summary of entities and relationships in the graph."""
         # Get entity counts by type

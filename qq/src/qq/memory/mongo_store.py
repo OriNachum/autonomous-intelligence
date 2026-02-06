@@ -367,6 +367,58 @@ class MongoNotesStore:
             for doc in cursor
         ]
 
+    def append_source_history(
+        self,
+        note_id: str,
+        source: Dict[str, Any],
+        boost_importance: float = 0.0,
+    ) -> bool:
+        """
+        Append a source to a note's source_history and optionally boost importance.
+
+        Used by memory_reinforce to record additional provenance without
+        overwriting the current source.
+
+        Args:
+            note_id: ID of the note
+            source: Source provenance dict to append
+            boost_importance: Amount to add to current importance (clamped to 1.0)
+
+        Returns:
+            True if note was updated
+        """
+        update_ops: Dict[str, Any] = {
+            "$push": {"source_history": source},
+            "$set": {"updated_at": datetime.utcnow()},
+            "$inc": {"access_count": 1},
+        }
+
+        if boost_importance > 0:
+            # Fetch current importance to clamp
+            note = self.collection.find_one({"note_id": note_id})
+            if note:
+                current = note.get("importance", DEFAULT_IMPORTANCE)
+                new_imp = min(1.0, current + boost_importance)
+                update_ops["$set"]["importance"] = new_imp
+
+        result = self.collection.update_one({"note_id": note_id}, update_ops)
+        return result.modified_count > 0
+
+    def get_full_note(self, note_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a note with all fields including importance and source metadata.
+
+        Args:
+            note_id: ID of the note
+
+        Returns:
+            Full note document or None
+        """
+        return self.collection.find_one(
+            {"note_id": note_id},
+            {"_id": 0},
+        )
+
     def bulk_update_importance(
         self,
         updates: List[Dict[str, Any]],

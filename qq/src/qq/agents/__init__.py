@@ -22,6 +22,7 @@ from qq.services.child_process import ChildProcess
 from qq.services.task_queue import QueueFullError
 from qq.services.summarizer import summarize_if_needed
 from qq.services.output_guard import guard_output
+from qq.services.memory_tools import create_memory_tools
 
 
 def get_model() -> OpenAIModel:
@@ -467,6 +468,10 @@ def load_agent(name: str) -> Tuple[Agent, FileManager]:
     common_tools = _create_common_tools(file_manager, child_process)
     agent_tools.extend(common_tools)
 
+    # Add memory tools (memory_add, memory_query, memory_verify, memory_reinforce)
+    memory_tools = create_memory_tools(file_manager=file_manager)
+    agent_tools.extend(memory_tools)
+
     # Instantiate Strands Agent
     agent = Agent(
         name=name,
@@ -536,6 +541,10 @@ For large tasks (10+ files/items), use hierarchical delegation:
     # Add common tools (file ops + child process)
     common_tools = _create_common_tools(file_manager, child_process)
     agent_tools.extend(common_tools)
+
+    # Add memory tools (memory_add, memory_query, memory_verify, memory_reinforce)
+    memory_tools = create_memory_tools(file_manager=file_manager)
+    agent_tools.extend(memory_tools)
 
     agent = Agent(
         name="default",
