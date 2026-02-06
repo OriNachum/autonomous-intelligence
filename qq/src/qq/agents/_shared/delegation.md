@@ -16,7 +16,8 @@ When given N items to process:
 
 | Items | Strategy |
 |-------|----------|
-| 1-10 | Process directly or `run_parallel_tasks` |
+| 1 | Process directly |
+| 2-10 | Use `delegate_task` or `run_parallel_tasks` |
 | 11-100 | Split into ~10 batches, delegate each |
 | 101-1000 | Split into 10 → each splits into 10 → leaf processes ~10 |
 
@@ -39,14 +40,14 @@ Each Child (depth 1):
 ### When to Delegate
 
 **DO delegate when:**
-- Task involves 10+ files or items
+- Task involves 2+ files or multiple distinct concerns
 - Work can be parallelized (items are independent)
 - Processing is uniform across items
 
 **DON'T delegate when:**
-- Task is simple (do it directly)
+- Task is a single-file or simple operation
 - Items have dependencies
-- At max depth (use `get_queue_status()` to check)
+- At max depth (use `get_queue_status()` to check `can_spawn`)
 
 ### Tools
 

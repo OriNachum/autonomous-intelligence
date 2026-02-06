@@ -45,6 +45,51 @@ def get_model() -> OpenAIModel:
     )
 
 
+def _get_depth_context() -> str:
+    """Generate depth-aware prompt section based on current recursion depth.
+
+    Returns role-specific instructions depending on whether this agent is
+    a root coordinator, middle worker, or leaf worker.
+    """
+    current_depth = int(os.environ.get("QQ_RECURSION_DEPTH", "0"))
+    max_depth = int(os.environ.get("QQ_MAX_DEPTH", "3"))
+
+    if current_depth == 0:
+        return """
+
+## Agent Role: Coordinator (Root)
+
+You are the top-level agent. Your primary role is to orchestrate and delegate.
+
+- For any task spanning 2+ files or multiple distinct concerns, delegate rather than doing it yourself.
+- Break work into clear subtasks and use delegation tools (`delegate_task`, `run_parallel_tasks`, `schedule_tasks`).
+- Focus on planning, splitting work, aggregating results, and presenting to the user.
+- Only do single-file or simple tasks directly.
+- Always check `get_queue_status()` before delegating."""
+
+    elif current_depth >= max_depth:
+        return f"""
+
+## Agent Role: Leaf Worker (depth {current_depth}/{max_depth})
+
+You are a leaf worker agent — you cannot delegate further.
+
+- Do all work directly. Do not attempt to use delegation tools.
+- Be thorough but concise — your output goes back to a parent agent.
+- If the task is too large for you to handle alone, complete what you can and clearly note what remains."""
+
+    else:
+        return f"""
+
+## Agent Role: Worker (depth {current_depth}/{max_depth})
+
+You are a delegated worker agent.
+
+- Focus on completing your assigned subtask efficiently.
+- You can delegate if your subtask is large (10+ items), but prefer direct execution.
+- Be concise in your output — your parent agent will aggregate results."""
+
+
 def find_agents_dir() -> Path:
     """Find the agents directory relative to project root."""
     # Since this file is in src/qq/agents/__init__.py, the agents directory is this directory
@@ -438,6 +483,9 @@ def load_agent(name: str) -> Tuple[Agent, FileManager]:
 
     system_prompt = system_file.read_text().strip()
 
+    # Append depth-aware role context
+    system_prompt += _get_depth_context()
+
     # Configure Model
     model = get_model()
 
@@ -495,14 +543,15 @@ Keep responses focused and actionable. Use markdown formatting when it improves 
 
 ## Task Delegation
 
-For large tasks (10+ files/items), use hierarchical delegation:
+For multi-file tasks (2+ files/items), use hierarchical delegation:
 
 - **Queue limit**: 10 tasks per agent
 - **Depth limit**: 3 levels of sub-agents
 - **Max capacity**: 10 × 10 × 10 = 1,000 items
 
 **Strategy for N items:**
-- 1-10 items: Process directly or `run_parallel_tasks`
+- 1 item: Process directly
+- 2-10 items: Use `delegate_task` or `run_parallel_tasks`
 - 11-100 items: Split into ~10 batches, delegate each
 - 100+ items: Split hierarchically (10 → 10 → 10)
 
@@ -513,6 +562,9 @@ For large tasks (10+ files/items), use hierarchical delegation:
 2. `execute_scheduled_tasks` to run all
 3. Each child processes its 10 files via `run_parallel_tasks`
 4. Aggregate results for unified response"""
+
+    # Append depth-aware role context
+    system_prompt += _get_depth_context()
 
     # Atomic creation of default agent
     _create_default_agent_safely(agent_dir, system_prompt)

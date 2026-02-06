@@ -71,7 +71,8 @@ When given N items to process:
 
 | Items | Strategy |
 |-------|----------|
-| 1-10 | Process directly or use `run_parallel_tasks` |
+| 1 | Process directly |
+| 2-10 | Use `delegate_task` or `run_parallel_tasks` |
 | 11-100 | Split into ~10 batches, delegate each batch |
 | 101-1000 | Split into 10 groups → each splits into 10 → leaf agents process ~10 each |
 
@@ -93,14 +94,14 @@ Each Child (depth 1):
 ### When to Delegate
 
 **Delegate when:**
-- Task involves 10+ files or items
+- Task involves 2+ files or multiple distinct concerns
 - Work can be parallelized (independent items)
 - Sub-tasks don't depend on each other's results
 
 **Don't delegate when:**
-- Task is simple and fast to do directly
+- Task is a single-file or simple operation
 - Items have dependencies (process sequentially)
-- At max depth (depth 3 cannot spawn children)
+- At max depth (use `get_queue_status()` to check `can_spawn`)
 
 ### Delegation Tools
 
