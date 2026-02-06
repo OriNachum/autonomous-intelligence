@@ -108,7 +108,8 @@ Each task object can have:
 
 ### Queue-Based Execution Tools
 
-For large-scale processing (100+ files), use queue-based tools to schedule tasks in batches.
+For large-scale processing (10+ items), use queue-based tools to schedule tasks in batches.
+See [task-queue.md](task-queue.md) for full details on the queue internals, priority execution, capacity model, and thread safety.
 
 #### `schedule_tasks`
 
@@ -381,8 +382,9 @@ execute_scheduled_tasks()  # Runs in priority order
 | File | Description |
 |------|-------------|
 | `src/qq/services/child_process.py` | Core ChildProcess service |
-| `src/qq/services/task_queue.py` | TaskQueue for batch scheduling |
+| `src/qq/services/task_queue.py` | TaskQueue for batch scheduling (see [task-queue.md](task-queue.md)) |
 | `src/qq/agents/__init__.py` | Tool integration |
+| `tests/test_task_queue.py` | Task queue test suite |
 
 ### Classes
 
@@ -393,7 +395,7 @@ execute_scheduled_tasks()  # Runs in priority order
 - `queue_batch(tasks)` → `List[str]` (task_ids)
 - `execute_queue(timeout)` → `List[ChildResult]`
 
-**`TaskQueue`**: Bounded queue for batch task scheduling
+**`TaskQueue`**: Bounded queue for batch task scheduling (see [task-queue.md](task-queue.md))
 - `queue_task(task, agent, priority, ...)` → `str`
 - `queue_batch(tasks)` → `List[str]`
 - `execute_all(timeout)` → `List[ChildResult]`

@@ -69,6 +69,9 @@ def create_memory_tools(
     Backends are initialized lazily on first tool invocation to avoid
     startup cost for agents that never use memory tools.
 
+    Source registry for citations is accessed dynamically via
+    file_manager.source_registry (set per-turn by app.py).
+
     Args:
         file_manager: Optional FileManager instance for source provenance.
         memory_dir: Directory for notes/core files (default: MEMORY_DIR or ./memory).
@@ -341,8 +344,18 @@ def create_memory_tools(
                         full = mongo.get_full_note(r["note_id"])
                         imp = full.get("importance", 0.5) if full else 0.5
                         src = _format_source_summary(full.get("source", {})) if full else ""
+                        # Register in source registry for citations
+                        ref_tag = ""
+                        if file_manager and getattr(file_manager, "source_registry", None):
+                            idx = file_manager.source_registry.add(
+                                "note",
+                                r["content"][:60],
+                                f"note:{r['note_id']} [{r.get('section', '?')}] "
+                                f"score={r['score']:.2f}",
+                            )
+                            ref_tag = f"[{idx}] "
                         enriched.append(
-                            f"  - [{r.get('section', '?')}] (relevance: {r['score']:.2f}, "
+                            f"  - {ref_tag}[{r.get('section', '?')}] (relevance: {r['score']:.2f}, "
                             f"importance: {imp:.2f}) {r['content']}"
                             + (f" [from {src}]" if src else "")
                         )
@@ -371,8 +384,17 @@ def create_memory_tools(
                         if e.get("score", 0) < 0.3:
                             continue
                         desc = e.get("description", "")
+                        # Register in source registry for citations
+                        ref_tag = ""
+                        if file_manager and getattr(file_manager, "source_registry", None):
+                            idx = file_manager.source_registry.add(
+                                "entity",
+                                f"{e['name']} ({e.get('type', '?')})",
+                                f"score={e['score']:.2f}",
+                            )
+                            ref_tag = f"[{idx}] "
                         entity_lines.append(
-                            f"  - [{e.get('type', '?')}] {e['name']} "
+                            f"  - {ref_tag}[{e.get('type', '?')}] {e['name']} "
                             f"(relevance: {e['score']:.2f})"
                             + (f": {desc}" if desc else "")
                         )
@@ -405,8 +427,16 @@ def create_memory_tools(
                     if archived:
                         archive_lines = []
                         for a in archived:
+                            ref_tag = ""
+                            if file_manager and getattr(file_manager, "source_registry", None):
+                                idx = file_manager.source_registry.add(
+                                    "archive",
+                                    a.content[:60],
+                                    f"archived:{a.archived_at.strftime('%Y-%m-%d')}",
+                                )
+                                ref_tag = f"[{idx}] "
                             archive_lines.append(
-                                f"  - [{a.section}] (was importance: {a.importance:.2f}, "
+                                f"  - {ref_tag}[{a.section}] (was importance: {a.importance:.2f}, "
                                 f"archived: {a.archived_at.strftime('%Y-%m-%d')}, "
                                 f"reason: {a.reason}) {a.content}"
                             )

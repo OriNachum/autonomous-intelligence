@@ -1,5 +1,6 @@
 """Context Retrieval Agent - pulls relevant context from Notes and Knowledge Graph."""
 
+import os
 import logging
 from typing import List, Dict, Any, Optional
 
@@ -14,8 +15,12 @@ except ImportError:
     KnowledgeGraphAgent = None
 
 from qq.embeddings import EmbeddingClient
+from qq.services.source_registry import SourceRegistry
 
 logger = logging.getLogger("qq.retrieval")
+
+# Minimum relevance score for a source to be indexed
+CITE_THRESHOLD = float(os.getenv("QQ_CITE_THRESHOLD", "0.3"))
 
 
 class ContextRetrievalAgent:
@@ -54,7 +59,7 @@ class ContextRetrievalAgent:
 
         self._initialized = False
         self._mongo_store = None
-    
+
     def _ensure_initialized(self) -> None:
         """Lazy initialize agents if not provided."""
         if self._initialized:
@@ -93,12 +98,13 @@ class ContextRetrievalAgent:
                 pass
 
         self._initialized = True
-    
+
     def prepare_context(
         self,
         user_input: str,
         max_notes: int = 3,
         max_entities: int = 5,
+        source_registry: Optional[SourceRegistry] = None,
     ) -> Dict[str, Any]:
         """
         Prepare context for the next interaction.
@@ -107,6 +113,7 @@ class ContextRetrievalAgent:
             user_input: The user's current message
             max_notes: Maximum notes to retrieve
             max_entities: Maximum entities to retrieve
+            source_registry: Optional registry to index sources for citations
 
         Returns:
             Dict with 'core_notes', 'notes', 'entities', and 'context_text'
@@ -147,7 +154,9 @@ class ContextRetrievalAgent:
                 logger.debug(f"Could not retrieve entities: {e}")
 
         # Format context text for system prompt injection
-        context_text = self._format_context(core_notes, notes, entities)
+        context_text = self._format_context(
+            core_notes, notes, entities, source_registry
+        )
 
         return {
             "core_notes": core_notes,
@@ -173,20 +182,25 @@ class ContextRetrievalAgent:
                     self._mongo_store.increment_access(note_id)
                 except Exception as e:
                     logger.debug(f"Could not track access for {note_id}: {e}")
-    
+
     def _format_context(
         self,
         core_notes: Dict[str, List[str]],
         notes: List[Dict[str, Any]],
         entities: List[Dict[str, Any]],
+        source_registry: Optional[SourceRegistry] = None,
     ) -> str:
         """
         Format retrieved context into a text block for system prompt.
+
+        When a SourceRegistry is provided, each item is indexed with [N]
+        so the LLM can reference sources in its answer.
 
         Args:
             core_notes: Core notes organized by category
             notes: Retrieved working notes with scores
             entities: Retrieved entities with scores
+            source_registry: Optional registry for citation indexing
 
         Returns:
             Formatted context text
@@ -198,7 +212,13 @@ class ContextRetrievalAgent:
         for category, items in core_notes.items():
             for item in items:
                 if item.strip():
-                    core_items.append(f"- {item}")
+                    if source_registry:
+                        idx = source_registry.add(
+                            "core", item[:60], f"core/{category}"
+                        )
+                        core_items.append(f"- [{idx}] {item}")
+                    else:
+                        core_items.append(f"- {item}")
 
         if core_items:
             parts.append("**Core Memory (User Profile):**")
@@ -210,8 +230,18 @@ class ContextRetrievalAgent:
             for note in notes:
                 content = note.get("content", "")
                 score = note.get("score", 0)
-                if content and score > 0.3:  # Only include relevant notes
-                    note_items.append(f"- {content}")
+                if content and score > CITE_THRESHOLD:
+                    if source_registry:
+                        note_id = note.get("note_id", "")
+                        section = note.get("section", "")
+                        idx = source_registry.add(
+                            "note",
+                            content[:60],
+                            f"note:{note_id} [{section}] score={score:.2f}",
+                        )
+                        note_items.append(f"- [{idx}] {content}")
+                    else:
+                        note_items.append(f"- {content}")
 
             if note_items:
                 if parts:
@@ -228,11 +258,21 @@ class ContextRetrievalAgent:
                 description = entity.get("description", "")
                 score = entity.get("score", 0)
 
-                if name and score > 0.3:  # Only include relevant entities
+                if name and score > CITE_THRESHOLD:
                     if description:
-                        entity_items.append(f"- **{name}** ({etype}): {description}")
+                        label = f"**{name}** ({etype}): {description}"
                     else:
-                        entity_items.append(f"- **{name}** ({etype})")
+                        label = f"**{name}** ({etype})"
+
+                    if source_registry:
+                        idx = source_registry.add(
+                            "entity",
+                            f"{name} ({etype})",
+                            f"score={score:.2f}",
+                        )
+                        entity_items.append(f"- [{idx}] {label}")
+                    else:
+                        entity_items.append(f"- {label}")
 
             if entity_items:
                 if parts:
@@ -244,52 +284,56 @@ class ContextRetrievalAgent:
             return ""
 
         return "\n".join(parts)
-    
+
     def inject_context(
         self,
         system_prompt: str,
         user_input: str,
+        source_registry: Optional[SourceRegistry] = None,
     ) -> str:
         """
         Inject retrieved context into the system prompt.
-        
+
         Args:
             system_prompt: Original system prompt
             user_input: User's current message
-            
+            source_registry: Optional registry for citation indexing
+
         Returns:
             System prompt with context injection
         """
-        context = self.prepare_context(user_input)
+        context = self.prepare_context(
+            user_input, source_registry=source_registry
+        )
         context_text = context.get("context_text", "")
-        
+
         if not context_text:
             return system_prompt
-        
+
         # Inject context before the main prompt content
         injection = f"""## Retrieved Context
 
-The following information was retrieved from memory and knowledge base as potentially relevant to this conversation:
+The following information was retrieved from memory and knowledge base as potentially relevant to this conversation. Items are indexed with [N] for citation.
 
 {context_text}
 
 ---
 
 """
-        
+
         return injection + system_prompt
-    
+
     def get_full_context_summary(self) -> str:
         """
         Get a summary of all available context.
-        
+
         Returns:
             Summary of notes and knowledge graph state
         """
         self._ensure_initialized()
-        
+
         parts = ["## Memory Context Summary\n"]
-        
+
         # Notes summary
         if self.notes_agent:
             try:
@@ -299,14 +343,14 @@ The following information was retrieved from memory and knowledge base as potent
                     parts.append(notes[:500] + "..." if len(notes) > 500 else notes)
             except Exception:
                 pass
-        
+
         # Knowledge graph summary
         if self.knowledge_agent:
             try:
                 summary = self.knowledge_agent.get_graph_summary()
                 entity_counts = summary.get("entity_counts", {})
                 rel_counts = summary.get("relationship_counts", {})
-                
+
                 if entity_counts or rel_counts:
                     parts.append("\n### Knowledge Graph")
                     if entity_counts:
@@ -317,5 +361,5 @@ The following information was retrieved from memory and knowledge base as potent
                         parts.append(f"Relationships: {counts}")
             except Exception:
                 pass
-        
+
         return "\n".join(parts)

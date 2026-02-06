@@ -5,8 +5,10 @@ Updated for parallel execution support:
 - FileManager instance methods (no module globals)
 - Embeddings preload is still daemon thread but safe (per-instance)
 - Token limit recovery with progressive context reduction
+- Source citation registry and alignment review
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -107,10 +109,7 @@ def main() -> None:
     embeddings_thread = threading.Thread(target=preload_embeddings, daemon=True)
     embeddings_thread.start()
 
-    # Memory agents initialization commented out for Phase 1
-    # Will be migrated to Tools in Phase 3
-
-    # Initialize memory agents
+    # Initialize memory agents (read path only — write path removed)
     from qq.agents.notes.notes import NotesAgent
     from qq.services.graph import KnowledgeGraphAgent
     from qq.context.retrieval_agent import ContextRetrievalAgent
@@ -123,8 +122,13 @@ def main() -> None:
         embeddings=shared_embeddings,
     )
 
+    # Initialize alignment agent (silent post-answer reviewer)
+    from qq.services.alignment import AlignmentAgent
+    alignment_enabled = os.getenv("QQ_ALIGNMENT_ENABLED", "true").lower() not in ("false", "0", "no")
+    alignment_agent = AlignmentAgent(model=agent.model) if alignment_enabled else None
+
     if args.verbose:
-        console.print_info("Agent initialized (Memory agents pending migration)")
+        console.print_info("Agent initialized")
 
     # Check for daily backup (before first interaction)
     from qq.backup.manager import BackupManager
@@ -150,8 +154,7 @@ def main() -> None:
             console=console,
             message=args.message or "",
             context_agent=context_agent,
-            notes_agent=notes_agent,
-            knowledge_agent=knowledge_agent,
+            alignment_agent=alignment_agent,
         )
     else:
         run_console_mode(
@@ -160,8 +163,7 @@ def main() -> None:
             history=history,
             console=console,
             context_agent=context_agent,
-            notes_agent=notes_agent,
-            knowledge_agent=knowledge_agent,
+            alignment_agent=alignment_agent,
         )
 
 
@@ -193,6 +195,44 @@ def _capture_file_reads_to_history(file_manager, history) -> None:
     file_manager.clear_pending_file_reads()
 
 
+def _run_alignment_review(alignment_agent, response_text, source_registry, context_text, console):
+    """Run silent alignment review if sources were used.
+
+    Args:
+        alignment_agent: AlignmentAgent instance (or None)
+        response_text: The agent's response string
+        source_registry: SourceRegistry for this turn
+        context_text: Context text that was injected
+        console: Console for warning output
+
+    Returns:
+        Possibly corrected response text
+    """
+    if not alignment_agent or not source_registry or not source_registry.has_sources:
+        return response_text
+
+    try:
+        review = alignment_agent.review(
+            answer=response_text,
+            sources=source_registry.sources,
+            context_text=context_text,
+        )
+        if not review.get("pass", True):
+            corrections = review.get("corrections")
+            if corrections:
+                return corrections
+            # No full correction — warn about individual issues
+            for issue in review.get("issues", []):
+                claim = issue.get("claim", "")[:80]
+                console.print_warning(
+                    f"[Alignment: {issue.get('type', 'issue')}] {claim}"
+                )
+    except Exception:
+        pass  # Alignment failure is non-fatal
+
+    return response_text
+
+
 def run_cli_mode(
     agent,
     file_manager,
@@ -200,8 +240,7 @@ def run_cli_mode(
     console,
     message: str,
     context_agent=None,
-    notes_agent=None,
-    knowledge_agent=None,
+    alignment_agent=None,
 ) -> None:
     """Run in CLI mode - single message and response."""
 
@@ -209,17 +248,24 @@ def run_cli_mode(
         console.print_error("No message provided. Use -m 'your message'")
         sys.exit(1)
 
-    # Note: Skills and Context injection disabled for Phase 1
-
+    from qq.services.source_registry import SourceRegistry
 
     # Strands Agent execution with token recovery
     try:
-        # Prepare context
+        # Create source registry for this turn
+        source_registry = SourceRegistry()
+        file_manager.source_registry = source_registry
+
+        # Prepare context with source indexing
         formatted_message = message
+        context_text = ""
         if context_agent:
-            context_data = context_agent.prepare_context(message)
-            if context_data.get("context_text"):
-                formatted_message = f"{context_data['context_text']}\n\n{message}"
+            context_data = context_agent.prepare_context(
+                message, source_registry=source_registry
+            )
+            context_text = context_data.get("context_text", "")
+            if context_text:
+                formatted_message = f"{context_text}\n\n{message}"
 
         # Execute with automatic token limit recovery
         def on_retry(attempt, strategy):
@@ -254,20 +300,29 @@ def run_cli_mode(
                 f"[Recovered: {result.strategy}, {result.attempts} attempts]"
             )
 
+        response_text = str(response)
+
+        # Run alignment review (silent unless issues found)
+        response_text = _run_alignment_review(
+            alignment_agent, response_text, source_registry, context_text, console
+        )
+
+        # Append source citation footer
+        source_footer = source_registry.format_footer()
+        if source_footer:
+            response_text += source_footer
+
         # Save to history
         history.add("user", message)
         _capture_file_reads_to_history(file_manager, history)
-        history.add("assistant", str(response))
-
-        # Update memory
-        messages = history.get_messages()
-        if notes_agent:
-            notes_agent.process_messages(messages)
-        if knowledge_agent:
-            knowledge_agent.process_messages(messages)
+        history.add("assistant", response_text)
 
         # Output response
-        console.print_assistant_message(str(response))
+        console.print_assistant_message(response_text)
+
+        # Clean up for next turn
+        source_registry.clear()
+        file_manager.source_registry = None
 
     except Exception as e:
         console.print_error(f"Error executing agent: {e}")
@@ -279,10 +334,11 @@ def run_console_mode(
     history,
     console,
     context_agent=None,
-    notes_agent=None,
-    knowledge_agent=None,
+    alignment_agent=None,
 ) -> None:
     """Run in console mode - interactive REPL."""
+
+    from qq.services.source_registry import SourceRegistry
 
     console.print_welcome(agent.name, history.windowed_count)
 
@@ -318,14 +374,20 @@ def run_console_mode(
             if not user_input.strip():
                 continue
 
-            # Note: Skills and Context injection disabled for Phase 1
+            # Create source registry for this turn
+            source_registry = SourceRegistry()
+            file_manager.source_registry = source_registry
 
-            # Prepare context
+            # Prepare context with source indexing
             formatted_input = user_input
+            context_text = ""
             if context_agent:
-                context_data = context_agent.prepare_context(user_input)
-                if context_data.get("context_text"):
-                    formatted_input = f"{context_data['context_text']}\n\n{user_input}"
+                context_data = context_agent.prepare_context(
+                    user_input, source_registry=source_registry
+                )
+                context_text = context_data.get("context_text", "")
+                if context_text:
+                    formatted_input = f"{context_text}\n\n{user_input}"
 
             # Execute with automatic token limit recovery
             def on_retry(attempt, strategy):
@@ -350,6 +412,8 @@ def run_console_mode(
                     )
                     history.clear()
                     file_manager.clear_pending_file_reads()
+                    source_registry.clear()
+                    file_manager.source_registry = None
                     continue
                 elif is_token_error(result.error):
                     # Last resort: clear history and retry once
@@ -359,6 +423,8 @@ def run_console_mode(
                         response = agent(user_input)  # No context
                     except Exception as final_err:
                         console.print_error(f"Unrecoverable: {final_err}")
+                        source_registry.clear()
+                        file_manager.source_registry = None
                         continue
                 else:
                     raise result.error or Exception("Agent execution failed")
@@ -371,20 +437,29 @@ def run_console_mode(
                     f"[Recovered: {result.strategy}, {result.attempts} attempts]"
                 )
 
+            response_text = str(response)
+
+            # Run alignment review (silent unless issues found)
+            response_text = _run_alignment_review(
+                alignment_agent, response_text, source_registry, context_text, console
+            )
+
+            # Append source citation footer
+            source_footer = source_registry.format_footer()
+            if source_footer:
+                response_text += source_footer
+
             # Save to history
             history.add("user", user_input)
             _capture_file_reads_to_history(file_manager, history)
-            history.add("assistant", str(response))
-
-            # Update memory
-            messages = history.get_messages()
-            if notes_agent:
-                notes_agent.process_messages(messages)
-            if knowledge_agent:
-                knowledge_agent.process_messages(messages)
+            history.add("assistant", response_text)
 
             # Output response
-            console.print_assistant_message(str(response))
+            console.print_assistant_message(response_text)
+
+            # Clean up for next turn
+            source_registry.clear()
+            file_manager.source_registry = None
 
         except KeyboardInterrupt:
             console.print_goodbye()

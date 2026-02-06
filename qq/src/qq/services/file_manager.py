@@ -61,6 +61,9 @@ class FileManager:
         # Instance-level state (no more module globals!)
         self.pending_file_reads: List[Dict[str, str]] = []
 
+        # Optional source registry for citation indexing (set per-turn by app.py)
+        self.source_registry = None
+
         # Ensure state directory exists
         self.state_dir.mkdir(parents=True, exist_ok=True)
 
@@ -394,6 +397,14 @@ class FileManager:
                 "checksum": checksum,
                 "git_metadata": git_metadata,
             })
+
+            # 7. Register in source registry for citation indexing
+            if self.source_registry:
+                self.source_registry.add(
+                    "file",
+                    f"{target_path.name}:{start_line}-{display_end_line}",
+                    str(target_path),
+                )
 
             return f"{header}\n{output_text}{footer}"
 
