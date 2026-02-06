@@ -102,23 +102,32 @@ class KnowledgeGraphAgent:
             logger.warning(f"Failed to get existing entities: {e}")
             return []
 
-    def process_messages(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+    def process_messages(
+        self,
+        messages: List[Dict[str, str]],
+        file_sources: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Process conversation messages and update knowledge graph.
-        
+
         Args:
             messages: List of messages
-            
+            file_sources: Registry of file path -> SourceRecord.to_dict()
+            session_id: Current session ID for provenance
+            agent_id: Current agent ID for provenance
+
         Returns:
             Dict with extracted entities and relationships
         """
         if not messages:
             return {"entities": [], "relationships": []}
-            
+
         if not self.model:
             logger.warning("Model not available, skipping extraction")
             return {"entities": [], "relationships": []}
-            
+
         # Update clients for sub-agents in case they changed
         self.entity_agent.model = self.model
         self.relationship_agent.model = self.model
@@ -142,21 +151,65 @@ class KnowledgeGraphAgent:
             "relationships": relationships,
         }
 
-        self._store_extraction(result)
+        self._store_extraction(
+            result,
+            file_sources=file_sources,
+            session_id=session_id,
+            agent_id=agent_id,
+        )
         return result
 
-    def _store_extraction(self, extraction: Dict[str, Any]) -> None:
-        """Store extracted entities and relationships in Neo4j."""
+    def _store_extraction(
+        self,
+        extraction: Dict[str, Any],
+        file_sources: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> None:
+        """Store extracted entities and relationships in Neo4j.
+
+        Args:
+            extraction: Dict with entities and relationships lists
+            file_sources: Registry of file path -> SourceRecord.to_dict()
+            session_id: Current session ID for provenance
+            agent_id: Current agent ID for provenance
+        """
         self._init_neo4j()
         self._init_embeddings()
-        
+
         if not self.neo4j:
             logger.error("Neo4j client not available, skipping storage")
             return
-        
+
         entities = extraction.get("entities", [])
         relationships = extraction.get("relationships", [])
-        
+
+        # --- Create Source node(s) for provenance ---
+        source_ids = []  # Track all source_ids created in this batch
+
+        if file_sources:
+            for _path, src_dict in file_sources.items():
+                try:
+                    sid = self.neo4j.create_source(src_dict)
+                    if sid:
+                        source_ids.append(sid)
+                except Exception as e:
+                    logger.warning(f"Failed to create Source node: {e}")
+
+        # If no file sources, create a conversation Source node
+        if not source_ids and (session_id or agent_id):
+            from qq.memory.source import collect_conversation_source
+            conv_source = collect_conversation_source(session_id, agent_id).to_dict()
+            try:
+                sid = self.neo4j.create_source(conv_source)
+                if sid:
+                    source_ids.append(sid)
+            except Exception as e:
+                logger.warning(f"Failed to create conversation Source node: {e}")
+
+        # Use the first source_id as default for linking
+        default_source_id = source_ids[0] if source_ids else None
+
         # Create entities with embeddings
         for entity in entities:
             entity_type = entity.get("type", "Concept")
@@ -175,7 +228,13 @@ class KnowledgeGraphAgent:
                 except Exception as e:
                     logger.warning(f"Failed to generate embedding for {name}: {e}")
 
-            # Build properties dict with new fields
+            # Determine which source this entity came from
+            entity_source_id = default_source_id
+            source_file = entity.get("source_file")
+            if source_file and file_sources and source_file in file_sources:
+                entity_source_id = file_sources[source_file].get("source_id", default_source_id)
+
+            # Build properties dict
             properties = {
                 "description": description,
                 "notes": entity.get("notes", ""),
@@ -191,10 +250,16 @@ class KnowledgeGraphAgent:
                     embedding=embedding,
                     aliases=entity.get("aliases", []),
                     canonical_name=entity.get("canonical_name"),
+                    source_id=entity_source_id,
                 )
+
+                # Link entity to Source node
+                if entity_source_id:
+                    self.neo4j.link_entity_to_source(name, entity_source_id)
+
             except Exception as e:
                 logger.error(f"Failed to create entity {name}: {e}")
-        
+
         # Create relationships
         for rel in relationships:
             source = rel.get("source", "")
@@ -202,7 +267,7 @@ class KnowledgeGraphAgent:
             rel_type = rel.get("type", "RELATES_TO").upper().replace(" ", "_")
 
             if source and target:
-                # Build properties dict with new fields
+                # Build properties dict
                 properties = {
                     "description": rel.get("description", ""),
                     "notes": rel.get("notes", ""),
@@ -217,6 +282,16 @@ class KnowledgeGraphAgent:
                         relationship_type=rel_type,
                         properties=properties,
                     )
+
+                    # Link relationship evidence to Source node
+                    if default_source_id:
+                        self.neo4j.link_relationship_to_source(
+                            source_name=source,
+                            target_name=target,
+                            rel_type=rel_type,
+                            source_id=default_source_id,
+                        )
+
                 except Exception as e:
                     logger.error(f"Failed to create relationship {source}->{target}: {e}")
 

@@ -378,7 +378,12 @@ class FileManager:
                     f"[File read completed. Total lines: {total_lines}]"
                 )
 
-            # 5. Register this file read for history capture (instance-level, not global)
+            # 5. Collect source metadata (checksum + git info)
+            from qq.memory.source import compute_file_checksum, collect_git_metadata
+            checksum = compute_file_checksum(str(target_path))
+            git_metadata = collect_git_metadata(str(target_path))
+
+            # 6. Register this file read for history capture (instance-level, not global)
             self.pending_file_reads.append({
                 "path": str(target_path),
                 "name": target_path.name,
@@ -386,6 +391,8 @@ class FileManager:
                 "start_line": start_line,
                 "end_line": display_end_line,
                 "total_lines": total_lines,
+                "checksum": checksum,
+                "git_metadata": git_metadata,
             })
 
             return f"{header}\n{output_text}{footer}"

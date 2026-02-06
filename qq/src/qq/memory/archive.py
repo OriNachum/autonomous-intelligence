@@ -31,6 +31,8 @@ class ArchivedNote:
         original_created_at: Optional[datetime] = None,
         access_count: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
+        source: Optional[Dict[str, Any]] = None,
+        source_history: Optional[List[Dict[str, Any]]] = None,
     ):
         self.note_id = note_id
         self.content = content
@@ -41,9 +43,11 @@ class ArchivedNote:
         self.original_created_at = original_created_at
         self.access_count = access_count
         self.metadata = metadata or {}
+        self.source = source
+        self.source_history = source_history or []
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "note_id": self.note_id,
             "content": self.content,
             "section": self.section,
@@ -54,6 +58,11 @@ class ArchivedNote:
             "access_count": self.access_count,
             "metadata": self.metadata,
         }
+        if self.source:
+            d["source"] = self.source
+        if self.source_history:
+            d["source_history"] = self.source_history
+        return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ArchivedNote":
@@ -67,6 +76,8 @@ class ArchivedNote:
             original_created_at=datetime.fromisoformat(data["original_created_at"]) if data.get("original_created_at") else None,
             access_count=data.get("access_count", 0),
             metadata=data.get("metadata", {}),
+            source=data.get("source"),
+            source_history=data.get("source_history", []),
         )
 
 
@@ -143,7 +154,7 @@ class ArchiveManager:
             logger.warning(f"Note {note_id} not found for archiving")
             return False
 
-        # Create archived note
+        # Create archived note (preserving source provenance)
         archived = ArchivedNote(
             note_id=note_id,
             content=note.get("content", ""),
@@ -154,6 +165,8 @@ class ArchiveManager:
             original_created_at=note.get("created_at"),
             access_count=note.get("access_count", 0),
             metadata=note.get("metadata", {}),
+            source=note.get("source"),
+            source_history=note.get("source_history", []),
         )
 
         # Append to archive file

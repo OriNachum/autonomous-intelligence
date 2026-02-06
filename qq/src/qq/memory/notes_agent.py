@@ -151,34 +151,43 @@ class NotesAgent:
         logger.warning(f"Failed to extract JSON from response: {response[:200]}...")
         return {"additions": [], "removals": [], "summary": "Failed to parse LLM response"}
     
-    def process_messages(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+    def process_messages(
+        self,
+        messages: List[Dict[str, str]],
+        file_sources: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Process conversation messages and update notes.
-        
+
         Args:
             messages: List of message dicts with 'role' and 'content'
-            
+            file_sources: Registry of file path -> SourceRecord.to_dict()
+            session_id: Current session ID for provenance
+            agent_id: Current agent ID for provenance
+
         Returns:
             Dict with 'additions', 'removals', and 'summary'
         """
         if not messages or not self.llm_client:
             return {"additions": [], "removals": [], "summary": ""}
-        
+
         # Load current notes
         current_notes = self.notes_manager.get_notes()
-        
+
         # Format messages for prompt
         formatted_messages = "\n".join(
             f"{m['role'].upper()}: {m['content']}"
             for m in messages[-20:]  # Last 20 messages
         )
-        
+
         # Get LLM to analyze and extract updates
         prompt = NOTES_EXTRACTION_PROMPT.format(
             current_notes=current_notes,
             messages=formatted_messages,
         )
-        
+
         try:
             response = self.llm_client.chat(
                 messages=[
@@ -187,54 +196,86 @@ class NotesAgent:
                 ],
                 stream=False,
             )
-            
+
             logger.debug(f"LLM response length: {len(response)}")
-            
+
             # Extract JSON from response (handles thinking text)
             updates = self._extract_json(response)
-            
+
             # Apply updates to notes file
             if updates.get("additions") or updates.get("removals"):
-                self._apply_updates(updates)
+                self._apply_updates(
+                    updates,
+                    file_sources=file_sources,
+                    session_id=session_id,
+                    agent_id=agent_id,
+                )
                 logger.info(f"Applied updates: {len(updates.get('additions', []))} additions, {len(updates.get('removals', []))} removals")
-            
+
             return updates
-            
+
         except Exception as e:
             logger.error(f"Error processing messages: {e}")
             return {"additions": [], "removals": [], "summary": f"Error: {e}"}
     
-    def _apply_updates(self, updates: Dict[str, Any]) -> None:
-        """Apply extracted updates to notes file and MongoDB."""
+    def _apply_updates(
+        self,
+        updates: Dict[str, Any],
+        file_sources: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> None:
+        """Apply extracted updates to notes file and MongoDB.
+
+        Args:
+            updates: Dict with additions, removals, summary
+            file_sources: Registry of file path -> SourceRecord.to_dict()
+                          from files read in this session
+            session_id: Current session ID for conversation source
+            agent_id: Current agent ID for conversation source
+        """
         additions = updates.get("additions", [])
         removals = updates.get("removals", [])
-        
+
         # Update notes.md file
         self.notes_manager.apply_diff(additions, removals)
-        
+
+        # Build default conversation source for notes not tied to a file
+        source_dict = None
+        if session_id or agent_id:
+            from qq.memory.source import collect_conversation_source
+            source_dict = collect_conversation_source(session_id, agent_id).to_dict()
+
         # Update MongoDB with embeddings
         self._init_mongo()
         self._init_embeddings()
-        
+
         if self.mongo_store and self.embeddings:
             for addition in additions:
                 item = addition.get("item", "")
                 section = addition.get("section", "")
-                
+
                 if item:
                     # Generate ID from content hash
                     note_id = hashlib.sha256(item.encode()).hexdigest()[:16]
-                    
+
+                    # Determine source: check if LLM tagged a source_file
+                    note_source = source_dict
+                    source_file = addition.get("source_file")
+                    if source_file and file_sources and source_file in file_sources:
+                        note_source = file_sources[source_file]
+
                     # Generate embedding
                     try:
                         embedding = self.embeddings.get_embedding(item)
-                        
+
                         # Store in MongoDB
                         self.mongo_store.upsert_note(
                             note_id=note_id,
                             content=item,
                             embedding=embedding,
                             section=section,
+                            source=note_source,
                         )
                     except Exception:
                         # Embedding service unavailable, store without embedding
@@ -243,6 +284,7 @@ class NotesAgent:
                             content=item,
                             embedding=[],
                             section=section,
+                            source=note_source,
                         )
     
     def get_relevant_notes(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:

@@ -54,6 +54,10 @@ class MongoNotesStore:
         self.collection.create_index("importance")
         # Index on last_accessed for staleness queries
         self.collection.create_index("last_accessed")
+        # Source provenance indexes
+        self.collection.create_index("source.file_path", sparse=True)
+        self.collection.create_index("source.source_type", sparse=True)
+        self.collection.create_index("source.source_id", sparse=True)
     
     def upsert_note(
         self,
@@ -64,6 +68,7 @@ class MongoNotesStore:
         metadata: Optional[Dict[str, Any]] = None,
         importance: Optional[float] = None,
         decay_rate: Optional[float] = None,
+        source: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Insert or update a note with its embedding.
@@ -76,6 +81,7 @@ class MongoNotesStore:
             metadata: Optional additional metadata
             importance: Importance score (0.0-1.0)
             decay_rate: How fast importance decays
+            source: Optional source provenance dict (from SourceRecord.to_dict())
         """
         now = datetime.utcnow()
 
@@ -108,9 +114,19 @@ class MongoNotesStore:
             doc["access_count"] = 0
             doc["last_accessed"] = None
 
+        # Source provenance
+        if source:
+            doc["source"] = source
+
+        update_ops: Dict[str, Any] = {"$set": doc}
+
+        # On update with new source, push to source_history for audit trail
+        if source and existing is not None:
+            update_ops["$push"] = {"source_history": source}
+
         self.collection.update_one(
             {"note_id": note_id},
-            {"$set": doc},
+            update_ops,
             upsert=True,
         )
     

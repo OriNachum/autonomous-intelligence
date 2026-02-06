@@ -67,6 +67,7 @@ class Neo4jClient:
         embedding: Optional[List[float]] = None,
         aliases: Optional[List[str]] = None,
         canonical_name: Optional[str] = None,
+        source_id: Optional[str] = None,
     ) -> str:
         """
         Create or update an entity node.
@@ -78,6 +79,7 @@ class Neo4jClient:
             embedding: Optional vector embedding
             aliases: Optional list of alternative names for this entity
             canonical_name: Optional normalized/canonical form of the name
+            source_id: Optional source_id for quick provenance lookup
 
         Returns:
             Entity ID (the name itself)
@@ -94,15 +96,23 @@ class Neo4jClient:
         if canonical_name:
             props["canonical_name"] = canonical_name
 
+        if source_id:
+            props["source_latest_id"] = source_id
+
         # Build property set clause
         prop_items = ", ".join(f"n.{k} = ${k}" for k in props.keys())
+
+        # On CREATE, also set source_first_id to capture the original source
+        create_extra = ""
+        if source_id:
+            create_extra = ", n.source_first_id = $source_latest_id"
 
         query = f"""
             MERGE (n:{entity_type} {{name: $name}})
             ON CREATE SET {prop_items},
                 n.mention_count = 1,
                 n.first_seen = datetime(),
-                n.last_seen = datetime()
+                n.last_seen = datetime(){create_extra}
             ON MATCH SET {prop_items},
                 n.mention_count = coalesce(n.mention_count, 0) + 1,
                 n.last_seen = datetime()
@@ -166,6 +176,171 @@ class Neo4jClient:
         result = self.execute(query, params)
         return len(result) > 0
     
+    # ------------------------------------------------------------------
+    # Source node CRUD (datasource-as-node provenance tracking)
+    # ------------------------------------------------------------------
+
+    def create_source(self, source_record: Dict[str, Any]) -> str:
+        """Create or update a Source node representing a datasource.
+
+        Source nodes are NOT extracted by the LLM - they represent the
+        datasource itself (file, conversation) and are created programmatically.
+
+        Args:
+            source_record: Dict from SourceRecord.to_dict()
+
+        Returns:
+            The source_id for linking entities to this source.
+        """
+        source_id = source_record.get("source_id", "")
+        if not source_id:
+            return ""
+
+        props = {k: v for k, v in source_record.items()
+                 if isinstance(v, (str, int, float, bool)) and v is not None}
+        props["source_id"] = source_id
+
+        prop_items = ", ".join(f"s.{k} = ${k}" for k in props.keys())
+
+        query = f"""
+            MERGE (s:Source {{source_id: $source_id}})
+            ON CREATE SET {prop_items},
+                s.created_at = datetime(),
+                s.last_verified = datetime(),
+                s.verified = true
+            ON MATCH SET {prop_items},
+                s.last_seen = datetime()
+            RETURN s.source_id as id
+        """
+
+        result = self.execute(query, props)
+        return result[0]["id"] if result else source_id
+
+    def link_entity_to_source(self, entity_name: str, source_id: str) -> bool:
+        """Create an EXTRACTED_FROM edge from an entity to a Source node.
+
+        Args:
+            entity_name: Name of the entity node
+            source_id: source_id of the Source node
+
+        Returns:
+            True if the link was created
+        """
+        query = """
+            MATCH (e {name: $entity_name})
+            MATCH (s:Source {source_id: $source_id})
+            MERGE (e)-[r:EXTRACTED_FROM]->(s)
+            ON CREATE SET r.created_at = datetime()
+            RETURN type(r) as rel_type
+        """
+        result = self.execute(query, {
+            "entity_name": entity_name,
+            "source_id": source_id,
+        })
+        return len(result) > 0
+
+    def link_relationship_to_source(
+        self,
+        source_name: str,
+        target_name: str,
+        rel_type: str,
+        source_id: str,
+    ) -> bool:
+        """Link a relationship's evidence back to a Source node.
+
+        Since Neo4j can't have edges-to-edges, we create an EVIDENCES
+        edge from the Source node to the target entity with metadata
+        about which relationship it evidences.
+
+        Args:
+            source_name: Source entity of the relationship
+            target_name: Target entity of the relationship
+            rel_type: Type of the relationship being evidenced
+            source_id: source_id of the Source node
+        """
+        query = """
+            MATCH (s:Source {source_id: $source_id})
+            MATCH (t {name: $target_name})
+            MERGE (s)-[r:EVIDENCES {rel_source: $source_name, rel_type: $rel_type}]->(t)
+            ON CREATE SET r.created_at = datetime()
+            RETURN type(r) as rel_type
+        """
+        result = self.execute(query, {
+            "source_id": source_id,
+            "source_name": source_name,
+            "target_name": target_name,
+            "rel_type": rel_type,
+        })
+        return len(result) > 0
+
+    def update_source_verification(self, source_id: str, verified: bool) -> bool:
+        """Update the verification status of a Source node.
+
+        Args:
+            source_id: source_id of the Source node
+            verified: Whether the checksum is still valid
+        """
+        query = """
+            MATCH (s:Source {source_id: $source_id})
+            SET s.verified = $verified, s.last_verified = datetime()
+            RETURN s.source_id as id
+        """
+        result = self.execute(query, {
+            "source_id": source_id,
+            "verified": verified,
+        })
+        return len(result) > 0
+
+    def get_sources_for_entity(self, entity_name: str) -> List[Dict[str, Any]]:
+        """Get all Source nodes linked to an entity via EXTRACTED_FROM.
+
+        Args:
+            entity_name: Name of the entity
+
+        Returns:
+            List of source dicts with properties
+        """
+        query = """
+            MATCH (e {name: $entity_name})-[:EXTRACTED_FROM]->(s:Source)
+            RETURN s.source_id as source_id,
+                   s.source_type as source_type,
+                   s.file_path as file_path,
+                   s.file_name as file_name,
+                   s.checksum as checksum,
+                   s.git_repo as git_repo,
+                   s.git_commit as git_commit,
+                   s.git_author as git_author,
+                   s.session_id as session_id,
+                   s.verified as verified
+        """
+        return self.execute(query, {"entity_name": entity_name})
+
+    def update_source_mongo_link(
+        self,
+        source_id: str,
+        note_ids: List[str],
+    ) -> bool:
+        """Update the mongo_note_ids on a Source node to link to MongoDB notes.
+
+        Args:
+            source_id: source_id of the Source node
+            note_ids: List of MongoDB note_ids stored from this source
+        """
+        query = """
+            MATCH (s:Source {source_id: $source_id})
+            SET s.mongo_note_ids = $note_ids
+            RETURN s.source_id as id
+        """
+        result = self.execute(query, {
+            "source_id": source_id,
+            "note_ids": note_ids,
+        })
+        return len(result) > 0
+
+    # ------------------------------------------------------------------
+    # Entity / Relationship queries
+    # ------------------------------------------------------------------
+
     def get_entity(self, name: str) -> Optional[Dict[str, Any]]:
         """Get an entity by name."""
         query = """

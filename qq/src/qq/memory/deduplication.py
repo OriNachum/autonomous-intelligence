@@ -398,15 +398,25 @@ Return ONLY the consolidated note text, nothing else."""
 
             # Update the primary note in MongoDB
             if merged.note_id:
+                update_set = {
+                    "content": merged.content,
+                    "importance": merged.importance,
+                    "access_count": merged.access_count,
+                    "last_accessed": merged.last_accessed,
+                    "decay_rate": merged.decay_rate,
+                }
+
+                # Merge source metadata: collect sources from both notes
+                update_ops: Dict[str, Any] = {"$set": update_set}
+                secondary = pair.get_lower_importance()
+                sec_doc = self.mongo_store.get_note(secondary.note_id) if secondary.note_id else None
+                if sec_doc and sec_doc.get("source"):
+                    # Push the secondary's source into source_history on the primary
+                    update_ops["$push"] = {"source_history": sec_doc["source"]}
+
                 self.mongo_store.collection.update_one(
                     {"note_id": merged.note_id},
-                    {"$set": {
-                        "content": merged.content,
-                        "importance": merged.importance,
-                        "access_count": merged.access_count,
-                        "last_accessed": merged.last_accessed,
-                        "decay_rate": merged.decay_rate,
-                    }}
+                    update_ops,
                 )
 
             # Archive the secondary note
