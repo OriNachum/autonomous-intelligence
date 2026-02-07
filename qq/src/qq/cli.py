@@ -16,6 +16,7 @@ class CLIArgs:
     verbose: bool
     session: Optional[str]  # Session ID for resuming
     new_session: bool  # Force new session
+    cwd: Optional[str] = None  # Caller's working directory
 
 
 def parse_args() -> CLIArgs:
@@ -80,6 +81,11 @@ Examples:
         help="Force a new session (ignore any existing session)",
     )
 
+    parser.add_argument(
+        "--cwd",
+        help="Caller's working directory (set automatically by qq wrapper)",
+    )
+
     args = parser.parse_args()
     
     # If message is provided, force CLI mode
@@ -94,4 +100,5 @@ Examples:
         verbose=args.verbose,
         session=args.session,
         new_session=args.new_session,
+        cwd=args.cwd,
     )

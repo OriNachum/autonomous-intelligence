@@ -55,7 +55,7 @@ def main() -> None:
 
     try:
         # Load agent (now returns tuple of Agent, FileManager)
-        agent, file_manager = load_agent(args.agent)
+        agent, file_manager = load_agent(args.agent, cwd=args.cwd)
         if args.verbose:
             console.print_info(f"Loaded agent: {agent.name}")
             console.print_info(f"Session: {get_session_id()}")

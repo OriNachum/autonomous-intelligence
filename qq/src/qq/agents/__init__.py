@@ -241,6 +241,16 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
         return file_manager.set_directory(path)
 
     @tool
+    def get_current_directory() -> str:
+        """
+        Get the current working directory for file operations.
+
+        Returns:
+            The absolute path of the current working directory.
+        """
+        return file_manager.cwd
+
+    @tool
     def count_files(
         path: str = ".",
         pattern: str = "*",
@@ -446,6 +456,7 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
         read_file,
         list_files,
         set_directory,
+        get_current_directory,
         count_files,
         delegate_task,
         run_parallel_tasks,
@@ -455,9 +466,13 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
     ]
 
 
-def load_agent(name: str) -> Tuple[Agent, FileManager]:
+def load_agent(name: str, cwd: Optional[str] = None) -> Tuple[Agent, FileManager]:
     """
     Load an agent by name from the agents directory.
+
+    Args:
+        name: Agent name (directory under agents/).
+        cwd: Initial working directory. If None, uses os.getcwd().
 
     Returns:
         Tuple of (Agent, FileManager) - FileManager is needed for history capture
@@ -469,7 +484,7 @@ def load_agent(name: str) -> Tuple[Agent, FileManager]:
     if not agent_dir.exists():
         if name == "default":
             # Create default agent
-            return _create_default_agent(agent_dir)
+            return _create_default_agent(agent_dir, cwd=cwd)
         raise FileNotFoundError(f"Agent '{name}' not found in {agents_dir}")
 
     # Load system prompt (required)
@@ -508,7 +523,7 @@ def load_agent(name: str) -> Tuple[Agent, FileManager]:
     # Initialize FileManager with session-isolated state directory
     base_dir = Path.home() / ".qq"
     session_dir = get_session_dir(base_dir, name)
-    file_manager = FileManager(session_dir)
+    file_manager = FileManager(session_dir, cwd=cwd)
 
     # Initialize ChildProcess for recursive agent invocation
     child_process = ChildProcess()
@@ -536,7 +551,7 @@ def load_agent(name: str) -> Tuple[Agent, FileManager]:
     return agent, file_manager
 
 
-def _create_default_agent(agent_dir: Path) -> Tuple[Agent, FileManager]:
+def _create_default_agent(agent_dir: Path, cwd: Optional[str] = None) -> Tuple[Agent, FileManager]:
     """Create and return the default agent with atomic file creation."""
     system_prompt = """You are a helpful AI assistant.
 
@@ -590,7 +605,7 @@ For multi-file tasks (2+ files/items), use hierarchical delegation:
     # Initialize FileManager with session-isolated state directory
     base_dir = Path.home() / ".qq"
     session_dir = get_session_dir(base_dir, "default")
-    file_manager = FileManager(session_dir)
+    file_manager = FileManager(session_dir, cwd=cwd)
 
     # Initialize ChildProcess for recursive agent invocation
     child_process = ChildProcess()

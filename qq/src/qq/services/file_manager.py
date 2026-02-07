@@ -49,11 +49,12 @@ class FileManager:
       <state_dir>/files_state.json
     """
 
-    def __init__(self, state_dir: Path):
+    def __init__(self, state_dir: Path, cwd: Optional[str] = None):
         """Initialize FileManager with a state directory.
 
         Args:
             state_dir: Directory to store state file (typically session dir)
+            cwd: Initial working directory. If None, uses os.getcwd().
         """
         self.state_dir = state_dir
         self.state_file = self.state_dir / "files_state.json"
@@ -67,7 +68,7 @@ class FileManager:
         # Ensure state directory exists
         self.state_dir.mkdir(parents=True, exist_ok=True)
 
-        self._cwd = os.getcwd()
+        self._cwd = cwd if cwd else os.getcwd()
         self._load_state()
         self.document_reader = DocumentReader()
 
@@ -83,15 +84,14 @@ class FileManager:
         self.pending_file_reads.clear()
 
     def _load_state(self):
-        """Load state from file."""
-        if self.state_file.exists():
-            try:
-                data = json.loads(self.state_file.read_text())
-                saved_cwd = data.get("cwd")
-                if saved_cwd and os.path.exists(saved_cwd) and os.path.isdir(saved_cwd):
-                    self._cwd = saved_cwd
-            except json.JSONDecodeError:
-                pass  # Ignore corrupt state file
+        """Load state from file.
+
+        Note: We intentionally do NOT restore cwd from saved state.
+        The initial directory is always the caller's working directory
+        (os.getcwd() at startup). The saved state is only used for
+        other persistent fields if added in the future.
+        """
+        pass  # cwd is always set from os.getcwd() in __init__
 
     def _save_state(self):
         """Save state to file."""

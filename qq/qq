@@ -2,9 +2,12 @@
 # QQ - Conversational AI CLI
 # Run from anywhere - added to PATH via .bashrc
 
+# Capture the caller's working directory before cd
+CALLER_DIR="$(pwd)"
+
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Change to the project directory and run
+# Change to the project directory and run, passing caller's directory
 cd "$SCRIPT_DIR"
-exec /home/spark/.local/bin/uv run python -m qq "$@"
+exec /home/spark/.local/bin/uv run python -m qq --cwd "$CALLER_DIR" "$@"
