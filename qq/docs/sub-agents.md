@@ -48,6 +48,7 @@ Delegates a single task to a child QQ agent (executes immediately).
 |-----------|------|---------|-------------|
 | `task` | string | required | The task description or prompt |
 | `agent` | string | "default" | Which agent to use |
+| `context` | string | "" | Optional initial context seeded into child's ephemeral notes |
 
 **When to use:**
 - Complex tasks that benefit from focused attention
@@ -212,6 +213,15 @@ Parent (depth=0)
         └── Child A1 (depth=2)
               └── Child A1a (depth=3) ✗ BLOCKED
 ```
+
+### Ancestry Tracking
+
+Child agents maintain full lineage from root to parent via environment variables:
+
+- `QQ_INITIAL_REQUEST`: The root agent's original request
+- `QQ_ANCESTOR_REQUESTS`: JSON array of all predecessor requests
+
+This helps child agents maintain alignment with the original intent, even at depth 2 or 3.
 
 ### Parallel Execution
 
@@ -423,7 +433,7 @@ Child process operations are logged to `logs/child_process.log`:
 
 1. **No streaming**: Child output is returned only after completion
 2. **No inter-agent communication**: Children cannot send messages back during execution
-3. **Memory isolation**: Children don't share memory/context with parent
+3. **Partial memory isolation**: Children have ephemeral notes but share MongoDB and Neo4j stores. Core notes (`core.md`) are shared read-only.
 4. **Resource consumption**: Each child is a full QQ process
 
 ## Future Enhancements

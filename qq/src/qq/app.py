@@ -9,11 +9,18 @@ Updated for parallel execution support:
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 
 from qq.recovery import execute_with_recovery
 from qq.errors import is_token_error
+
+
+def _strip_thinking(text: str) -> str:
+    """Remove <think>...</think> blocks from model output."""
+    cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    return re.sub(r'\n{3,}', '\n\n', cleaned).strip()
 
 from dotenv import load_dotenv
 
@@ -144,6 +151,10 @@ def main() -> None:
         except Exception as e:
             if args.verbose:
                 console.print_info(f"Backup skipped: {e}")
+
+    # Capture the initial request for ancestry tracking in child processes
+    if args.message:
+        os.environ["QQ_INITIAL_REQUEST"] = args.message
 
     # Run in appropriate mode
     if args.mode == "cli":
@@ -300,7 +311,7 @@ def run_cli_mode(
                 f"[Recovered: {result.strategy}, {result.attempts} attempts]"
             )
 
-        response_text = str(response)
+        response_text = _strip_thinking(str(response))
 
         # Run alignment review (silent unless issues found)
         response_text = _run_alignment_review(
@@ -437,7 +448,7 @@ def run_console_mode(
                     f"[Recovered: {result.strategy}, {result.attempts} attempts]"
                 )
 
-            response_text = str(response)
+            response_text = _strip_thinking(str(response))
 
             # Run alignment review (silent unless issues found)
             response_text = _run_alignment_review(

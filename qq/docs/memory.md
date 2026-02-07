@@ -55,12 +55,33 @@ The `qq` agent employs a multi-layered memory architecture designed to maintain 
 
 All memory components are initialized in the main application entry point (`src/qq/app.py`):
 
-1. **Pre-Response**: `ContextRetrievalAgent` queries all stores and injects relevant context into the prompt
-2. **Response**: The model generates a reply with full context awareness
-3. **Post-Response**: Background agents update their respective stores:
-   - `NotesAgent` extracts and stores new notes
-   - `KnowledgeGraphAgent` extracts entities and relationships
-   - High-importance notes may be promoted to core
+1. **Pre-Response**: `ContextRetrievalAgent` queries all stores and injects relevant context into the prompt. Each retrieved item is assigned a `[N]` source index for citation tracking.
+2. **Response**: The model generates a reply with full context awareness, using `[N]` markers to cite sources.
+3. **Explicit Memory Writes**: Memory is only stored via explicit tool calls — no automatic post-turn extraction:
+   - `memory_add` — Store new information with category and importance
+   - `memory_reinforce` — Strengthen existing knowledge with new evidence
+   - `memory_verify` — Check for conflicts before storing
+   - `analyze_file` — Deep file internalization into all memory layers
+4. **Post-Response**: Alignment agent verifies citation accuracy. Source footer appended to response.
+
+### Shared vs. Isolated Memory
+
+| Component | Root Agent | Sub-Agents | Notes |
+|-----------|-----------|------------|-------|
+| Core Notes (`core.md`) | Read/Write | Read-only | Identity, projects — shared across all |
+| Working Notes (`notes.md`) | Read/Write | Isolated (`notes.{id}.md`) | Each child gets ephemeral copy |
+| MongoDB (RAG) | Full access | Full access | Shared store, but writes are task-scoped |
+| Neo4j (Graph) | Full access | Full access | Shared graph database |
+
+### Source Provenance
+
+Every memory item tracks its origin via `SourceRecord` (`src/qq/memory/source.py`):
+- SHA-256 checksums for file content verification
+- Git metadata (repo, branch, commit, author)
+- Session and agent IDs
+- Audit trail via `source_history` array
+
+See [source-metadata.md](./source-metadata.md) for full details.
 
 ## Services (docker-compose.yml)
 
@@ -73,5 +94,8 @@ All memory components are initialized in the main application entry point (`src/
 ## Related Documentation
 
 - [Architecture Overview](./architecture.md)
-- [Agents](./agents.md)
-- [Sub-agents & Session Isolation](./sub-agents.md)
+- [Agents](./agents.md): All 8 agents including memory-related agents
+- [Sub-agents & Session Isolation](./sub-agents.md): Ephemeral notes and shared memory
+- [Source Metadata](./source-metadata.md): Provenance tracking for memory items
+- [Citation & Alignment](./anchoring-answers-in-sources.md): How memory feeds into citations
+- [File Analyzer](./analyzer-agent.md): Deep file internalization into memory

@@ -42,7 +42,7 @@ class TestChildProcess:
         assert cp.default_timeout == 300
         assert cp.max_parallel == 5
         assert cp.max_depth == 3
-        assert cp.max_output_size == 50000
+        assert cp.max_output_size == 8000
 
     def test_init_custom_values(self):
         cp = ChildProcess(

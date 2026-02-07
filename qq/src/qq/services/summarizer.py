@@ -15,10 +15,10 @@ from strands.models import OpenAIModel
 logger = logging.getLogger("summarizer")
 
 # Default threshold: summarize outputs larger than this
-DEFAULT_THRESHOLD = int(os.environ.get("QQ_SUMMARIZE_THRESHOLD", "4000"))
+DEFAULT_THRESHOLD = int(os.environ.get("QQ_SUMMARIZE_THRESHOLD", "2000"))
 
 # Target size for summarized output
-DEFAULT_TARGET_SIZE = int(os.environ.get("QQ_SUMMARIZE_TARGET", "1500"))
+DEFAULT_TARGET_SIZE = int(os.environ.get("QQ_SUMMARIZE_TARGET", "800"))
 
 SUMMARIZE_PROMPT = """You are a summarization assistant. Your task is to compress the given output while preserving ALL essential information.
 
@@ -78,6 +78,15 @@ class OutputSummarizer:
         """Check if text exceeds the summarization threshold."""
         return len(text) > self.threshold
 
+    def _truncate(self, text: str) -> str:
+        """Simple truncation fallback (no LLM call)."""
+        truncated = text[:self.target_size]
+        # Try to break at a line boundary
+        last_newline = truncated.rfind('\n')
+        if last_newline > self.target_size * 0.5:
+            truncated = truncated[:last_newline]
+        return f"[Truncated: {len(text):,} → {len(truncated):,} chars]\n\n{truncated}..."
+
     def summarize(self, text: str, context: str = "") -> str:
         """Summarize text if it exceeds threshold.
 
@@ -90,6 +99,13 @@ class OutputSummarizer:
         """
         if not self.should_summarize(text):
             return text
+
+        # Child agents: skip LLM summarization to avoid recursive overflow
+        # on the same small-context model. Just truncate.
+        depth = int(os.environ.get("QQ_RECURSION_DEPTH", "0"))
+        if depth > 0:
+            logger.info(f"Child agent (depth={depth}): truncating instead of LLM summarization")
+            return self._truncate(text)
 
         try:
             agent = self._get_agent()

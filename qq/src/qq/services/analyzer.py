@@ -8,6 +8,7 @@ and the Neo4j knowledge graph.
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +23,9 @@ MAX_CHARS_PER_CHUNK = 30000
 
 # Importance for analyzer-extracted notes (slightly above normal)
 ANALYZER_IMPORTANCE = 0.6
+
+# Max files to analyze in a single pattern match
+MAX_PATTERN_FILES = 50
 
 # Dedup threshold (same as memory tools)
 DEDUP_THRESHOLD = 0.85
@@ -394,6 +398,58 @@ class FileAnalyzer:
         return stats
 
     # ------------------------------------------------------------------
+    # Pattern-based batch analysis
+    # ------------------------------------------------------------------
+
+    def analyze_pattern(self, pattern: str, base_path: str = "", focus: str = "") -> str:
+        """Analyze multiple files matching a regex pattern.
+
+        Args:
+            pattern: Regex pattern to match against relative file paths.
+            base_path: Base directory to search in (defaults to file_manager cwd).
+            focus: Optional focus area for analysis.
+
+        Returns:
+            Aggregated summary of all analyzed files.
+        """
+        base = self.file_manager._resolve_path(base_path) if base_path else Path(self.file_manager.cwd)
+
+        if not base.exists():
+            return f"Error: directory not found: {base}"
+        if not base.is_dir():
+            return f"Error: not a directory: {base}"
+
+        try:
+            compiled = re.compile(pattern)
+        except re.error as e:
+            return f"Error: invalid regex pattern: {e}"
+
+        matched_files = []
+        for file_path in sorted(base.rglob("*")):
+            if not file_path.is_file():
+                continue
+            relative = str(file_path.relative_to(base))
+            if compiled.search(relative):
+                matched_files.append(file_path)
+
+        if not matched_files:
+            return f"No files matched pattern '{pattern}' in {base}"
+
+        if len(matched_files) > MAX_PATTERN_FILES:
+            return (
+                f"Pattern matched {len(matched_files)} files (limit is {MAX_PATTERN_FILES}). "
+                f"Use a more specific pattern or narrow the base path."
+            )
+
+        summaries = []
+        for file_path in matched_files:
+            result = self.analyze(str(file_path), focus)
+            summaries.append(f"## {file_path.relative_to(base)}\n{result}")
+
+        header = f"Batch analysis: {len(matched_files)} files matching '{pattern}' in {base}\n"
+        return header + "\n\n".join(summaries)
+
+    # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
 
@@ -488,7 +544,7 @@ def create_analyzer_tool(file_manager):
     analyzer = FileAnalyzer(file_manager)
 
     @tool
-    def analyze_file(path: str, focus: str = "") -> str:
+    def analyze_file(path: str = "", focus: str = "", pattern: str = "") -> str:
         """
         Deeply analyze a file: read, dissect, and internalize its contents into memory.
 
@@ -503,10 +559,18 @@ def create_analyzer_tool(file_manager):
 
         Args:
             path: Path to the file to analyze (absolute or relative to session directory).
+                  When used with pattern, this acts as the base directory to search in.
             focus: Optional focus area to guide analysis (e.g., "API endpoints",
                    "error handling patterns", "data model"). If empty, performs
                    general-purpose analysis.
+            pattern: Optional regex pattern to match multiple files for batch analysis.
+                     When provided, all files under path matching the pattern are analyzed.
+                     Example: r"\\.py$" to analyze all Python files.
         """
+        if pattern:
+            return analyzer.analyze_pattern(pattern, path, focus)
+        if not path:
+            return "Error: path is required when pattern is not provided."
         return analyzer.analyze(path, focus)
 
     return analyze_file

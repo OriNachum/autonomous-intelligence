@@ -50,8 +50,8 @@ services:
       --kv-cache-dtype fp8
       --max-num-seqs 8
       --tensor-parallel-size 1
-      --max-model-len 32768
-      --gpu-memory-utilization 0.85
+      --max-model-len 131072
+      --gpu-memory-utilization 0.80
       --enable-chunked-prefill
       --enable-prefix-caching
       --trust-remote-code 

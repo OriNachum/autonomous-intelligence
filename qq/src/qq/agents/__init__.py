@@ -7,13 +7,15 @@ Updated for parallel execution support:
 """
 
 import json
+import logging
 import os
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Any, Optional, Tuple, List
 
 from strands import Agent, tool
+from strands.agent.conversation_manager import SlidingWindowConversationManager
 from strands.models import OpenAIModel
 
 from qq.session import get_session_dir
@@ -24,6 +26,63 @@ from qq.services.summarizer import summarize_if_needed
 from qq.services.output_guard import guard_output
 from qq.services.memory_tools import create_memory_tools
 from qq.services.analyzer import create_analyzer_tool
+
+
+logger = logging.getLogger("qq.agents")
+
+
+class ChildCallbackHandler:
+    """Callback handler for child agents that suppresses thinking blocks and verbose output.
+
+    Child agent stdout is captured by the parent as the child's result.
+    Printing reasoningText (<think> blocks) and verbose tool-use info
+    bloats that captured output, so we suppress them here.
+    """
+
+    def __init__(self):
+        self.tool_count = 0
+
+    def __call__(self, **kwargs: Any) -> None:
+        data = kwargs.get("data", "")
+        complete = kwargs.get("complete", False)
+
+        # Suppress reasoningText entirely — parent doesn't need it
+
+        # Print only the final text output (the actual answer)
+        if data:
+            print(data, end="" if not complete else "\n")
+
+        # Count tools silently (no verbose printing)
+        tool_use = kwargs.get("event", {}).get("contentBlockStart", {}).get("start", {}).get("toolUse")
+        if tool_use:
+            self.tool_count += 1
+
+        if complete and data:
+            print("\n")
+
+
+def _get_conversation_manager() -> SlidingWindowConversationManager:
+    """Create a depth-aware conversation manager.
+
+    Children get a smaller window with per-turn management to prevent
+    context overflow during multi-tool loops.
+    """
+    depth = int(os.environ.get("QQ_RECURSION_DEPTH", "0"))
+    if depth > 0:
+        return SlidingWindowConversationManager(
+            window_size=8, per_turn=True, should_truncate_results=True
+        )
+    return SlidingWindowConversationManager(
+        window_size=20, per_turn=True, should_truncate_results=True
+    )
+
+
+def _get_callback_handler():
+    """Return ChildCallbackHandler for child agents, None (default) for root."""
+    depth = int(os.environ.get("QQ_RECURSION_DEPTH", "0"))
+    if depth > 0:
+        return ChildCallbackHandler()
+    return None
 
 
 def get_model() -> OpenAIModel:
@@ -46,6 +105,34 @@ def get_model() -> OpenAIModel:
     )
 
 
+def _get_ancestor_context() -> str:
+    """Build ancestor request chain context for worker agents.
+
+    Reads QQ_ANCESTOR_REQUESTS env var (JSON array of predecessor requests)
+    and formats it so the agent understands the full lineage of requests.
+    """
+    import json as _json
+    raw = os.environ.get("QQ_ANCESTOR_REQUESTS", "[]")
+    try:
+        ancestors = _json.loads(raw)
+    except (ValueError, TypeError):
+        ancestors = []
+
+    if not ancestors:
+        return ""
+
+    lines = ["\n\n## Request Lineage\n"]
+    lines.append("Your task originates from the following chain of requests (root → parent):\n")
+    for i, req in enumerate(ancestors):
+        depth_label = "Root request" if i == 0 else f"Level {i} request"
+        # Truncate very long requests for prompt efficiency
+        display = req if len(req) <= 300 else req[:300] + "..."
+        lines.append(f"- **{depth_label}**: {display}")
+
+    lines.append("\nStay anchored to the original intent. Your subtask should serve the root request.")
+    return "\n".join(lines)
+
+
 def _get_depth_context() -> str:
     """Generate depth-aware prompt section based on current recursion depth.
 
@@ -64,11 +151,15 @@ You are the top-level agent. Your primary role is to orchestrate and delegate.
 
 - For any task spanning 2+ files or multiple distinct concerns, delegate rather than doing it yourself.
 - Break work into clear subtasks and use delegation tools (`delegate_task`, `run_parallel_tasks`, `schedule_tasks`).
-- Focus on planning, splitting work, aggregating results, and presenting to the user.
+- **Use resource ranges**: Assign ranges of items to each task via `variables.resource_range` (e.g. `"file1..file10"`)
+  instead of creating one task per item. This is more efficient and reduces scheduling overhead.
+- Focus on planning, splitting work by ranges, aggregating results, and presenting to the user.
 - Only do single-file or simple tasks directly.
 - Always check `get_queue_status()` before delegating."""
 
-    elif current_depth >= max_depth:
+    ancestor_context = _get_ancestor_context()
+
+    if current_depth >= max_depth:
         return f"""
 
 ## Agent Role: Leaf Worker (depth {current_depth}/{max_depth})
@@ -76,8 +167,10 @@ You are the top-level agent. Your primary role is to orchestrate and delegate.
 You are a leaf worker agent — you cannot delegate further.
 
 - Do all work directly. Do not attempt to use delegation tools.
-- Be thorough but concise — your output goes back to a parent agent.
-- If the task is too large for you to handle alone, complete what you can and clearly note what remains."""
+- **Be extremely concise** — your output goes back to a parent agent with limited context.
+- Output ONLY the final result. No preamble, no explanations of your process, no verbose reasoning.
+- Keep your response under 500 words. Use bullet points for lists.
+- If the task is too large for you to handle alone, complete what you can and clearly note what remains.{ancestor_context}"""
 
     else:
         return f"""
@@ -88,7 +181,9 @@ You are a delegated worker agent.
 
 - Focus on completing your assigned subtask efficiently.
 - You can delegate if your subtask is large (10+ items), but prefer direct execution.
-- Be concise in your output — your parent agent will aggregate results."""
+- **Be extremely concise** — your parent agent has limited context and must process multiple results.
+- Output ONLY the final result. No preamble, no explanations of your process, no verbose reasoning.
+- Keep your response under 500 words. Use bullet points for lists.{ancestor_context}"""
 
 
 def find_agents_dir() -> Path:
@@ -183,6 +278,56 @@ def _create_default_agent_safely(agent_dir: Path, system_prompt: str) -> None:
             pass
 
 
+def _build_variables_context(existing_context: str, variables_json: str) -> str:
+    """Build enriched context string from task variables.
+
+    Parses the variables JSON and formats resource/resource_range/resource_instructions
+    into a context block that the child agent can understand and act on.
+
+    Args:
+        existing_context: Any pre-existing context string.
+        variables_json: JSON string with variable definitions, or empty string.
+
+    Returns:
+        Combined context string with variable information prepended.
+    """
+    if not variables_json:
+        return existing_context
+
+    try:
+        variables = json.loads(variables_json) if isinstance(variables_json, str) else variables_json
+    except (json.JSONDecodeError, TypeError):
+        return existing_context
+
+    if not isinstance(variables, dict):
+        return existing_context
+
+    parts = []
+
+    resource = variables.get("resource")
+    resource_range = variables.get("resource_range")
+    resource_instructions = variables.get("resource_instructions")
+
+    if resource_range:
+        parts.append(f"## Assigned Resource Range\n\nYou are assigned the range: `{resource_range}`")
+        parts.append('The range uses ".." as a separator between the first and last items.')
+        parts.append("You must process ALL items within this range, not just the endpoints.")
+    elif resource:
+        parts.append(f"## Assigned Resource\n\nYou are assigned: `{resource}`")
+
+    if resource_instructions:
+        parts.append(f"\n**Resource instructions**: {resource_instructions}")
+
+    if not parts:
+        return existing_context
+
+    variables_block = "\n".join(parts)
+
+    if existing_context:
+        return f"{variables_block}\n\n{existing_context}"
+    return variables_block
+
+
 def _create_common_tools(file_manager: FileManager, child_process: ChildProcess) -> List:
     """Create common tools shared by all agents.
 
@@ -204,7 +349,12 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
             start_line: Line number to start reading from (1-indexed). Default 1.
             num_lines: Number of lines to read. Default 100, max 100.
         """
-        return file_manager.read_file(path, start_line, num_lines)
+        # Cap lines for child agents to reduce output size
+        depth = int(os.environ.get("QQ_RECURSION_DEPTH", "0"))
+        max_lines = 50 if depth > 0 else 100
+        num_lines = min(num_lines, max_lines)
+        result = file_manager.read_file(path, start_line, num_lines)
+        return guard_output(result, "read_file")
 
     @tool
     def list_files(
@@ -276,7 +426,7 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
 
     # Child process tools for recursive agent invocation
     @tool
-    def delegate_task(task: str, agent: str = "default", context: str = "") -> str:
+    def delegate_task(task: str, agent: str = "default", context: str = "", variables: str = "") -> str:
         """
         Delegate a task to a child QQ agent.
 
@@ -293,19 +443,34 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
             agent: Which agent to use (default, coder, etc.).
             context: Initial context to seed the child's working memory.
                      This helps anchor the child to its specific subtask.
+            variables: JSON object with task variables. Supports:
+                - resource: A single item to process (e.g. a filename, an ID).
+                - resource_range: A range of items using ".." separator (e.g. "file1.py..file10.py",
+                  "1..50"). The child agent will process all items in the range.
+                - resource_instructions: Instructions for how to interpret/enumerate the resource or range.
+                  E.g. "These are Python files in src/. Process each file by running lint checks."
+
+                Prefer resource_range over creating many individual tasks. One task with a range
+                is more efficient than N tasks with one resource each.
+
+                Example: '{"resource_range": "auth.py..validator.py", "resource_instructions": "Analyze each .py file in src/services/ alphabetically from auth.py through validator.py"}'
 
         Returns:
             The child agent's response (summarized if large).
         """
+        # Build enriched context from variables
+        effective_context = _build_variables_context(context, variables)
+
         result = child_process.spawn_agent(
             task=task,
             agent=agent,
-            initial_context=context if context else None,
+            initial_context=effective_context if effective_context else None,
             working_dir=file_manager.cwd,
         )
         if result.success:
             # Summarize large outputs to prevent token overflow
-            return summarize_if_needed(result.output, task)
+            output = summarize_if_needed(result.output, task)
+            return guard_output(output, "delegate_task")
         else:
             return f"Child agent error: {result.error}"
 
@@ -316,16 +481,23 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
 
         Use this for batch operations where tasks don't depend on each other.
 
+        IMPORTANT: Prefer fewer tasks with resource_range over many tasks with single resources.
+        Instead of 10 tasks for 10 files, create 2-3 tasks each covering a range of files.
+
         Args:
             tasks_json: JSON array of task objects, each with:
                 - task: The task description (required)
                 - agent: Agent to use (optional, default: "default")
                 - context: Initial context for child's working memory (optional)
+                - variables: Object with resource assignment (optional):
+                    - resource: Single item to process
+                    - resource_range: Range using ".." (e.g. "file_a.py..file_m.py")
+                    - resource_instructions: How to interpret the resource/range
 
-        Example:
+        Example with resource ranges (preferred):
             tasks_json = '[
-                {"task": "Summarize file A", "context": "Focus on API endpoints"},
-                {"task": "Analyze file B", "agent": "coder", "context": "Check for bugs"}
+                {"task": "Lint check Python files", "variables": {"resource_range": "auth.py..handlers.py", "resource_instructions": "All .py files in src/ alphabetically from auth.py through handlers.py"}},
+                {"task": "Lint check Python files", "variables": {"resource_range": "models.py..views.py", "resource_instructions": "All .py files in src/ alphabetically from models.py through views.py"}}
             ]'
 
         Returns:
@@ -336,11 +508,19 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
             if not isinstance(tasks, list):
                 return "Error: tasks_json must be a JSON array"
 
-            # Inject parent's working directory into each task spec
+            # Enrich each task's context with variables and inject working dir
             for t in tasks:
                 t.setdefault("working_dir", file_manager.cwd)
+                variables = t.pop("variables", None)
+                if variables:
+                    existing_context = t.get("context", "")
+                    t["context"] = _build_variables_context(
+                        existing_context,
+                        json.dumps(variables) if isinstance(variables, dict) else str(variables),
+                    )
+
             results = child_process.run_parallel(tasks)
-            return json.dumps([
+            output = json.dumps([
                 {
                     "task": r.task,
                     "agent": r.agent,
@@ -351,6 +531,7 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
                 }
                 for r in results
             ], indent=2)
+            return guard_output(output, "run_parallel_tasks")
         except json.JSONDecodeError as e:
             return f"Invalid JSON: {e}"
 
@@ -364,6 +545,9 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
         build up a batch of work before running it all at once. Use this when
         you have many tasks to process and want efficient scheduling.
 
+        IMPORTANT: Prefer fewer tasks with resource_range over many tasks with single resources.
+        Instead of 10 tasks for 10 files, create 2-3 tasks each covering a range of files.
+
         Tasks are executed in priority order when execute_scheduled_tasks() is called.
 
         Args:
@@ -372,12 +556,15 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
                 - agent: Agent to use (optional, default: "default")
                 - priority: Higher numbers execute first (optional, default: 0)
                 - context: Initial context for child's working memory (optional)
+                - variables: Object with resource assignment (optional):
+                    - resource: Single item to process
+                    - resource_range: Range using ".." (e.g. "batch1..batch5")
+                    - resource_instructions: How to interpret the resource/range
 
         Example:
             schedule_tasks('[
-                {"task": "Process files 1-10", "priority": 2, "context": "Batch 1 of 10"},
-                {"task": "Process files 11-20", "priority": 1, "context": "Batch 2 of 10"},
-                {"task": "Process files 21-30", "context": "Batch 3 of 10"}
+                {"task": "Process files", "priority": 2, "variables": {"resource_range": "file01.txt..file10.txt", "resource_instructions": "Files numbered 01-10 in data/"}},
+                {"task": "Process files", "priority": 1, "variables": {"resource_range": "file11.txt..file20.txt", "resource_instructions": "Files numbered 11-20 in data/"}}
             ]')
 
         Returns:
@@ -388,9 +575,17 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
             if not isinstance(tasks, list):
                 return json.dumps({"error": "tasks_json must be a JSON array"})
 
-            # Inject parent's working directory into each task spec
+            # Enrich each task's context with variables and inject working dir
             for t in tasks:
                 t.setdefault("working_dir", file_manager.cwd)
+                variables = t.pop("variables", None)
+                if variables:
+                    existing_context = t.get("context", "")
+                    t["context"] = _build_variables_context(
+                        existing_context,
+                        json.dumps(variables) if isinstance(variables, dict) else str(variables),
+                    )
+
             task_ids = child_process.queue_batch(tasks)
             return json.dumps({
                 "queued": len(task_ids),
@@ -420,7 +615,7 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
             if not results:
                 return json.dumps({"message": "No tasks in queue to execute"})
 
-            return json.dumps([
+            output = json.dumps([
                 {
                     "task": r.task,
                     "agent": r.agent,
@@ -430,6 +625,7 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
                 }
                 for r in results
             ], indent=2)
+            return guard_output(output, "execute_scheduled_tasks")
         except Exception as e:
             return json.dumps({"error": str(e)})
 
@@ -547,13 +743,19 @@ def load_agent(name: str, cwd: Optional[str] = None) -> Tuple[Agent, FileManager
     analyzer_tool = create_analyzer_tool(file_manager=file_manager)
     agent_tools.append(analyzer_tool)
 
-    # Instantiate Strands Agent
-    agent = Agent(
+    # Instantiate Strands Agent with depth-aware conversation management
+    conv_mgr = _get_conversation_manager()
+    callback_handler = _get_callback_handler()
+    agent_kwargs = dict(
         name=name,
         system_prompt=system_prompt,
         model=model,
-        tools=agent_tools
+        tools=agent_tools,
+        conversation_manager=conv_mgr,
     )
+    if callback_handler is not None:
+        agent_kwargs["callback_handler"] = callback_handler
+    agent = Agent(**agent_kwargs)
 
     return agent, file_manager
 
@@ -576,19 +778,25 @@ For multi-file tasks (2+ files/items), use hierarchical delegation:
 - **Depth limit**: 3 levels of sub-agents
 - **Max capacity**: 10 × 10 × 10 = 1,000 items
 
+**Resource ranges**: Use `variables` with `resource_range` to assign ranges of items to each task
+instead of creating one task per item. A range uses `..` as separator (e.g. `"file_a.py..file_m.py"`).
+Add `resource_instructions` to tell the child how to enumerate items in the range.
+
 **Strategy for N items:**
 - 1 item: Process directly
-- 2-10 items: Use `delegate_task` or `run_parallel_tasks`
-- 11-100 items: Split into ~10 batches, delegate each
-- 100+ items: Split hierarchically (10 → 10 → 10)
+- 2-10 items: Use `delegate_task` with `resource_range` covering all items
+- 11-100 items: Split into ~10 range-based batches, delegate each
+- 100+ items: Split hierarchically (10 → 10 → 10), each with resource ranges
 
 **Before delegating**: Use `get_queue_status()` to check `can_spawn`.
 
-**Example (100 files)**:
-1. `schedule_tasks` with 10 batch tasks (10 files each)
+**Example (30 files in src/, alphabetically a.py through z.py)**:
+1. `schedule_tasks` with 3 tasks, each with a `resource_range`:
+   - `{"task": "Analyze files", "variables": {"resource_range": "a.py..j.py", "resource_instructions": "All .py files in src/ alphabetically from a.py through j.py"}}`
+   - `{"task": "Analyze files", "variables": {"resource_range": "k.py..t.py", "resource_instructions": "All .py files in src/ alphabetically from k.py through t.py"}}`
+   - `{"task": "Analyze files", "variables": {"resource_range": "u.py..z.py", "resource_instructions": "All .py files in src/ alphabetically from u.py through z.py"}}`
 2. `execute_scheduled_tasks` to run all
-3. Each child processes its 10 files via `run_parallel_tasks`
-4. Aggregate results for unified response"""
+3. Aggregate results for unified response"""
 
     # Append depth-aware role context
     system_prompt += _get_depth_context()
@@ -629,12 +837,19 @@ For multi-file tasks (2+ files/items), use hierarchical delegation:
     analyzer_tool = create_analyzer_tool(file_manager=file_manager)
     agent_tools.append(analyzer_tool)
 
-    agent = Agent(
+    # Depth-aware conversation management and callback handling
+    conv_mgr = _get_conversation_manager()
+    callback_handler = _get_callback_handler()
+    agent_kwargs = dict(
         name="default",
         system_prompt=system_prompt,
         model=model,
         tools=agent_tools,
+        conversation_manager=conv_mgr,
     )
+    if callback_handler is not None:
+        agent_kwargs["callback_handler"] = callback_handler
+    agent = Agent(**agent_kwargs)
 
     return agent, file_manager
 

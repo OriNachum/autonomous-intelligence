@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -91,11 +92,25 @@ class ChildProcess:
         self.default_timeout = default_timeout or int(os.environ.get("QQ_CHILD_TIMEOUT", "300"))
         self.max_parallel = max_parallel or int(os.environ.get("QQ_MAX_PARALLEL", "5"))
         self.max_depth = max_depth or int(os.environ.get("QQ_MAX_DEPTH", "3"))
-        self.max_output_size = max_output_size or int(os.environ.get("QQ_MAX_OUTPUT", "50000"))
+        self.max_output_size = max_output_size or int(os.environ.get("QQ_MAX_OUTPUT", "8000"))
         self.max_queued = max_queued or int(os.environ.get("QQ_MAX_QUEUED", "10"))
 
         # Lazy-initialized task queue
         self._task_queue: Optional[TaskQueue] = None
+
+    @staticmethod
+    def _clean_output(text: str) -> str:
+        """Strip thinking blocks and verbose preamble from child output.
+
+        Models like Nemotron emit <think>...</think> reasoning blocks that
+        bloat the output returned to the parent agent. Remove them so the
+        parent only sees the final answer.
+        """
+        # Remove <think>...</think> blocks (may span multiple lines)
+        cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        # Collapse runs of blank lines left behind
+        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+        return cleaned.strip()
 
     def _find_qq_executable(self) -> str:
         """Find the qq executable path."""
@@ -213,11 +228,19 @@ class ChildProcess:
                 env=self._child_env(notes_id=notes_id),
             )
 
-            # Truncate large outputs
-            output = result.stdout.strip()
+            # Clean thinking blocks and truncate large outputs
+            raw_size = len(result.stdout)
+            output = self._clean_output(result.stdout)
+            cleaned_size = len(output)
+            est_tokens = int(cleaned_size / 3.5)
+            logger.info(
+                f"[{trace_id}] Child output: raw={raw_size:,} chars, "
+                f"cleaned={cleaned_size:,} chars (~{est_tokens:,} tokens)"
+            )
             if len(output) > self.max_output_size:
                 output = output[:self.max_output_size]
                 output += f"\n\n[Output truncated at {self.max_output_size} chars]"
+                logger.info(f"[{trace_id}] Output truncated to {self.max_output_size:,} chars")
 
             logger.info(f"[{trace_id}] Child completed: success={result.returncode == 0}, exit={result.returncode}")
 
@@ -348,6 +371,16 @@ class ChildProcess:
         # Track recursion depth
         current_depth = self._get_current_depth()
         env["QQ_RECURSION_DEPTH"] = str(current_depth + 1)
+
+        # Build ancestor request chain: append this agent's initial request
+        # so children know the full lineage of requests that led to their task
+        ancestor_chain = json.loads(env.get("QQ_ANCESTOR_REQUESTS", "[]"))
+        my_request = env.get("QQ_INITIAL_REQUEST", "")
+        if my_request:
+            ancestor_chain.append(my_request)
+        env["QQ_ANCESTOR_REQUESTS"] = json.dumps(ancestor_chain)
+        # Clear so the child sets its own initial request on startup
+        env.pop("QQ_INITIAL_REQUEST", None)
 
         # Set per-agent notes ID if provided
         if notes_id:

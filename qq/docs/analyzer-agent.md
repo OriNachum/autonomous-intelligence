@@ -60,6 +60,30 @@ analyze_file("src/qq/app.py", focus="error handling patterns")
 
 Guides the extraction toward a specific area while still capturing the most important general knowledge.
 
+### Batch Analysis (Pattern Matching)
+
+```
+analyze_file(pattern=r"\.py$", path="src/qq/services/", focus="error handling")
+```
+
+Analyzes all files under the given path whose relative paths match the regex pattern. Each matched file is analyzed individually, and results are aggregated into a single response.
+
+**Parameters when using pattern:**
+- `pattern`: Regex pattern matched against relative file paths (e.g., `r"\.py$"` for Python files, `r"test_"` for test files)
+- `path`: Base directory to search in (defaults to session working directory)
+- `focus`: Optional focus area applied to every matched file
+
+**Common patterns:**
+
+| Pattern | Matches |
+|---------|---------|
+| `r"\.py$"` | All Python files |
+| `r"test_"` | Files starting with `test_` |
+| `r"services/.*\.py$"` | Python files in services/ subdirectory |
+| `r"\.(md\|txt)$"` | Markdown and text files |
+
+**Safety cap:** A maximum of 50 files can be analyzed per pattern match. If more files match, narrow the pattern or base path.
+
 ### What Gets Returned
 
 A concise summary:
@@ -137,6 +161,8 @@ Before storing each note, the analyzer checks MongoDB for near-duplicates (cosin
 | Checking a specific line range | `read_file` with start_line |
 | Internalizing a codebase component | `analyze_file` |
 | Re-reading after file changed | `analyze_file` (detects changes via checksum) |
+| Analyzing all files matching a pattern | `analyze_file` with `pattern` |
+| Batch analysis of a directory | `analyze_file(pattern=r"\.py$", path="src/")` |
 
 ## Implementation
 

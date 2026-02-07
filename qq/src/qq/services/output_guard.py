@@ -4,8 +4,15 @@ import os
 from typing import Callable
 
 # Configuration
-MAX_TOOL_OUTPUT_CHARS = int(os.getenv("QQ_MAX_TOOL_OUTPUT", "28000"))  # ~8K tokens
 CHARS_PER_TOKEN = float(os.getenv("QQ_CHARS_PER_TOKEN", "3.5"))
+
+
+def get_max_tool_output() -> int:
+    """Get max tool output chars, reduced for child agents to prevent context overflow."""
+    depth = int(os.environ.get("QQ_RECURSION_DEPTH", "0"))
+    if depth > 0:
+        return int(os.getenv("QQ_MAX_TOOL_OUTPUT_CHILD", "6000"))  # ~1700 tokens
+    return int(os.getenv("QQ_MAX_TOOL_OUTPUT", "28000"))  # ~8K tokens
 
 
 def guard_output(output: str, tool_name: str = "tool") -> str:
@@ -19,13 +26,14 @@ def guard_output(output: str, tool_name: str = "tool") -> str:
     Returns:
         Original output if under limit, truncated with warning otherwise.
     """
-    if len(output) <= MAX_TOOL_OUTPUT_CHARS:
+    max_chars = get_max_tool_output()
+    if len(output) <= max_chars:
         return output
 
     # Truncate at line boundary
-    truncated = output[:MAX_TOOL_OUTPUT_CHARS]
+    truncated = output[:max_chars]
     last_newline = truncated.rfind('\n')
-    if last_newline > MAX_TOOL_OUTPUT_CHARS * 0.8:
+    if last_newline > max_chars * 0.8:
         truncated = truncated[:last_newline]
 
     est_tokens = int(len(output) / CHARS_PER_TOKEN)
