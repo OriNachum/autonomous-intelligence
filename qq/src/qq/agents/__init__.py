@@ -23,6 +23,7 @@ from qq.services.task_queue import QueueFullError
 from qq.services.summarizer import summarize_if_needed
 from qq.services.output_guard import guard_output
 from qq.services.memory_tools import create_memory_tools
+from qq.services.analyzer import create_analyzer_tool
 
 
 def get_model() -> OpenAIModel:
@@ -520,6 +521,10 @@ def load_agent(name: str) -> Tuple[Agent, FileManager]:
     memory_tools = create_memory_tools(file_manager=file_manager)
     agent_tools.extend(memory_tools)
 
+    # Add analyzer tool (analyze_file)
+    analyzer_tool = create_analyzer_tool(file_manager=file_manager)
+    agent_tools.append(analyzer_tool)
+
     # Instantiate Strands Agent
     agent = Agent(
         name=name,
@@ -597,6 +602,10 @@ For multi-file tasks (2+ files/items), use hierarchical delegation:
     # Add memory tools (memory_add, memory_query, memory_verify, memory_reinforce)
     memory_tools = create_memory_tools(file_manager=file_manager)
     agent_tools.extend(memory_tools)
+
+    # Add analyzer tool (analyze_file)
+    analyzer_tool = create_analyzer_tool(file_manager=file_manager)
+    agent_tools.append(analyzer_tool)
 
     agent = Agent(
         name="default",

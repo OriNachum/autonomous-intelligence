@@ -1,7 +1,7 @@
 """Memory tools - gives agents direct control over their knowledge.
 
-Provides four tools: memory_add, memory_query, memory_verify, memory_reinforce.
-These are registered as Strands @tool functions and added to every agent.
+Provides five tools: memory_add, memory_query, memory_verify, memory_reinforce,
+memory_purge. These are registered as Strands @tool functions and added to every agent.
 """
 
 import json
@@ -9,6 +9,7 @@ import logging
 import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 from strands import tool
@@ -665,4 +666,83 @@ def create_memory_tools(
             f"(from {source_count} sources).{promotion_msg}"
         )
 
-    return [memory_add, memory_query, memory_verify, memory_reinforce]
+    # ------------------------------------------------------------------
+    # Tool 5: memory_purge
+    # ------------------------------------------------------------------
+
+    @tool
+    def memory_purge(confirm: str, scope: str = "all") -> str:
+        """
+        Purge memory banks. This is destructive and irreversible.
+
+        Use this only when the user explicitly asks to wipe/purge/reset memory.
+
+        Args:
+            confirm: Must be exactly "YES_PURGE" to proceed. This prevents
+                     accidental invocation.
+            scope: What to purge - "notes" (MongoDB notes), "knowledge"
+                   (Neo4j graph), or "all" (both).
+        """
+        if confirm != "YES_PURGE":
+            return (
+                "Purge aborted. To confirm, pass confirm='YES_PURGE'. "
+                "This will permanently delete memory data."
+            )
+
+        backends = _get_backends()
+        results = []
+
+        # Purge MongoDB notes
+        if scope in ("notes", "all"):
+            mongo = backends.get("mongo")
+            if mongo:
+                try:
+                    deleted = mongo.clear_all()
+                    results.append(f"MongoDB: deleted {deleted} notes")
+                except Exception as e:
+                    results.append(f"MongoDB: error - {e}")
+            else:
+                results.append("MongoDB: not available")
+
+            # Clear notes.md file
+            notes = backends.get("notes")
+            if notes:
+                try:
+                    notes_path = Path(notes.notes_file)
+                    if notes_path.exists():
+                        notes_path.write_text("")
+                        results.append(f"Notes file: cleared {notes_path.name}")
+                except Exception as e:
+                    results.append(f"Notes file: error - {e}")
+
+            # Clear core.md file
+            core = backends.get("core")
+            if core:
+                try:
+                    if core.core_file.exists():
+                        core.core_file.write_text("")
+                        results.append(f"Core file: cleared {core.core_file.name}")
+                except Exception as e:
+                    results.append(f"Core file: error - {e}")
+
+        # Purge Neo4j knowledge graph
+        if scope in ("knowledge", "all"):
+            neo4j = backends.get("neo4j")
+            if neo4j:
+                try:
+                    # Delete all relationships first, then all nodes
+                    neo4j.execute("MATCH ()-[r]->() DELETE r")
+                    result = neo4j.execute(
+                        "MATCH (n) WITH n LIMIT 10000 DETACH DELETE n "
+                        "RETURN count(*) as deleted"
+                    )
+                    deleted = result[0]["deleted"] if result else 0
+                    results.append(f"Neo4j: deleted {deleted} nodes")
+                except Exception as e:
+                    results.append(f"Neo4j: error - {e}")
+            else:
+                results.append("Neo4j: not available")
+
+        return "Memory purge complete:\n" + "\n".join(f"  - {r}" for r in results)
+
+    return [memory_add, memory_query, memory_verify, memory_reinforce, memory_purge]

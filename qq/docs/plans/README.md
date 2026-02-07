@@ -15,6 +15,7 @@ This directory contains design documents and implementation plans for QQ feature
 | [Read Sliding Window](read_sliding_window.md) | ✅ Implemented | Sliding window mechanism for reading large files. |
 | [Parallel Work](parallel-work.md) | ✅ Implemented | Session-based isolation for parallel QQ execution. |
 | [Recursive Calling](recursive-calling.md) | ✅ Implemented | Sub-agent system for task delegation and parallel execution. |
+| [File Analyzer Agent](analyzer-agent.md) | ✅ Implemented | Deep file analysis tool that internalizes file contents into memory and knowledge graph. |
 
 ## Creating New Plans
 

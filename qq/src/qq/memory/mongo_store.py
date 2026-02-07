@@ -447,3 +447,33 @@ class MongoNotesStore:
 
         result = self.collection.bulk_write(operations)
         return result.modified_count
+
+    def find_by_source_file(
+        self,
+        file_path: str,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """
+        Find notes that were extracted from a specific file.
+
+        Used for re-analysis detection — check if a file was already analyzed
+        by looking for notes with matching source.file_path.
+
+        Args:
+            file_path: Absolute path of the source file
+            limit: Maximum results
+
+        Returns:
+            List of notes from this file with source metadata
+        """
+        cursor = (
+            self.collection
+            .find(
+                {"source.file_path": file_path},
+                {"_id": 0},
+            )
+            .sort("created_at", -1)
+            .limit(limit)
+        )
+
+        return list(cursor)
