@@ -301,6 +301,7 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
             task=task,
             agent=agent,
             initial_context=context if context else None,
+            working_dir=file_manager.cwd,
         )
         if result.success:
             # Summarize large outputs to prevent token overflow
@@ -335,6 +336,9 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
             if not isinstance(tasks, list):
                 return "Error: tasks_json must be a JSON array"
 
+            # Inject parent's working directory into each task spec
+            for t in tasks:
+                t.setdefault("working_dir", file_manager.cwd)
             results = child_process.run_parallel(tasks)
             return json.dumps([
                 {
@@ -384,6 +388,9 @@ def _create_common_tools(file_manager: FileManager, child_process: ChildProcess)
             if not isinstance(tasks, list):
                 return json.dumps({"error": "tasks_json must be a JSON array"})
 
+            # Inject parent's working directory into each task spec
+            for t in tasks:
+                t.setdefault("working_dir", file_manager.cwd)
             task_ids = child_process.queue_batch(tasks)
             return json.dumps({
                 "queued": len(task_ids),

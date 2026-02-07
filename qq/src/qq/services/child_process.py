@@ -183,7 +183,7 @@ class ChildProcess:
             )
 
         timeout = timeout or self.default_timeout
-        cmd = self._build_command(task, agent)
+        cmd = self._build_command(task, agent, working_dir=working_dir)
 
         # Generate notes ID and create ephemeral notes if context provided
         notes_id = None
@@ -321,14 +321,17 @@ class ChildProcess:
 
         return results  # type: ignore
 
-    def _build_command(self, task: str, agent: str) -> List[str]:
+    def _build_command(self, task: str, agent: str, working_dir: Optional[str] = None) -> List[str]:
         """Build subprocess command."""
         if " " in self.qq_executable:
             # Module execution: "python -m qq"
             parts = self.qq_executable.split()
-            cmd = parts + ["--agent", agent, "--new-session", "-m", task]
+            cmd = parts + ["--agent", agent, "--new-session"]
         else:
-            cmd = [self.qq_executable, "--agent", agent, "--new-session", "-m", task]
+            cmd = [self.qq_executable, "--agent", agent, "--new-session"]
+        if working_dir:
+            cmd.extend(["--cwd", working_dir])
+        cmd.extend(["-m", task])
         return cmd
 
     def _child_env(self, notes_id: Optional[str] = None) -> Dict[str, str]:
