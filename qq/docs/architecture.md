@@ -97,8 +97,8 @@ Eight specialized agents handle distinct tasks. For detailed documentation, see 
 | **Relationship Agent** | Relationship extraction between entities | KnowledgeGraphAgent pipeline |
 | **Normalization Agent** | Entity name standardization and dedup | KnowledgeGraphAgent pipeline |
 | **Graph Linking Agent** | Connects orphan entities | KnowledgeGraphAgent pipeline |
-| **Notes Agent** | Conversation summarization, note management | Memory tools / analyze_file |
-| **Analyzer Agent** | Deep file analysis and knowledge extraction | `analyze_file` tool |
+| **Notes Agent** | Conversation summarization, note management | Memory tools / analyze_files |
+| **Analyzer Agent** | Deep file analysis and knowledge extraction | `analyze_files` tool |
 | **Alignment Agent** | Post-answer citation verification | Automatic (silent) |
 
 **Structure**: Each agent resides in its own directory with `*.system.md` (system prompt) and optional `*.user.md` (user prompt template) and `*.py` (Python implementation).
@@ -186,7 +186,7 @@ Deep file internalization that extracts structured knowledge. See [analyzer-agen
 8.  **Source Footer**: Append indexed source list to response.
 9.  **Persistence**:
     *   Save message to conversation history.
-    *   Memory stored only via explicit tool calls (`memory_add`, `memory_reinforce`, `analyze_file`).
+    *   Memory stored only via explicit tool calls (`memory_add`, `memory_reinforce`, `analyze_files`).
 
 ## Source Files
 

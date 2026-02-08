@@ -44,7 +44,7 @@ Agents receive different instructions based on their position in the delegation 
 
 The main agent users interact with. Handles general questions, file operations, memory management, and task delegation. Includes the full delegation strategy for coordinating sub-agents and the citation system for source-anchored responses.
 
-**Available Tools**: File operations (`read_file`, `list_files`, `set_directory`, `count_files`), memory tools (`memory_add`, `memory_query`, `memory_verify`, `memory_reinforce`), file analysis (`analyze_file` with optional `pattern` for batch regex-based multi-file analysis), delegation (`delegate_task`, `run_parallel_tasks`, `schedule_tasks`, `execute_scheduled_tasks`, `get_queue_status`).
+**Available Tools**: File operations (`read_file`, `list_files`, `set_directory`, `count_files`), memory tools (`memory_add`, `memory_query`, `memory_verify`, `memory_reinforce`), file analysis (`analyze_files` with optional `pattern` for batch regex-based multi-file analysis), delegation (`delegate_task`, `run_parallel_tasks`, `schedule_tasks`, `execute_scheduled_tasks`, `get_queue_status`).
 
 ---
 
@@ -143,7 +143,7 @@ Analyzes entities that have no relationships in the knowledge graph and suggests
 | **Directory** | `notes/` |
 | **Files** | `notes.system.md`, `notes.user.md`, `notes.py` |
 | **Purpose** | Summarizes conversations and manages persistent notes |
-| **Invocation** | Via memory tools and `analyze_file` |
+| **Invocation** | Via memory tools and `analyze_files` |
 | **Persona** | Watson (Sherlock Holmes' assistant) |
 
 Analyzes the last 20 conversation messages and extracts structured changes (additions and removals) in JSON format. Updates both `notes.md` (human-readable) and MongoDB (vector-searchable).
@@ -169,7 +169,7 @@ Analyzes the last 20 conversation messages and extracts structured changes (addi
 | **Directory** | `analyzer_agent/` |
 | **Files** | `analyzer_agent.system.md` |
 | **Purpose** | Deep file analysis — extracts structured knowledge into long-term memory |
-| **Invocation** | Via `analyze_file(path, focus)` tool |
+| **Invocation** | Via `analyze_files(path, focus)` tool |
 
 Receives entire file contents and extracts structured knowledge: overview, notes, entities, and relationships. Supports focused analysis toward specific areas. Results are stored in MongoDB, notes.md, and Neo4j.
 

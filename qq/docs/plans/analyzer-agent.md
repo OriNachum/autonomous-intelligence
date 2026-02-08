@@ -1,10 +1,10 @@
 # File Analyzer Agent Plan
 
-Add an `analyze_file` tool that deeply reads, dissects, and internalizes a file — extracting structured knowledge into both memory (notes + MongoDB) and the knowledge graph (Neo4j entities + relationships). Unlike `read_file` which returns raw content for the model to process in-context, `analyze_file` delegates to a dedicated analyzer agent that processes the file independently and persists everything it learns.
+Add an `analyze_files` tool that deeply reads, dissects, and internalizes a file — extracting structured knowledge into both memory (notes + MongoDB) and the knowledge graph (Neo4j entities + relationships). Unlike `read_file` which returns raw content for the model to process in-context, `analyze_files` delegates to a dedicated analyzer agent that processes the file independently and persists everything it learns.
 
 ## Goal
 
-When the model calls `analyze_file("src/qq/app.py")`, a dedicated agent:
+When the model calls `analyze_files("src/qq/app.py")`, a dedicated agent:
 1. Reads the entire file (handling large files via chunked reads)
 2. Extracts structured knowledge: purpose, key concepts, entities, relationships, important facts
 3. Stores extracted knowledge in memory (notes.md + MongoDB with embeddings)
@@ -22,11 +22,11 @@ The file's content is **internalized** — future conversations can recall what 
 
 ## Design
 
-### New Tool: `analyze_file`
+### New Tool: `analyze_files`
 
 ```python
 @tool
-def analyze_file(path: str, focus: str = "") -> str:
+def analyze_files(path: str, focus: str = "") -> str:
     """
     Deeply analyze a file: read, dissect, and internalize its contents into memory.
 
@@ -56,7 +56,7 @@ def analyze_file(path: str, focus: str = "") -> str:
 ### Architecture
 
 ```
-analyze_file (tool, registered in agents/__init__.py)
+analyze_files (tool, registered in agents/__init__.py)
     │
     ├── FileAnalyzer (new class in src/qq/services/analyzer.py)
     │   │
@@ -276,9 +276,9 @@ If already analyzed, return early with a message. If the file changed (different
 |------|--------|
 | New: `src/qq/services/analyzer.py` | `FileAnalyzer` class — orchestrates reading, extraction, storage |
 | New: `src/qq/agents/analyzer_agent/analyzer_agent.system.md` | System prompt for the extraction LLM |
-| `src/qq/agents/__init__.py` | Register `analyze_file` tool in `_create_common_tools()` or alongside memory tools |
+| `src/qq/agents/__init__.py` | Register `analyze_files` tool in `_create_common_tools()` or alongside memory tools |
 | `src/qq/memory/mongo_store.py` | Add `find_by_source_file(file_path)` method for re-analysis detection |
-| New: `docs/analyzer-agent.md` | User-facing documentation for the analyze_file feature |
+| New: `docs/analyzer-agent.md` | User-facing documentation for the analyze_files feature |
 
 ## Dependencies
 
@@ -293,7 +293,7 @@ No new dependencies. Reuses:
 
 ## Tool Registration
 
-The `analyze_file` tool is created in a new `_create_analyzer_tool()` function (or within the existing `create_memory_tools()`) that captures:
+The `analyze_files` tool is created in a new `_create_analyzer_tool()` function (or within the existing `create_memory_tools()`) that captures:
 - `FileManager` instance (for path resolution + document reading)
 - Lazy-initialized backends (same pattern as memory tools)
 
@@ -311,16 +311,16 @@ All backends are lazy-initialized (same as memory tools):
 - `EmbeddingClient` — connects on first embedding request
 - `MongoNotesStore` — connects on first store/search
 - `KnowledgeGraphAgent` — connects Neo4j on first graph operation
-- Analyzer Strands Agent — created on first `analyze_file` call
+- Analyzer Strands Agent — created on first `analyze_files` call
 
-No new startup cost for agents that don't use `analyze_file`.
+No new startup cost for agents that don't use `analyze_files`.
 
 ## Example Flow
 
 ```
 User: "analyze the app.py file so you remember how it works"
 
-Agent calls: analyze_file(path="src/qq/app.py")
+Agent calls: analyze_files(path="src/qq/app.py")
 
 FileAnalyzer:
   1. Reads full file (473 lines)
@@ -353,17 +353,17 @@ User: "how does the console mode work?"
 
 ## Verification
 
-1. **Unit test**: `analyze_file` on a small test file → verify notes in MongoDB, entities in Neo4j
+1. **Unit test**: `analyze_files` on a small test file → verify notes in MongoDB, entities in Neo4j
 2. **Re-analysis**: Analyze same file twice → second call detects existing checksum, skips or reports "already analyzed"
 3. **Large file**: Analyze a 1000+ line file → verify chunked analysis produces merged results
-4. **Focus**: `analyze_file("app.py", focus="error handling")` → verify focus-relevant notes are prioritized
+4. **Focus**: `analyze_files("app.py", focus="error handling")` → verify focus-relevant notes are prioritized
 5. **Memory recall**: After analysis, `memory_query("how does app.py work")` → returns stored notes
 6. **Context injection**: After analysis, ask a question about the file → context retrieval pulls relevant notes automatically
 
 ## Documentation
 
 After implementation, create `docs/analyzer-agent.md` with:
-- Feature overview and purpose (why `analyze_file` vs `read_file`)
+- Feature overview and purpose (why `analyze_files` vs `read_file`)
 - Usage examples (basic, with focus, re-analysis behavior)
 - What gets stored (notes, entities, relationships) and where
 - Architecture diagram (tool → FileAnalyzer → extraction agent → storage)

@@ -739,7 +739,7 @@ def load_agent(name: str, cwd: Optional[str] = None) -> Tuple[Agent, FileManager
     memory_tools = create_memory_tools(file_manager=file_manager)
     agent_tools.extend(memory_tools)
 
-    # Add analyzer tool (analyze_file)
+    # Add analyzer tool (analyze_files)
     analyzer_tool = create_analyzer_tool(file_manager=file_manager)
     agent_tools.append(analyzer_tool)
 
@@ -833,7 +833,7 @@ Add `resource_instructions` to tell the child how to enumerate items in the rang
     memory_tools = create_memory_tools(file_manager=file_manager)
     agent_tools.extend(memory_tools)
 
-    # Add analyzer tool (analyze_file)
+    # Add analyzer tool (analyze_files)
     analyzer_tool = create_analyzer_tool(file_manager=file_manager)
     agent_tools.append(analyzer_tool)
 

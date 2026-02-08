@@ -61,7 +61,7 @@ All memory components are initialized in the main application entry point (`src/
    - `memory_add` — Store new information with category and importance
    - `memory_reinforce` — Strengthen existing knowledge with new evidence
    - `memory_verify` — Check for conflicts before storing
-   - `analyze_file` — Deep file internalization into all memory layers
+   - `analyze_files` — Deep file internalization into all memory layers
 4. **Post-Response**: Alignment agent verifies citation accuracy. Source footer appended to response.
 
 ### Shared vs. Isolated Memory

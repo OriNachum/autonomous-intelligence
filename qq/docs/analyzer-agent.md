@@ -1,10 +1,10 @@
 # File Analyzer: Deep File Internalization
 
-The `analyze_file` tool deeply reads, dissects, and internalizes a file's contents into long-term memory. Unlike `read_file` (which returns raw content for in-context processing), `analyze_file` extracts structured knowledge and persists it across conversations.
+The `analyze_files` tool deeply reads, dissects, and internalizes a file's contents into long-term memory. Unlike `read_file` (which returns raw content for in-context processing), `analyze_files` extracts structured knowledge and persists it across conversations.
 
 ## Overview
 
-When the agent calls `analyze_file`, a dedicated analyzer:
+When the agent calls `analyze_files`, a dedicated analyzer:
 
 1. **Reads the entire file** (bypassing the 100-line sliding window)
 2. **Extracts structured knowledge** via a specialized LLM agent
@@ -17,7 +17,7 @@ After analysis, the file's knowledge is available through context retrieval and 
 ```
 ┌──────────────────────┐
 │   Agent calls        │
-│   analyze_file()     │
+│   analyze_files()     │
 └──────────┬───────────┘
            │
            ▼
@@ -47,7 +47,7 @@ After analysis, the file's knowledge is available through context retrieval and 
 ### Basic Analysis
 
 ```
-analyze_file("src/qq/app.py")
+analyze_files("src/qq/app.py")
 ```
 
 Performs general-purpose analysis — extracts overview, key concepts, entities, relationships, and important facts.
@@ -55,7 +55,7 @@ Performs general-purpose analysis — extracts overview, key concepts, entities,
 ### Focused Analysis
 
 ```
-analyze_file("src/qq/app.py", focus="error handling patterns")
+analyze_files("src/qq/app.py", focus="error handling patterns")
 ```
 
 Guides the extraction toward a specific area while still capturing the most important general knowledge.
@@ -63,7 +63,7 @@ Guides the extraction toward a specific area while still capturing the most impo
 ### Batch Analysis (Pattern Matching)
 
 ```
-analyze_file(pattern=r"\.py$", path="src/qq/services/", focus="error handling")
+analyze_files(pattern=r"\.py$", path="src/qq/services/", focus="error handling")
 ```
 
 Analyzes all files under the given path whose relative paths match the regex pattern. Each matched file is analyzed individually, and results are aggregated into a single response.
@@ -157,12 +157,12 @@ Before storing each note, the analyzer checks MongoDB for near-duplicates (cosin
 | Scenario | Tool |
 |----------|------|
 | Quick glance at a file | `read_file` |
-| Understanding + remembering a file | `analyze_file` |
+| Understanding + remembering a file | `analyze_files` |
 | Checking a specific line range | `read_file` with start_line |
-| Internalizing a codebase component | `analyze_file` |
-| Re-reading after file changed | `analyze_file` (detects changes via checksum) |
-| Analyzing all files matching a pattern | `analyze_file` with `pattern` |
-| Batch analysis of a directory | `analyze_file(pattern=r"\.py$", path="src/")` |
+| Internalizing a codebase component | `analyze_files` |
+| Re-reading after file changed | `analyze_files` (detects changes via checksum) |
+| Analyzing all files matching a pattern | `analyze_files` with `pattern` |
+| Batch analysis of a directory | `analyze_files(pattern=r"\.py$", path="src/")` |
 
 ## Implementation
 

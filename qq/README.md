@@ -168,7 +168,7 @@ QQ uses a four-layer memory architecture:
 | `memory_query(query, category, limit)` | Search memory via vector similarity |
 | `memory_verify(content)` | Check for conflicts with existing knowledge |
 | `memory_reinforce(entity_name, evidence)` | Strengthen existing knowledge |
-| `analyze_file(path, focus)` | Deep file internalization into all memory layers |
+| `analyze_files(path, focus)` | Deep file internalization into all memory layers |
 
 ### Context Retrieval Pipeline
 

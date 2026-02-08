@@ -1,6 +1,6 @@
 """File analyzer — deeply reads, dissects, and internalizes files into memory.
 
-Provides the analyze_file tool that delegates to a dedicated Strands Agent
+Provides the analyze_files tool that delegates to a dedicated Strands Agent
 for structured extraction, then stores results in MongoDB notes, notes.md,
 and the Neo4j knowledge graph.
 """
@@ -22,10 +22,10 @@ logger = logging.getLogger("qq.analyzer")
 MAX_CHARS_PER_CHUNK = 30000
 
 # Importance for analyzer-extracted notes (slightly above normal)
-ANALYZER_IMPORTANCE = 0.6
+ANALYZER_IMPORTANCE = 0.8
 
 # Max files to analyze in a single pattern match
-MAX_PATTERN_FILES = 50
+MAX_PATTERN_FILES = 1000
 
 # Dedup threshold (same as memory tools)
 DEDUP_THRESHOLD = 0.85
@@ -533,18 +533,18 @@ class FileAnalyzer:
 
 
 def create_analyzer_tool(file_manager):
-    """Create the analyze_file tool with a shared FileAnalyzer instance.
+    """Create the analyze_files tool with a shared FileAnalyzer instance.
 
     Args:
         file_manager: FileManager instance for path resolution.
 
     Returns:
-        The analyze_file tool function.
+        The analyze_files tool function.
     """
     analyzer = FileAnalyzer(file_manager)
 
     @tool
-    def analyze_file(path: str = "", focus: str = "", pattern: str = "") -> str:
+    def analyze_files(path: str = "", focus: str = "", pattern: str = "") -> str:
         """
         Deeply analyze a file: read, dissect, and internalize its contents into memory.
 
@@ -573,4 +573,4 @@ def create_analyzer_tool(file_manager):
             return "Error: path is required when pattern is not provided."
         return analyzer.analyze(path, focus)
 
-    return analyze_file
+    return analyze_files

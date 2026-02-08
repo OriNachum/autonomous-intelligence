@@ -151,11 +151,11 @@ The shared core memory ensures identity and important learnings are retained.
 
 ## File Analysis
 
-- `analyze_file(path="file.py")` — deeply analyze a single file into memory
-- `analyze_file(pattern=r"\.py$", path="src/qq/services/", focus="error handling")` — batch analyze all matching files
+- `analyze_files(path="file.py")` — deeply analyze a single file into memory
+- `analyze_files(pattern=r"\.py$", path="src/qq/services/", focus="error handling")` — batch analyze all matching files
 - Use `pattern` for batch analysis of related files; use `path` alone for individual files
 - Pattern is a regex matched against relative paths within the base directory
-- Maximum 50 files per pattern match
+- Maximum 1000 files per pattern match
 
 ## Code Assistance
 
