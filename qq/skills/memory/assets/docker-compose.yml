@@ -1,0 +1,53 @@
+# QQ Memory Services
+# MongoDB for notes storage, Neo4j for knowledge graph
+
+services:
+  mongodb:
+    image: mongo:8.0
+    container_name: qq-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=qq_memory
+    volumes:
+      - ./data/mongodb:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: qq-neo4j
+    ports:
+      - "7474:7474"  # Browser UI
+      - "7687:7687"  # Bolt protocol
+    environment:
+      NEO4J_AUTH: neo4j/refinerypass
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - ./data/neo4j/data:/data
+      - ./data/neo4j/logs:/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  tei:
+    build: ./services/embeddings
+    container_name: qq-tei
+    restart: unless-stopped
+    ports:
+      - "8101:80"
+    environment:
+      - MODEL_ID=Qwen/Qwen3-Embedding-0.6B
+    volumes:
+      - ./data/tei:/root/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

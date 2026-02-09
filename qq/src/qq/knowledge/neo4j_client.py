@@ -426,12 +426,12 @@ class Neo4jClient:
             List of related entities with path info
         """
         query = f"""
-            MATCH (start {{name: $name}})-[r*1..{depth}]-(related)
+            MATCH path = (start {{name: $name}})-[*1..{depth}]-(related)
             WHERE related.name <> $name
-            RETURN DISTINCT related.name as name, 
+            RETURN DISTINCT related.name as name,
                    labels(related)[0] as type,
                    related.description as description,
-                   length(r) as distance
+                   length(path) as distance
             ORDER BY distance
             LIMIT $limit
         """

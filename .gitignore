@@ -31,3 +31,5 @@ qq/logs/*
 qq/src/qq/logs/** 
 qq/backups/**
 qq/memory/*
+qq/.claude/skills-test/memory/config.json
+qq/skills/memory/config.json

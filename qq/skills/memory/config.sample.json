@@ -1,0 +1,26 @@
+{
+  "llm": {
+    "base_url": "http://localhost:8100/v1",
+    "api_key": "NO_NEED",
+    "model_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
+  },
+  "embeddings": {
+    "base_url": "http://localhost:8101/v1",
+    "model": "Qwen/Qwen3-Embedding-0.6B",
+    "prefer_local": false
+  },
+  "mongodb": {
+    "uri": "mongodb://localhost:27017",
+    "database": "qq_memory",
+    "collection": "notes"
+  },
+  "neo4j": {
+    "uri": "bolt://localhost:7687",
+    "user": "neo4j",
+    "password": "refinerypass"
+  },
+  "memory": {
+    "memory_dir": "./memory"
+  },
+  "docker_compose_path": "./docker-compose.yml"
+}
