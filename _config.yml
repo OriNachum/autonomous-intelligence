@@ -1,5 +1,5 @@
 # _config.yml
-title: Agentic Developer Mcp
+title: Autonomous Intelligence
 description: An MCP server that scales development into controllable agentic, recursive flows, and build a feature from bottom-up.
 baseurl: "/autonomous-intelligence" # Or "" if it's a user/org page like your-username.github.io
 url: "https://OriNachum.github.io"
