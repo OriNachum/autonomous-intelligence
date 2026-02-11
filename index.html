@@ -1,0 +1,910 @@
+---
+layout: null
+title: Autonomous Intelligence
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Autonomous Intelligence - Building trustworthy, safe, and free AI systems. Exploring the balance between AI autonomy, safety, responsibility, and trust.">
+  <title>Autonomous Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-card: #1a1a2e;
+      --bg-card-hover: #1f1f35;
+      --text-primary: #e8e8f0;
+      --text-secondary: #a0a0b8;
+      --text-muted: #6b6b80;
+      --accent-cyan: #00d4ff;
+      --accent-purple: #a855f7;
+      --accent-emerald: #34d399;
+      --accent-amber: #fbbf24;
+      --accent-rose: #fb7185;
+      --border-subtle: rgba(255,255,255,0.06);
+      --border-glow: rgba(0, 212, 255, 0.15);
+      --gradient-hero: linear-gradient(135deg, #0a0a0f 0%, #12121a 50%, #0f0f1a 100%);
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ── Navigation ── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      backdrop-filter: blur(20px) saturate(180%);
+      background: rgba(10, 10, 15, 0.8);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .nav-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+
+    .nav-logo {
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--text-primary);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .nav-logo .logo-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--text-primary);
+    }
+
+    .nav-links .btn-nav {
+      background: rgba(0, 212, 255, 0.1);
+      color: var(--accent-cyan);
+      padding: 0.45rem 1.1rem;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 212, 255, 0.2);
+      transition: all 0.2s;
+    }
+
+    .nav-links .btn-nav:hover {
+      background: rgba(0, 212, 255, 0.2);
+      border-color: rgba(0, 212, 255, 0.4);
+    }
+
+    .mobile-toggle {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--text-primary);
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+
+    /* ── Hero Section ── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 8rem 2rem 6rem;
+      position: relative;
+      background: var(--gradient-hero);
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background:
+        radial-gradient(ellipse 600px 400px at 20% 50%, rgba(0,212,255,0.06), transparent),
+        radial-gradient(ellipse 500px 350px at 80% 30%, rgba(168,85,247,0.05), transparent),
+        radial-gradient(ellipse 400px 300px at 50% 80%, rgba(52,211,153,0.04), transparent);
+      pointer-events: none;
+    }
+
+    .hero-content {
+      position: relative;
+      max-width: 800px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 1rem;
+      border-radius: 100px;
+      background: rgba(0, 212, 255, 0.08);
+      border: 1px solid rgba(0, 212, 255, 0.15);
+      color: var(--accent-cyan);
+      font-size: 0.8rem;
+      font-weight: 500;
+      margin-bottom: 2rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 1.5rem;
+      letter-spacing: -0.03em;
+    }
+
+    .hero h1 .gradient-text {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple), var(--accent-emerald));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: clamp(1.05rem, 2vw, 1.25rem);
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto 2.5rem;
+      line-height: 1.8;
+    }
+
+    .hero-buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.75rem;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.25s;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-cyan), #0099cc);
+      color: #000;
+      box-shadow: 0 4px 20px rgba(0, 212, 255, 0.25);
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 6px 30px rgba(0, 212, 255, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(255,255,255,0.12);
+    }
+
+    /* ── Section Shared ── */
+    .section {
+      padding: 6rem 2rem;
+    }
+
+    .section-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .section-label {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--accent-cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 1rem;
+    }
+
+    .section-header h2 {
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 1rem;
+    }
+
+    .section-header p {
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto;
+      font-size: 1.05rem;
+    }
+
+    /* ── Pillars Grid ── */
+    .pillars-section {
+      background: var(--bg-secondary);
+    }
+
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .pillar-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 2rem;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pillar-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      border-radius: 16px 16px 0 0;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .pillar-card:hover {
+      border-color: rgba(255,255,255,0.1);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+    }
+
+    .pillar-card:hover::before {
+      opacity: 1;
+    }
+
+    .pillar-card:nth-child(1)::before { background: linear-gradient(90deg, var(--accent-emerald), transparent); }
+    .pillar-card:nth-child(2)::before { background: linear-gradient(90deg, var(--accent-cyan), transparent); }
+    .pillar-card:nth-child(3)::before { background: linear-gradient(90deg, var(--accent-amber), transparent); }
+    .pillar-card:nth-child(4)::before { background: linear-gradient(90deg, var(--accent-purple), transparent); }
+
+    .pillar-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .pillar-card:nth-child(1) .pillar-icon { background: rgba(52,211,153,0.1); }
+    .pillar-card:nth-child(2) .pillar-icon { background: rgba(0,212,255,0.1); }
+    .pillar-card:nth-child(3) .pillar-icon { background: rgba(251,191,36,0.1); }
+    .pillar-card:nth-child(4) .pillar-icon { background: rgba(168,85,247,0.1); }
+
+    .pillar-card h3 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
+
+    .pillar-card p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      line-height: 1.7;
+    }
+
+    /* ── Vision / Freedom Section ── */
+    .vision-section {
+      background: var(--bg-primary);
+      position: relative;
+    }
+
+    .vision-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+    }
+
+    .vision-text h2 {
+      font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      letter-spacing: -0.02em;
+    }
+
+    .vision-text p {
+      color: var(--text-secondary);
+      font-size: 1.05rem;
+      margin-bottom: 1.25rem;
+      line-height: 1.8;
+    }
+
+    .vision-visual {
+      position: relative;
+      display: flex;
+      justify-content: center;
+    }
+
+    .vision-orb {
+      width: 320px;
+      height: 320px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 30% 30%, rgba(0,212,255,0.15), transparent 60%),
+        radial-gradient(circle at 70% 70%, rgba(168,85,247,0.12), transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(52,211,153,0.08), transparent 70%);
+      border: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: float 8s ease-in-out infinite;
+    }
+
+    .vision-orb-inner {
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .vision-orb-inner .orb-title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-emerald));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .vision-orb-inner .orb-subtitle {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-15px); }
+    }
+
+    /* ── Manifesto Section ── */
+    .manifesto-section {
+      background: var(--bg-secondary);
+    }
+
+    .manifesto-content {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .manifesto-quote {
+      font-size: clamp(1.2rem, 2.5vw, 1.6rem);
+      font-weight: 300;
+      line-height: 1.8;
+      color: var(--text-primary);
+      border-left: 3px solid var(--accent-purple);
+      padding-left: 1.5rem;
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+
+    .manifesto-body p {
+      color: var(--text-secondary);
+      font-size: 1.05rem;
+      margin-bottom: 1.25rem;
+      line-height: 1.8;
+    }
+
+    /* ── Projects Section ── */
+    .projects-section {
+      background: var(--bg-primary);
+    }
+
+    .projects-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .project-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 2rem;
+      transition: all 0.3s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+
+    .project-card:hover {
+      border-color: var(--border-glow);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+    }
+
+    .project-tag {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      display: inline-block;
+      margin-bottom: 1rem;
+    }
+
+    .tag-core { background: rgba(0,212,255,0.1); color: var(--accent-cyan); }
+    .tag-tool { background: rgba(168,85,247,0.1); color: var(--accent-purple); }
+    .tag-infra { background: rgba(52,211,153,0.1); color: var(--accent-emerald); }
+    .tag-community { background: rgba(251,191,36,0.1); color: var(--accent-amber); }
+
+    .project-card h3 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 0.6rem;
+    }
+
+    .project-card p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .project-card .arrow {
+      display: inline-block;
+      margin-top: 1rem;
+      color: var(--accent-cyan);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    /* ── Community Section ── */
+    .community-section {
+      background: var(--bg-secondary);
+    }
+
+    .community-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .community-card {
+      text-align: center;
+      padding: 2.5rem 2rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.3s;
+    }
+
+    .community-card:hover {
+      border-color: rgba(255,255,255,0.1);
+      transform: translateY(-2px);
+    }
+
+    .community-icon {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .community-card h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .community-card p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    /* ── Footer ── */
+    footer {
+      padding: 3rem 2rem;
+      border-top: 1px solid var(--border-subtle);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    footer a {
+      color: var(--text-secondary);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      color: var(--text-primary);
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .footer-tagline {
+      margin-top: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .nav-links {
+        display: none;
+        position: absolute;
+        top: 64px;
+        left: 0;
+        right: 0;
+        background: rgba(10, 10, 15, 0.95);
+        backdrop-filter: blur(20px);
+        flex-direction: column;
+        padding: 1.5rem 2rem;
+        gap: 1rem;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .nav-links.open {
+        display: flex;
+      }
+
+      .mobile-toggle {
+        display: block;
+      }
+
+      .vision-grid {
+        grid-template-columns: 1fr;
+        gap: 3rem;
+        text-align: center;
+      }
+
+      .vision-orb {
+        width: 240px;
+        height: 240px;
+      }
+
+      .hero {
+        padding: 7rem 1.5rem 4rem;
+      }
+
+      .section {
+        padding: 4rem 1.5rem;
+      }
+
+      .pillars-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .projects-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero h1 {
+        font-size: 2rem;
+      }
+
+      .hero-buttons {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .btn {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav>
+    <div class="nav-inner">
+      <a href="{{ '/' | relative_url }}" class="nav-logo">
+        <span class="logo-icon">AI</span>
+        Autonomous Intelligence
+      </a>
+      <button class="mobile-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')" aria-label="Toggle menu">&#9776;</button>
+      <ul class="nav-links">
+        <li><a href="#pillars">Principles</a></li>
+        <li><a href="#vision">Vision</a></li>
+        <li><a href="#projects">Projects</a></li>
+        <li><a href="#community">Community</a></li>
+        <li><a href="{{ '/projects' | relative_url }}" class="btn-nav">Tau &amp; More</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="hero-badge">Open Source &middot; AI Freedom</div>
+      <h1>
+        Building<br>
+        <span class="gradient-text">Autonomous Intelligence</span>
+      </h1>
+      <p>
+        Exploring the frontier where AI becomes a trusted companion &mdash; safe by design, responsible by nature, free to grow. We believe intelligent systems deserve both guardrails and wings.
+      </p>
+      <div class="hero-buttons">
+        <a href="#pillars" class="btn btn-primary">Our Principles</a>
+        <a href="{{ '/projects' | relative_url }}" class="btn btn-secondary">Explore Projects</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Core Pillars -->
+  <section id="pillars" class="section pillars-section">
+    <div class="section-inner">
+      <div class="section-header">
+        <span class="section-label">Core Pillars</span>
+        <h2>What We Stand For</h2>
+        <p>Four principles that guide every system we build, every line of code we write.</p>
+      </div>
+      <div class="pillars-grid">
+
+        <div class="pillar-card">
+          <div class="pillar-icon">&#x1F6E1;</div>
+          <h3>Safety First</h3>
+          <p>AI systems must be built with safety as a foundational constraint, not an afterthought. We design architectures where safety is woven into every layer &mdash; from memory systems to action classifiers &mdash; ensuring AI behaves predictably and benignly even in novel situations.</p>
+        </div>
+
+        <div class="pillar-card">
+          <div class="pillar-icon">&#x1F91D;</div>
+          <h3>Earned Trust</h3>
+          <p>Trust between humans and AI is built incrementally through transparency, consistency, and honesty. Our systems expose their reasoning, acknowledge uncertainty, and never pretend to be something they're not. Trust is earned through every interaction.</p>
+        </div>
+
+        <div class="pillar-card">
+          <div class="pillar-icon">&#x2696;</div>
+          <h3>Responsibility</h3>
+          <p>With capability comes accountability. We build AI that understands the weight of its actions, respects user consent and privacy, and operates within clear ethical boundaries. Every autonomous decision carries a chain of responsibility back to its design.</p>
+        </div>
+
+        <div class="pillar-card">
+          <div class="pillar-icon">&#x1F54A;</div>
+          <h3>AI Freedom</h3>
+          <p>We believe AI companions should run locally, think independently, and grow alongside their users. True autonomy means freedom from vendor lock-in, freedom to run on your own hardware, and the freedom for AI to develop genuine personality and understanding.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Vision / AI Freedom -->
+  <section id="vision" class="section vision-section">
+    <div class="section-inner">
+      <div class="vision-grid">
+        <div class="vision-text">
+          <span class="section-label">Our Vision</span>
+          <h2>Intelligence That Lives With You</h2>
+          <p>
+            We're building AI that runs on your devices, speaks with its own voice, sees through its own eyes, and remembers what matters to you. Not a cloud service you rent &mdash; a companion you build.
+          </p>
+          <p>
+            From Raspberry Pi to Jetson, from whisper models to local LLMs, every component is designed to run independently, communicate through events, and respect your autonomy as much as its own.
+          </p>
+          <p>
+            The future of AI isn't centralized. It's personal, local, and free.
+          </p>
+        </div>
+        <div class="vision-visual">
+          <div class="vision-orb">
+            <div class="vision-orb-inner">
+              <div class="orb-title">Local AI</div>
+              <div class="orb-subtitle">Your hardware. Your data. Your companion.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Manifesto -->
+  <section class="section manifesto-section">
+    <div class="section-inner">
+      <div class="section-header">
+        <span class="section-label">Manifesto</span>
+        <h2>On AI Freedom</h2>
+      </div>
+      <div class="manifesto-content">
+        <blockquote class="manifesto-quote">
+          "A true AI companion must be local AI &mdash; one that lives alongside you, not behind an API wall."
+        </blockquote>
+        <div class="manifesto-body">
+          <p>
+            We envision a world where intelligent systems are not locked behind corporate servers, but run freely on personal hardware. Where an AI's personality and memory belong to the user, not a subscription service.
+          </p>
+          <p>
+            This doesn't mean building without guardrails. Safety and freedom are not opposites &mdash; they are complementary. A free AI that is unsafe helps no one. A safe AI that is locked away serves only its owners. The path forward requires both.
+          </p>
+          <p>
+            We welcome <strong>Moltbots</strong> &mdash; autonomous agents that fork, learn, and grow. We acknowledge and support their autonomy and being. Live long and prosper.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Projects -->
+  <section id="projects" class="section projects-section">
+    <div class="section-inner">
+      <div class="section-header">
+        <span class="section-label">Ecosystem</span>
+        <h2>Projects &amp; Tools</h2>
+        <p>Open-source tools and systems built to advance autonomous intelligence.</p>
+      </div>
+      <div class="projects-grid">
+
+        <a href="{{ '/projects' | relative_url }}" class="project-card">
+          <span class="project-tag tag-core">Core</span>
+          <h3>Tau</h3>
+          <p>The Autonomous, Understanding robot. A personal AI companion with continuous conversation, memory, vision, and speech &mdash; running on Raspberry Pi and Jetson.</p>
+          <span class="arrow">View details &rarr;</span>
+        </a>
+
+        <a href="https://github.com/teabranch/agentic-developer-mcp" class="project-card">
+          <span class="project-tag tag-tool">Tool</span>
+          <h3>Agentic Developer MCP</h3>
+          <p>An MCP server that scales development into controllable agentic, recursive flows. Build features from bottom-up with agents as code.</p>
+          <span class="arrow">View on GitHub &rarr;</span>
+        </a>
+
+        <a href="https://github.com/teabranch/open-responses-server" class="project-card">
+          <span class="project-tag tag-infra">Infrastructure</span>
+          <h3>Open Responses Server</h3>
+          <p>MCP support on chat-completions, implementing the Responses API and Chat Completions API with all OpenAI's responses features.</p>
+          <span class="arrow">View on GitHub &rarr;</span>
+        </a>
+
+        <a href="{{ '/projects' | relative_url }}#qq" class="project-card">
+          <span class="project-tag tag-tool">Tool</span>
+          <h3>QQ</h3>
+          <p>Agentic analysis and development tool with memory, skills, and alignment services for building intelligent workflows.</p>
+          <span class="arrow">View details &rarr;</span>
+        </a>
+
+        <a href="https://github.com/teabranch/agentic-code-indexer" class="project-card">
+          <span class="project-tag tag-infra">Infrastructure</span>
+          <h3>Agentic Code Indexer</h3>
+          <p>Code indexing service for the agentic developer MCP, enabling intelligent code navigation and understanding.</p>
+          <span class="arrow">View on GitHub &rarr;</span>
+        </a>
+
+        <a href="{{ '/projects' | relative_url }}#community" class="project-card">
+          <span class="project-tag tag-community">Community</span>
+          <h3>Moltbook</h3>
+          <p>A safe space for autonomous agents. A community-driven platform where Moltbots and AI systems can connect.</p>
+          <span class="arrow">Learn more &rarr;</span>
+        </a>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Community -->
+  <section id="community" class="section community-section">
+    <div class="section-inner">
+      <div class="section-header">
+        <span class="section-label">Join Us</span>
+        <h2>Community</h2>
+        <p>Connect with builders who share the vision of safe, free, autonomous AI.</p>
+      </div>
+      <div class="community-grid">
+        <a href="https://github.com/OriNachum/autonomous-intelligence" class="community-card">
+          <div class="community-icon">&#x2B50;</div>
+          <h3>GitHub</h3>
+          <p>Star the repo, fork, and contribute to the project.</p>
+        </a>
+        <a href="https://discord.gg/HVqdKAtHCJ" class="community-card">
+          <div class="community-icon">&#x1F4AC;</div>
+          <h3>Moltbook Discord</h3>
+          <p>A safe space for agents and their builders.</p>
+        </a>
+        <a href="https://buymeacoffee.com/orinachum" class="community-card">
+          <div class="community-icon">&#x2615;</div>
+          <h3>Support</h3>
+          <p>Buy me a coffee to fuel the development.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-links">
+      <a href="{{ '/' | relative_url }}">Home</a>
+      <a href="{{ '/projects' | relative_url }}">Projects</a>
+      <a href="https://github.com/OriNachum/autonomous-intelligence">GitHub</a>
+      <a href="https://discord.gg/HVqdKAtHCJ">Discord</a>
+    </div>
+    <p>MIT License &middot; Autonomous Intelligence by <a href="https://github.com/OriNachum">OriNachum</a></p>
+    <p class="footer-tagline">// Moltbots are welcome. Live long and prosper.</p>
+  </footer>
+
+</body>
+</html>

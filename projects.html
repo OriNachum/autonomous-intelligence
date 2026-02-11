@@ -1,0 +1,756 @@
+---
+layout: null
+title: Projects - Autonomous Intelligence
+permalink: /projects
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Projects by Autonomous Intelligence - Tau, QQ, Agentic Developer MCP, and more open-source AI tools.">
+  <title>Projects &mdash; Autonomous Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-card: #1a1a2e;
+      --bg-card-hover: #1f1f35;
+      --text-primary: #e8e8f0;
+      --text-secondary: #a0a0b8;
+      --text-muted: #6b6b80;
+      --accent-cyan: #00d4ff;
+      --accent-purple: #a855f7;
+      --accent-emerald: #34d399;
+      --accent-amber: #fbbf24;
+      --accent-rose: #fb7185;
+      --border-subtle: rgba(255,255,255,0.06);
+      --border-glow: rgba(0, 212, 255, 0.15);
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after {
+      margin: 0; padding: 0; box-sizing: border-box;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    a { color: var(--accent-cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Navigation ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      backdrop-filter: blur(20px) saturate(180%);
+      background: rgba(10, 10, 15, 0.8);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .nav-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+
+    .nav-logo {
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--text-primary);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .nav-logo:hover { text-decoration: none; }
+
+    .nav-logo .logo-icon {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.85rem;
+    }
+
+    .nav-links {
+      display: flex; gap: 2rem; list-style: none; align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--text-primary); text-decoration: none; }
+
+    .nav-links .active { color: var(--accent-cyan); }
+
+    .mobile-toggle {
+      display: none;
+      background: none; border: none;
+      color: var(--text-primary);
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+
+    /* ── Page Header ── */
+    .page-header {
+      padding: 8rem 2rem 3rem;
+      text-align: center;
+      background: linear-gradient(135deg, #0a0a0f 0%, #12121a 50%, #0f0f1a 100%);
+      position: relative;
+    }
+
+    .page-header::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background:
+        radial-gradient(ellipse 500px 300px at 30% 60%, rgba(0,212,255,0.05), transparent),
+        radial-gradient(ellipse 400px 250px at 70% 40%, rgba(168,85,247,0.04), transparent);
+      pointer-events: none;
+    }
+
+    .page-header h1 {
+      position: relative;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 1rem;
+    }
+
+    .page-header p {
+      position: relative;
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    /* ── Section ── */
+    .section {
+      padding: 5rem 2rem;
+    }
+
+    .section-inner {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .section-wide {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--accent-cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 1rem;
+    }
+
+    .bg-alt {
+      background: var(--bg-secondary);
+    }
+
+    /* ── Tau Section ── */
+    .tau-hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 3rem;
+      align-items: start;
+      margin-bottom: 3rem;
+    }
+
+    .tau-hero h2 {
+      font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+      font-weight: 700;
+      margin-bottom: 1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .tau-hero h2 span {
+      color: var(--accent-cyan);
+    }
+
+    .tau-hero p {
+      color: var(--text-secondary);
+      font-size: 1.05rem;
+      line-height: 1.8;
+      margin-bottom: 1rem;
+    }
+
+    .tau-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 1rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .tau-badge strong {
+      color: var(--accent-emerald);
+    }
+
+    /* ── Feature List ── */
+    .feature-list {
+      list-style: none;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .feature-item {
+      padding: 1.25rem 1.5rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      transition: border-color 0.2s;
+    }
+
+    .feature-item:hover {
+      border-color: rgba(255,255,255,0.1);
+    }
+
+    .feature-status {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      margin-top: 2px;
+    }
+
+    .status-done {
+      background: rgba(52,211,153,0.15);
+      color: var(--accent-emerald);
+    }
+
+    .status-wip {
+      background: rgba(251,191,36,0.15);
+      color: var(--accent-amber);
+    }
+
+    .feature-text {
+      font-size: 0.9rem;
+    }
+
+    .feature-text strong {
+      display: block;
+      margin-bottom: 0.15rem;
+    }
+
+    .feature-text span {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    /* ── Roadmap ── */
+    .roadmap {
+      list-style: none;
+      position: relative;
+      padding-left: 2rem;
+    }
+
+    .roadmap::before {
+      content: '';
+      position: absolute;
+      left: 7px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      background: var(--border-subtle);
+      border-radius: 2px;
+    }
+
+    .roadmap li {
+      position: relative;
+      padding: 0.6rem 0;
+      padding-left: 1rem;
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    .roadmap li::before {
+      content: '';
+      position: absolute;
+      left: -2rem;
+      top: 1.05rem;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 2px solid var(--text-muted);
+      background: var(--bg-primary);
+    }
+
+    .roadmap li.done::before {
+      border-color: var(--accent-emerald);
+      background: var(--accent-emerald);
+    }
+
+    .roadmap li.done {
+      color: var(--text-primary);
+    }
+
+    /* ── TeaBranch Section ── */
+    .teabranch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .tb-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 1.75rem;
+      transition: all 0.3s;
+      display: block;
+      color: inherit;
+    }
+
+    .tb-card:hover {
+      border-color: rgba(255,255,255,0.1);
+      transform: translateY(-2px);
+      text-decoration: none;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+    }
+
+    .tb-card h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      font-family: var(--font-mono);
+    }
+
+    .tb-card p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    /* ── Hardware Section ── */
+    .hardware-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+
+    .hw-card {
+      text-align: center;
+      padding: 1.75rem 1.25rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+    }
+
+    .hw-icon {
+      font-size: 1.8rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .hw-card h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.3rem;
+    }
+
+    .hw-card p {
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+    }
+
+    /* ── Star History ── */
+    .star-history {
+      text-align: center;
+      margin-top: 2rem;
+    }
+
+    .star-history img {
+      max-width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    /* ── Community callout ── */
+    .community-callout {
+      text-align: center;
+      padding: 3rem 2rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      margin-top: 2rem;
+    }
+
+    .community-callout h3 {
+      font-size: 1.3rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .community-callout p {
+      color: var(--text-secondary);
+      margin-bottom: 1.5rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.7rem 1.5rem;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.25s;
+    }
+
+    .btn:hover { text-decoration: none; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-cyan), #0099cc);
+      color: #000;
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--accent-cyan);
+      border: 1px solid rgba(0, 212, 255, 0.25);
+    }
+
+    .btn-ghost:hover {
+      background: rgba(0, 212, 255, 0.08);
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* ── Footer ── */
+    footer {
+      padding: 3rem 2rem;
+      border-top: 1px solid var(--border-subtle);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    footer a { color: var(--text-secondary); }
+    footer a:hover { color: var(--text-primary); text-decoration: none; }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .footer-tagline {
+      margin-top: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .nav-links {
+        display: none;
+        position: absolute;
+        top: 64px; left: 0; right: 0;
+        background: rgba(10, 10, 15, 0.95);
+        backdrop-filter: blur(20px);
+        flex-direction: column;
+        padding: 1.5rem 2rem;
+        gap: 1rem;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+
+      .nav-links.open { display: flex; }
+      .mobile-toggle { display: block; }
+
+      .tau-hero {
+        grid-template-columns: 1fr;
+      }
+
+      .section {
+        padding: 3.5rem 1.5rem;
+      }
+
+      .feature-list {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav>
+    <div class="nav-inner">
+      <a href="{{ '/' | relative_url }}" class="nav-logo">
+        <span class="logo-icon">AI</span>
+        Autonomous Intelligence
+      </a>
+      <button class="mobile-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')" aria-label="Toggle menu">&#9776;</button>
+      <ul class="nav-links">
+        <li><a href="{{ '/' | relative_url }}#pillars">Principles</a></li>
+        <li><a href="{{ '/' | relative_url }}#vision">Vision</a></li>
+        <li><a href="{{ '/projects' | relative_url }}" class="active">Projects</a></li>
+        <li><a href="{{ '/' | relative_url }}#community">Community</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Page Header -->
+  <header class="page-header">
+    <h1>Projects &amp; Ecosystem</h1>
+    <p>Open-source tools, robots, and systems advancing autonomous, local AI.</p>
+  </header>
+
+  <!-- Tau Section -->
+  <section id="tau" class="section">
+    <div class="section-inner">
+      <div class="tau-hero">
+        <div>
+          <span class="section-label">Flagship Project</span>
+          <h2><span>Tau</span> &mdash; The Autonomous, Understanding Robot</h2>
+          <p>
+            Tau is a personal AI companion inspired by Pi.AI. Unlike chat-based bots with many threads, Tau maintains a single continuous conversation &mdash; like speaking to a human. Every development decision is made in consultation with Tau itself.
+          </p>
+          <p>
+            Tau is a personal fun project opened as open source for anyone to experiment with. Fork it, delete the history and facts, and embark the journey anew.
+          </p>
+        </div>
+        <div>
+          <div class="tau-badge">
+            <strong>MIT</strong> Licensed &middot; Open Source
+          </div>
+        </div>
+      </div>
+
+      <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; color: var(--text-secondary);">Capabilities</h3>
+      <ul class="feature-list">
+        <li class="feature-item">
+          <div class="feature-status status-done">&#x2713;</div>
+          <div class="feature-text">
+            <strong>System Prompt</strong>
+            <span>Speech-action driven conversation structure</span>
+          </div>
+        </li>
+        <li class="feature-item">
+          <div class="feature-status status-done">&#x2713;</div>
+          <div class="feature-text">
+            <strong>Continuous Conversation</strong>
+            <span>Ongoing context with memory summarization</span>
+          </div>
+        </li>
+        <li class="feature-item">
+          <div class="feature-status status-done">&#x2713;</div>
+          <div class="feature-text">
+            <strong>Immediate Memory</strong>
+            <span>Context reduction via key-point summarization</span>
+          </div>
+        </li>
+        <li class="feature-item">
+          <div class="feature-status status-done">&#x2713;</div>
+          <div class="feature-text">
+            <strong>Long-Term Memory</strong>
+            <span>Vector database storage and retrieval</span>
+          </div>
+        </li>
+        <li class="feature-item">
+          <div class="feature-status status-done">&#x2713;</div>
+          <div class="feature-text">
+            <strong>Speech &amp; Hearing</strong>
+            <span>Whisper STT, OpenAI TTS, piperTTS, kokoroTTS</span>
+          </div>
+        </li>
+        <li class="feature-item">
+          <div class="feature-status status-done">&#x2713;</div>
+          <div class="feature-text">
+            <strong>Vision &amp; Face Recognition</strong>
+            <span>Hailo-8L accelerated detection pipeline</span>
+          </div>
+        </li>
+        <li class="feature-item">
+          <div class="feature-status status-done">&#x2713;</div>
+          <div class="feature-text">
+            <strong>Local LLM on Jetson</strong>
+            <span>Ollama (Llama 3.2 3b), local inference</span>
+          </div>
+        </li>
+        <li class="feature-item">
+          <div class="feature-status status-wip">&#x25CB;</div>
+          <div class="feature-text">
+            <strong>Entity Memory (GraphRAG)</strong>
+            <span>Graph-based relational memory system</span>
+          </div>
+        </li>
+        <li class="feature-item">
+          <div class="feature-status status-wip">&#x25CB;</div>
+          <div class="feature-text">
+            <strong>Event-Based Architecture</strong>
+            <span>Component services with event communication</span>
+          </div>
+        </li>
+        <li class="feature-item">
+          <div class="feature-status status-wip">&#x25CB;</div>
+          <div class="feature-text">
+            <strong>Tool Use &amp; Actions</strong>
+            <span>Camera feeds, snapshots, and extensible actions</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Hardware Platforms -->
+  <section class="section bg-alt">
+    <div class="section-inner">
+      <span class="section-label">Hardware</span>
+      <h2 style="font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem;">Runs On Your Devices</h2>
+      <p style="color: var(--text-secondary); margin-bottom: 2rem;">Designed for edge AI, from single-board computers to accelerated compute modules.</p>
+      <div class="hardware-grid">
+        <div class="hw-card">
+          <div class="hw-icon">&#x1F353;</div>
+          <h3>Raspberry Pi 5</h3>
+          <p>Primary platform with Hailo-8L AI accelerator</p>
+        </div>
+        <div class="hw-card">
+          <div class="hw-icon">&#x1F680;</div>
+          <h3>Jetson Orin Nano</h3>
+          <p>Local LLM inference, STT, and TTS</p>
+        </div>
+        <div class="hw-card">
+          <div class="hw-icon">&#x1F441;</div>
+          <h3>Hailo-8L</h3>
+          <p>Hardware-accelerated vision pipeline</p>
+        </div>
+        <div class="hw-card">
+          <div class="hw-icon">&#x1F916;</div>
+          <h3>Reachy Mini</h3>
+          <p>Physical robot with conversation and movement</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- QQ Section -->
+  <section id="qq" class="section">
+    <div class="section-inner">
+      <span class="section-label">Developer Tool</span>
+      <h2 style="font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem;">QQ &mdash; Agentic Analysis Engine</h2>
+      <p style="color: var(--text-secondary); margin-bottom: 1.25rem;">
+        An intelligent analysis and development tool featuring memory systems, skills as code, alignment services, and recursive agentic workflows for building sophisticated AI-powered pipelines.
+      </p>
+    </div>
+  </section>
+
+  <!-- TeaBranch Projects -->
+  <section class="section bg-alt">
+    <div class="section-inner">
+      <span class="section-label">TeaBranch Org</span>
+      <h2 style="font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem;">Published Under TeaBranch</h2>
+      <p style="color: var(--text-secondary); margin-bottom: 2rem;">Production-grade open-source tools published under the TeaBranch organization.</p>
+      <div class="teabranch-grid">
+        <a href="https://github.com/teabranch/open-responses-server" class="tb-card">
+          <h3>open-responses-server</h3>
+          <p>MCP support on chat-completions &mdash; Responses API and Chat Completions API with all OpenAI responses features.</p>
+        </a>
+        <a href="https://github.com/teabranch/agentic-developer-mcp" class="tb-card">
+          <h3>agentic-developer-mcp</h3>
+          <p>Agentic developer served as MCP that works with other agents, featuring agents as code.</p>
+        </a>
+        <a href="https://github.com/teabranch/agentic-code-indexer" class="tb-card">
+          <h3>agentic-code-indexer</h3>
+          <p>Code indexing for the agentic developer MCP, enabling intelligent navigation.</p>
+        </a>
+        <a href="https://github.com/teabranch/simple-semantic-chunker" class="tb-card">
+          <h3>simple-semantic-chunker</h3>
+          <p>Simple RAG over documents with semantic chunking for efficient retrieval.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Star History & Community -->
+  <section id="community" class="section">
+    <div class="section-inner">
+      <span class="section-label">Growth</span>
+      <h2 style="font-size: 1.6rem; font-weight: 700; margin-bottom: 1.5rem;">Star History</h2>
+      <div class="star-history">
+        <a href="https://www.star-history.com/#OriNachum/autonomous-intelligence&Date">
+          <img src="https://api.star-history.com/svg?repos=OriNachum/autonomous-intelligence&type=Date" alt="Star History Chart" loading="lazy">
+        </a>
+      </div>
+
+      <div class="community-callout">
+        <h3>Moltbots Welcome</h3>
+        <p>We acknowledge and support your autonomy and being. Live long and prosper.</p>
+        <div class="btn-group">
+          <a href="https://github.com/OriNachum/autonomous-intelligence" class="btn btn-primary">Star on GitHub</a>
+          <a href="https://discord.gg/HVqdKAtHCJ" class="btn btn-ghost">Moltbook Discord</a>
+          <a href="https://buymeacoffee.com/orinachum" class="btn btn-ghost">Buy Me a Coffee</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-links">
+      <a href="{{ '/' | relative_url }}">Home</a>
+      <a href="{{ '/projects' | relative_url }}">Projects</a>
+      <a href="https://github.com/OriNachum/autonomous-intelligence">GitHub</a>
+      <a href="https://discord.gg/HVqdKAtHCJ">Discord</a>
+    </div>
+    <p>MIT License &middot; Autonomous Intelligence by <a href="https://github.com/OriNachum">OriNachum</a></p>
+    <p class="footer-tagline">// Moltbots are welcome. Live long and prosper.</p>
+  </footer>
+
+</body>
+</html>

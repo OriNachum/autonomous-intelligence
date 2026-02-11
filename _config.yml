@@ -1,18 +1,39 @@
 # _config.yml
-title: Agentic Developer Mcp
-description: An MCP server that scales development into controllable agentic, recursive flows, and build a feature from bottom-up.
-baseurl: "/autonomous-intelligence" # Or "" if it's a user/org page like your-username.github.io
+title: Autonomous Intelligence
+description: Building trustworthy, safe, and free AI systems. Exploring the balance between AI autonomy, safety, responsibility, and trust.
+baseurl: "/autonomous-intelligence"
 url: "https://OriNachum.github.io"
 
 plugins:
   - jekyll-seo-tag
 
+# Exclude non-site files from build
+exclude:
+  - TauLegacy
+  - Vision
+  - baby-tau
+  - gemma
+  - qq
+  - data-refinery
+  - batch
+  - reachy-mini
+  - local-codex
+  - vllm-client
+  - jetson-super
+  - jetson-4gb-legacy
+  - agentic-folders
+  - unsloth
+  - moltbook
+  - discord-bot
+  - "*.jsonl"
+  - "*.pdf"
+  - .env
+  - LICENSE
+  - AGENTS.md
+  - node_modules
+  - Gemfile
+  - Gemfile.lock
+
 # Add Google Site Verification
 webmaster_verifications:
   google: SAWMasZ1hKCZm8hnk0xFUgqnFYYPgdrKG8jKuTJa6a0
-  # You can also add codes for Bing, Yandex, Baidu, and Facebook App ID here
-  # bing: YOUR_BING_CODE
-  # yandex: YOUR_YANDEX_CODE
-  # baidu: YOUR_BAIDU_CODE
-  # facebook_app_id: YOUR_FACEBOOK_APP_ID
-  # facebook_admins: YOUR_FACEBOOK_USER_ID
