@@ -1,0 +1,10 @@
+.venv/
+output/
+data/
+.git/
+assets/
+scripts/
+__pycache__/
+*.pyc
+*.egg-info/
+.claude/

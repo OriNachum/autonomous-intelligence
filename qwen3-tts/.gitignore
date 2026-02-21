@@ -1,0 +1,6 @@
+output/
+.finetuning_cache/
+data/
+__pycache__/
+*.pyc
+.venv/
