@@ -1,0 +1,22 @@
+[project]
+name = "realtime-api"
+version = "0.1.0"
+description = "OpenAI Realtime API bridge with Magpie TTS + Parakeet STT"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "httpx>=0.28",
+    "numpy>=2.0",
+    "scipy>=1.14",
+    "pydantic-settings>=2.7",
+    "silero-vad>=5.1",
+    "torch>=2.5",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+where = ["src"]

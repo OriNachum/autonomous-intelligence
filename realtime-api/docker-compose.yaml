@@ -1,0 +1,85 @@
+services:
+  magpie-tts:
+    build:
+      context: ../qwen3-tts
+      dockerfile: Dockerfile
+    ports:
+      - "${QWEN3_TTS_PORT:-8091}:${QWEN3_TTS_PORT:-8091}"
+    environment:
+      - QWEN3_TTS_MODEL=${QWEN3_TTS_MODEL:-Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice}
+      - QWEN3_TTS_PORT=${QWEN3_TTS_PORT:-8091}
+      - HF_HOME=/root/.cache/huggingface
+      - NVIDIA_DISABLE_REQUIRE=1
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${QWEN3_TTS_PORT:-8091}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+    restart: unless-stopped
+
+  parakeet-stt:
+    build:
+      context: ../qwen3-tts
+      dockerfile: Dockerfile.parakeet
+    ports:
+      - "${PARAKEET_PORT:-9002}:${PARAKEET_PORT:-9002}"
+    environment:
+      - PARAKEET_PORT=${PARAKEET_PORT:-9002}
+      - PARAKEET_MODEL=nvidia/parakeet-tdt-0.6b-v2
+      - HF_HOME=/root/.cache/huggingface
+      - NVIDIA_DISABLE_REQUIRE=1
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PARAKEET_PORT:-9002}/v1/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    restart: unless-stopped
+
+  realtime-api:
+    build: .
+    ports:
+      - "${REALTIME_API_PORT:-8080}:8080"
+    environment:
+      - TTS_URL=http://magpie-tts:${QWEN3_TTS_PORT:-8091}
+      - STT_URL=http://parakeet-stt:${PARAKEET_PORT:-9002}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://host.docker.internal:8000}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-EMPTY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-default}
+      - DEFAULT_VOICE=${DEFAULT_VOICE:-Mia.Calm}
+      - TTS_SPEED=${TTS_SPEED:-125}
+      - DEFAULT_TURN_DETECTION=${DEFAULT_TURN_DETECTION:-server_vad}
+      - DEFAULT_AEC_MODE=${DEFAULT_AEC_MODE:-none}
+      - VAD_THRESHOLD=${VAD_THRESHOLD:-0.5}
+      - VAD_SILENCE_MS=${VAD_SILENCE_MS:-600}
+      - VAD_PREFIX_PADDING_MS=${VAD_PREFIX_PADDING_MS:-300}
+    depends_on:
+      magpie-tts:
+        condition: service_healthy
+      parakeet-stt:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  hf-cache:
