@@ -2,9 +2,11 @@
 output/
 data/
 .git/
-assets/
-scripts/
 __pycache__/
 *.pyc
 *.egg-info/
 .claude/
+assets/
+scripts/
+*.log
+.finetuning_cache/

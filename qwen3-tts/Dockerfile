@@ -1,23 +1,34 @@
-FROM nvcr.io/nvidia/pytorch:25.11-py3
+FROM scitrera/dgx-spark-vllm:0.16.0-t4
 
-# Avoid interactive prompts
-ENV DEBIAN_FRONTEND=noninteractive
+# System deps (ffmpeg, sox for audio processing)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg sox \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install NeMo TTS and server dependencies
-RUN pip install --no-cache-dir \
-    "nemo_toolkit[tts] @ git+https://github.com/NVIDIA/NeMo.git" \
-    kaldialign \
-    soundfile>=0.13.1 \
-    fastapi \
-    "uvicorn[standard]"
+# Clone vllm-omni, remove fa3-fwd (not available for aarch64), install
+RUN git clone https://github.com/vllm-project/vllm-omni.git /opt/vllm-omni \
+    && cd /opt/vllm-omni \
+    && sed -i '/fa3-fwd/d' requirements/cuda.txt \
+    && pip install --no-cache-dir --no-deps -e . \
+    && pip install --no-cache-dir \
+    omegaconf resampy diffusers accelerate gradio soundfile \
+    cache-dit torchsde openai-whisper imageio sox prettytable \
+    aenum onnxruntime "imageio[ffmpeg]" librosa
 
-# Copy server code
-WORKDIR /app
-COPY src/server.py .
+WORKDIR /opt/vllm-omni
 
-EXPOSE 8000
+# Custom stage config with reduced GPU memory for DGX Spark unified memory
+COPY stage_configs/qwen3_tts.yaml /opt/vllm-omni/stage_configs/qwen3_tts.yaml
 
-HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=300s \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Default: serve CustomVoice model
+ENV QWEN3_TTS_MODEL="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+ENV QWEN3_TTS_PORT="8091"
 
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+EXPOSE ${QWEN3_TTS_PORT}
+
+CMD vllm serve "$QWEN3_TTS_MODEL" \
+    --stage-configs-path stage_configs/qwen3_tts.yaml \
+    --omni \
+    --port "$QWEN3_TTS_PORT" \
+    --trust-remote-code \
+    --enforce-eager

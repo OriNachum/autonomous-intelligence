@@ -1,13 +1,15 @@
 services:
-  magpietts:
+  qwen3-tts:
     build: .
-    container_name: magpietts
-    restart: unless-stopped
     ports:
-      - "8100:8000"
+      - "${QWEN3_TTS_PORT:-8091}:${QWEN3_TTS_PORT:-8091}"
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - HF_HOME=/cache/huggingface
+      - QWEN3_TTS_MODEL=${QWEN3_TTS_MODEL:-Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice}
+      - QWEN3_TTS_PORT=${QWEN3_TTS_PORT:-8091}
+      - HF_HOME=/root/.cache/huggingface
+      - NVIDIA_DISABLE_REQUIRE=1
+    volumes:
+      - hf-cache:/root/.cache/huggingface
     deploy:
       resources:
         reservations:
@@ -15,17 +17,43 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    volumes:
-      - hf-cache:/cache/huggingface
+    ipc: host
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${QWEN3_TTS_PORT:-8091}/health"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 3
       start_period: 300s
+    restart: unless-stopped
+
+  parakeet-asr:
+    build:
+      context: .
+      dockerfile: Dockerfile.parakeet
+    ports:
+      - "${PARAKEET_PORT:-9002}:${PARAKEET_PORT:-9002}"
+    environment:
+      - PARAKEET_PORT=${PARAKEET_PORT:-9002}
+      - PARAKEET_MODEL=nvidia/parakeet-tdt-0.6b-v2
+      - HF_HOME=/root/.cache/huggingface
+      - NVIDIA_DISABLE_REQUIRE=1
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PARAKEET_PORT:-9002}/v1/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    restart: unless-stopped
 
 volumes:
   hf-cache:
