@@ -1148,6 +1148,7 @@ class AudioPlayback {
     this.totalPlaybackDuration = 0;
     this._allChunksReceived = false;
     this._lastSourceEndTime = 0;
+    this._activeSources = [];
   }
 
   _ensureCtx() {
@@ -1189,11 +1190,21 @@ class AudioPlayback {
     this._nextTime = startTime + duration;
     this._lastSourceEndTime = startTime + duration;
     this._playing = true;
+    this._activeSources.push(source);
+    this._enqueueCount = (this._enqueueCount || 0) + 1;
+    if (this._enqueueCount <= 3 || this._enqueueCount % 10 === 0) {
+      console.log(`[AudioPlayback] enqueue #${this._enqueueCount} — ${float32.length} samples, scheduled at ${startTime.toFixed(3)}s, active sources: ${this._activeSources.length}`);
+    }
 
+    const chunkNum = this._enqueueCount;
     source.onended = () => {
+      const idx = this._activeSources.indexOf(source);
+      if (idx !== -1) this._activeSources.splice(idx, 1);
+
       if (this._allChunksReceived && this.ctx &&
           this.ctx.currentTime >= this._lastSourceEndTime - 0.05) {
         this._playing = false;
+        console.log(`[AudioPlayback] last source ended (chunk #${chunkNum}) — emitting playbackDone`);
         bus.emit('audio:playbackDone');
       }
     };
@@ -1201,15 +1212,28 @@ class AudioPlayback {
 
   markAllChunksReceived() {
     this._allChunksReceived = true;
+    console.log(`[AudioPlayback] markAllChunksReceived — active sources: ${this._activeSources.length}, total chunks: ${this._enqueueCount || 0}`);
     // If playback already finished (no audio was queued, or all buffers ended),
     // emit immediately
     if (this.ctx && this.ctx.currentTime >= this._lastSourceEndTime - 0.05) {
       this._playing = false;
+      console.log('[AudioPlayback] all chunks received and playback already done — emitting playbackDone');
       bus.emit('audio:playbackDone');
     }
   }
 
+  _stopAllSources() {
+    const count = this._activeSources.length;
+    for (const src of this._activeSources) {
+      try { src.stop(); } catch (_) { /* already stopped */ }
+    }
+    this._activeSources = [];
+    if (count > 0) console.log(`[AudioPlayback] _stopAllSources: stopped ${count} active sources`);
+  }
+
   stop() {
+    console.log(`[AudioPlayback] stop() — active sources: ${this._activeSources.length}`);
+    this._stopAllSources();
     if (this.ctx) {
       this.ctx.close();
       this.ctx = null;
@@ -1220,12 +1244,16 @@ class AudioPlayback {
     this._playing = false;
     this._allChunksReceived = false;
     this._lastSourceEndTime = 0;
+    this._enqueueCount = 0;
   }
 
   resetSchedule() {
+    console.log(`[AudioPlayback] resetSchedule() — stopping ${this._activeSources.length} sources, was at chunk #${this._enqueueCount || 0}`);
+    this._stopAllSources();
     this._nextTime = 0;
     this._allChunksReceived = false;
     this._lastSourceEndTime = 0;
+    this._enqueueCount = 0;
   }
 }
 const audioPlayback = new AudioPlayback();
@@ -1368,6 +1396,7 @@ bus.on('ws:conversation.item.input_audio_transcription.completed', (data) => {
 
 // Response events — streaming assistant transcript
 bus.on('ws:response.created', () => {
+  console.log(`[Response] response.created — resetting audio schedule`);
   isAssistantSpeaking = true;
   cancelBtn.classList.add('visible');
   micBtn.classList.remove('listening');
@@ -1411,6 +1440,7 @@ bus.on('audio:playbackDone', () => {
 });
 
 bus.on('ws:response.done', () => {
+  console.log(`[Response] response.done — active audio sources: ${audioPlayback._activeSources.length}, enqueued chunks: ${audioPlayback._enqueueCount || 0}`);
   isAssistantSpeaking = false;
   cancelBtn.classList.remove('visible');
   currentAssistantBubble = null;

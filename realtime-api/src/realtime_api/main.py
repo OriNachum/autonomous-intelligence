@@ -18,11 +18,18 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 if not STATIC_DIR.exists():
     STATIC_DIR = Path("/app/static")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-7s %(name)s  %(message)s",
-    datefmt="%H:%M:%S",
-)
+LOG_FMT = "%(asctime)s %(levelname)-7s %(name)s  %(message)s"
+LOG_DATEFMT = "%H:%M:%S"
+
+logging.basicConfig(level=logging.INFO, format=LOG_FMT, datefmt=LOG_DATEFMT)
+
+# File handler — persisted to bind-mounted /logs for host access
+_log_dir = Path("/logs")
+if _log_dir.exists():
+    _fh = logging.FileHandler(_log_dir / "realtime-api.log")
+    _fh.setFormatter(logging.Formatter(LOG_FMT, datefmt=LOG_DATEFMT))
+    logging.getLogger().addHandler(_fh)
+
 log = logging.getLogger(__name__)
 
 app = FastAPI(title="OpenAI Realtime API Bridge", version="0.1.0")

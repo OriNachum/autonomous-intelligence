@@ -14,7 +14,7 @@ from .llm_client import stream_sentences
 from .protocol import gen_content_part_id, gen_item_id, gen_response_id
 from .session import Session
 from .stt_client import transcribe
-from .tts_client import synthesize_stream
+from .tts_client import synthesize
 
 log = logging.getLogger(__name__)
 
@@ -117,11 +117,17 @@ async def _handle_audio_append(session: Session, data: dict):
     # Update VAD speaking state
     vad.is_speaking = session.is_speaking
 
+    # Pipeline guard (non-AEC): suppress VAD while pipeline is pending or running
+    # to prevent spurious speech_stopped → auto_commit → pipeline restart
+    if not _is_aec_mode(session) and _pipeline_active(session):
+        return
+
     vad_events = vad.process_chunk(pcm_bytes)
     for vad_event in vad_events:
         from .vad import VADEventType
 
         if vad_event.type == VADEventType.SPEECH_STARTED:
+            log.info("[VAD] speech_started at %dms", vad_event.audio_ms)
             await session.send(events.input_audio_buffer_speech_started(vad_event.audio_ms))
 
             # If assistant is speaking and AEC mode, start barge-in evaluation
@@ -129,6 +135,9 @@ async def _handle_audio_append(session: Session, data: dict):
                 _start_barge_in_evaluation(session, vad_event.audio_bytes)
 
         elif vad_event.type == VADEventType.SPEECH_STOPPED:
+            log.info("[VAD] speech_stopped at %dms (audio=%d bytes, is_speaking=%s, aec=%s)",
+                     vad_event.audio_ms, len(vad_event.audio_bytes),
+                     session.is_speaking, _is_aec_mode(session))
             await session.send(events.input_audio_buffer_speech_stopped(vad_event.audio_ms))
 
             if session.is_speaking and _is_aec_mode(session):
@@ -144,6 +153,15 @@ async def _handle_audio_append(session: Session, data: dict):
 def _is_aec_mode(session: Session) -> bool:
     td = session.config.turn_detection
     return td is not None and td.aec_mode == "aec"
+
+
+def _pipeline_active(session: Session) -> bool:
+    """True if a pipeline is pending (scheduled but not started) or running."""
+    if session._pipeline_pending:
+        return True
+    if session._response_task and not session._response_task.done():
+        return True
+    return False
 
 
 def _start_barge_in_evaluation(session: Session, initial_audio: bytes):
@@ -185,6 +203,16 @@ async def _handle_audio_commit(session: Session):
 
 async def _auto_commit(session: Session, vad_audio: bytes):
     """Auto-commit from VAD speech_stopped with the VAD-accumulated audio."""
+    if _pipeline_active(session):
+        log.info("[GUARD] auto_commit suppressed — pipeline pending=%s task=%s",
+                 session._pipeline_pending,
+                 "running" if session._response_task and not session._response_task.done() else "none/done")
+        return
+
+    log.info("[PIPELINE] auto_commit → starting pipeline (audio=%d bytes)", len(vad_audio))
+    # Set pending flag BEFORE creating the task to close the race window
+    session._pipeline_pending = True
+
     item_id = gen_item_id()
     await session.send(events.input_audio_buffer_committed(item_id))
     session.audio_buffer.clear()  # Clear the main buffer since we use VAD audio
@@ -216,7 +244,11 @@ async def _handle_response_create(session: Session, data: dict):
 
 
 async def _handle_response_cancel(session: Session):
+    log.info("[CANCEL] response cancel requested (task=%s, pending=%s)",
+             "running" if session._response_task and not session._response_task.done() else "none/done",
+             session._pipeline_pending)
     session.cancel_event.set()
+    session._pipeline_pending = False
     if session._response_task and not session._response_task.done():
         session._response_task.cancel()
     session.is_speaking = False
@@ -229,6 +261,7 @@ async def _run_pipeline(session: Session, pcm_data: bytes, item_id: str | None =
     """Full pipeline: transcribe audio, run LLM, stream TTS back."""
     # Cancel any existing response
     if session._response_task and not session._response_task.done():
+        log.info("[PIPELINE] cancelling existing pipeline before starting new one")
         session.cancel_event.set()
         session._response_task.cancel()
         try:
@@ -240,25 +273,32 @@ async def _run_pipeline(session: Session, pcm_data: bytes, item_id: str | None =
     item_id = item_id or gen_item_id()
 
     async def _pipeline():
-        # 1. STT: transcribe
-        transcript = await transcribe(pcm_data)
-        if not transcript:
-            log.warning("Empty transcription, skipping response")
-            return
+        try:
+            # 1. STT: transcribe
+            log.info("[PIPELINE] STT starting (audio=%d bytes)", len(pcm_data))
+            transcript = await transcribe(pcm_data)
+            if not transcript:
+                log.warning("[PIPELINE] empty transcription, skipping response")
+                return
 
-        # Emit transcription event
-        await session.send(
-            events.input_audio_transcription_completed(item_id, 0, transcript)
-        )
+            # Emit transcription event
+            await session.send(
+                events.input_audio_transcription_completed(item_id, 0, transcript)
+            )
 
-        # Add user message to conversation
-        session.conversation.add_user_message(transcript, item_id=item_id)
-        log.info("User: %s", transcript)
+            # Add user message to conversation
+            session.conversation.add_user_message(transcript, item_id=item_id)
+            log.info("[PIPELINE] STT done → User: %s", transcript)
 
-        # 2. LLM → TTS
-        await _generate_response(session)
+            # 2. LLM → TTS
+            await _generate_response(session)
+        finally:
+            session._pipeline_pending = False
 
     session._response_task = asyncio.create_task(_pipeline())
+    # Clear pending flag now that the task is created and tracked
+    # (the task itself also clears in finally, for safety on early return)
+    log.info("[PIPELINE] task created (item=%s)", item_id)
 
 
 async def _run_response_pipeline(session: Session):
@@ -321,6 +361,12 @@ async def _generate_response(session: Session):
     session.current_response_text = ""
     full_transcript = ""
     cancelled = False
+    sentence_count = 0
+    tts_chunk_count = 0
+    total_tts_bytes_raw = 0      # raw PCM16 from TTS (22050Hz)
+    total_tts_bytes_resampled = 0  # resampled PCM16 sent to client (24000Hz)
+
+    log.info("[RESPONSE] %s starting (has_audio=%s)", response_id, has_audio)
 
     try:
         messages = session.conversation.to_chat_messages(session.config.instructions)
@@ -335,8 +381,10 @@ async def _generate_response(session: Session):
                 cancelled = True
                 break
 
+            sentence_count += 1
             full_transcript += sentence + " "
             session.current_response_text = full_transcript
+            log.info("[RESPONSE] sentence #%d: %s", sentence_count, sentence[:80])
 
             # Emit transcript delta
             if has_audio:
@@ -346,24 +394,36 @@ async def _generate_response(session: Session):
                     )
                 )
 
-            # Stream TTS for this sentence
+            # Synthesize TTS for this sentence (full-read, no streaming)
             if has_audio:
-                async for tts_chunk in synthesize_stream(
+                if session.cancel_event.is_set():
+                    cancelled = True
+                    break
+
+                tts_pcm = await synthesize(
                     sentence,
                     voice=session.config.voice,
                     cancel_event=session.cancel_event,
-                ):
-                    if session.cancel_event.is_set():
-                        cancelled = True
-                        break
-                    audio_b64 = tts_pcm16_to_client_base64(tts_chunk)
-                    await session.send(
-                        events.response_audio_delta(
-                            response_id, output_item_id, 0, 0, audio_b64,
-                        )
-                    )
+                )
+                if not tts_pcm:
+                    continue
 
-                if cancelled:
+                total_tts_bytes_raw += len(tts_pcm)
+
+                # Resample full sentence audio and send in chunks
+                resampled_b64 = tts_pcm16_to_client_base64(tts_pcm)
+                total_tts_bytes_resampled += len(resampled_b64) * 3 // 4
+
+                # Send as a single delta (client AudioPlayback handles scheduling)
+                tts_chunk_count += 1
+                await session.send(
+                    events.response_audio_delta(
+                        response_id, output_item_id, 0, 0, resampled_b64,
+                    )
+                )
+
+                if session.cancel_event.is_set():
+                    cancelled = True
                     break
 
     except asyncio.CancelledError:
@@ -421,7 +481,11 @@ async def _generate_response(session: Session):
     response_obj["output"] = [output_item]
     await session.send(events.response_done(response_obj))
 
-    log.info("Response %s %s (%d chars)", response_id, status, len(full_transcript))
+    total_dur = total_tts_bytes_raw / 2 / 22050 if total_tts_bytes_raw else 0
+    log.info("[RESPONSE] %s %s — %d sentences, %d tts chunks, %d chars, "
+             "raw=%d bytes (%.2fs @22050Hz), sent=%d bytes to client",
+             response_id, status, sentence_count, tts_chunk_count, len(full_transcript),
+             total_tts_bytes_raw, total_dur, total_tts_bytes_resampled)
 
     # Reset VAD after response is done (for non-AEC echo cooldown)
     if session.vad and not _is_aec_mode(session):

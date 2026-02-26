@@ -223,6 +223,7 @@ class Session:
         self.current_response_text = ""  # accumulates assistant text for barge-in context
         self._vad: ServerVAD | None = None
         self._response_task: asyncio.Task | None = None
+        self._pipeline_pending = False  # set synchronously in auto_commit before task creation
 
     @property
     def vad(self) -> ServerVAD | None:

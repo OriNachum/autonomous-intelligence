@@ -19,6 +19,11 @@ services:
               count: all
               capabilities: [gpu]
     ipc: host
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${MAGPIE_TTS_PORT:-9000}/v1/health/ready"]
       interval: 30s
@@ -40,6 +45,11 @@ services:
       - NVIDIA_DISABLE_REQUIRE=1
     volumes:
       - hf-cache:/root/.cache/huggingface
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     deploy:
       resources:
         reservations:
@@ -60,6 +70,11 @@ services:
     image: nvcr.io/nvidia/vllm:25.12.post1-py3
     container_name: realtime-api-vllm
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     ports:
       - "${VLLM_PORT:-8000}:${VLLM_PORT:-8000}"
     environment:
@@ -108,6 +123,13 @@ services:
     build: .
     ports:
       - "${REALTIME_API_PORT:-8080}:8080"
+    volumes:
+      - ./logs:/logs
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     environment:
       - TTS_URL=http://magpie-tts:${MAGPIE_TTS_PORT:-9000}
       - STT_URL=http://parakeet-stt:${PARAKEET_PORT:-9002}
