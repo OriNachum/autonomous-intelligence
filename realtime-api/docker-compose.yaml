@@ -1,17 +1,16 @@
 services:
   magpie-tts:
-    build:
-      context: ../qwen3-tts
-      dockerfile: Dockerfile
+    image: nvcr.io/nim/nvidia/magpie-tts-multilingual:latest
+    container_name: realtime-api-magpie-tts
     ports:
-      - "${QWEN3_TTS_PORT:-8091}:${QWEN3_TTS_PORT:-8091}"
+      - "${MAGPIE_TTS_PORT:-9000}:${MAGPIE_TTS_PORT:-9000}"
     environment:
-      - QWEN3_TTS_MODEL=${QWEN3_TTS_MODEL:-Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice}
-      - QWEN3_TTS_PORT=${QWEN3_TTS_PORT:-8091}
-      - HF_HOME=/root/.cache/huggingface
+      - NGC_API_KEY=${NGC_API_KEY}
+      - NIM_HTTP_API_PORT=${MAGPIE_TTS_PORT:-9000}
+      - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DISABLE_REQUIRE=1
     volumes:
-      - hf-cache:/root/.cache/huggingface
+      - nim-cache:/opt/nim/.cache
     deploy:
       resources:
         reservations:
@@ -21,10 +20,10 @@ services:
               capabilities: [gpu]
     ipc: host
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${QWEN3_TTS_PORT:-8091}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${MAGPIE_TTS_PORT:-9000}/v1/health/ready"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
       start_period: 300s
     restart: unless-stopped
 
@@ -50,23 +49,71 @@ services:
               capabilities: [gpu]
     ipc: host
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${PARAKEET_PORT:-9002}/v1/health/ready"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${PARAKEET_PORT:-9002}/v1/health/ready')"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 600s
     restart: unless-stopped
+
+  vllm-llm:
+    image: nvcr.io/nvidia/vllm:25.12.post1-py3
+    container_name: realtime-api-vllm
+    restart: unless-stopped
+    ports:
+      - "${VLLM_PORT:-8000}:${VLLM_PORT:-8000}"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HOME=/root/.cache/huggingface
+      - NVIDIA_DISABLE_REQUIRE=1
+      - VLLM_USE_FLASHINFER_MOE_FP8=1
+      - VLLM_ATTENTION_BACKEND=FLASHINFER
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    command: >
+      sh -c "
+      hf auth login --token ${HF_TOKEN} &&
+      hf download ${VLLM_MODEL:-nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8} --cache-dir /root/.cache/huggingface &&
+      vllm serve ${VLLM_MODEL:-nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8}
+      --gpu-memory-utilization ${VLLM_GPU_MEMORY:-0.60}
+      --max-num-seqs ${VLLM_MAX_NUM_SEQS:-8}
+      --tensor-parallel-size 1
+      --max-model-len ${VLLM_MAX_MODEL_LEN:-131072}
+      --enable-chunked-prefill
+      --kv-cache-dtype fp8
+      --enable-prefix-caching
+      --trust-remote-code
+      --enable-auto-tool-choice
+      --tool-call-parser ${VLLM_TOOL_CALL_PARSER:-qwen3_coder}
+      --port ${VLLM_PORT:-8000}
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${VLLM_PORT:-8000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 600s
 
   realtime-api:
     build: .
     ports:
       - "${REALTIME_API_PORT:-8080}:8080"
     environment:
-      - TTS_URL=http://magpie-tts:${QWEN3_TTS_PORT:-8091}
+      - TTS_URL=http://magpie-tts:${MAGPIE_TTS_PORT:-9000}
       - STT_URL=http://parakeet-stt:${PARAKEET_PORT:-9002}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://host.docker.internal:8000}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://vllm-llm:${VLLM_PORT:-8000}}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-EMPTY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-default}
+      - OPENAI_MODEL=${OPENAI_MODEL:-nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8}
       - DEFAULT_VOICE=${DEFAULT_VOICE:-Mia.Calm}
       - TTS_SPEED=${TTS_SPEED:-125}
       - DEFAULT_TURN_DETECTION=${DEFAULT_TURN_DETECTION:-server_vad}
@@ -79,7 +126,10 @@ services:
         condition: service_healthy
       parakeet-stt:
         condition: service_healthy
+      vllm-llm:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   hf-cache:
+  nim-cache:

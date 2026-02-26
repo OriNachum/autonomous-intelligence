@@ -37,6 +37,7 @@ async def stream_chat_completion(
         "messages": messages,
         "stream": True,
         "temperature": temperature,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
@@ -125,6 +126,7 @@ async def quick_decision(
         "max_tokens": 1,
         "temperature": 0,
         "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
 
     headers = {}
