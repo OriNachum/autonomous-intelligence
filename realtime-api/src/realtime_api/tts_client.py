@@ -51,6 +51,74 @@ def _clean_for_tts(text: str) -> str:
     return text
 
 
+# ---------------------------------------------------------------------------
+# Punctuation-aware pause helpers
+# ---------------------------------------------------------------------------
+
+def _insert_ssml_breaks(text: str) -> str:
+    """Insert SSML <break> tags at internal punctuation points.
+
+    Call on xml_escape'd text — the break tags are injected *after* escaping
+    so they remain valid SSML elements inside <speak>/<prosody>.
+    """
+    # Ellipsis (three dots or unicode) — must come before comma/period patterns
+    text = re.sub(r"\.\.\.\s+", '... <break time="400ms"/> ', text)
+    text = re.sub(r"\u2026\s*", '\u2026 <break time="400ms"/> ', text)
+
+    # Em dash — (U+2014), optionally surrounded by spaces
+    text = re.sub(r"\s*\u2014\s*", ' <break time="250ms"/> ', text)
+
+    # En dash – (U+2013), optionally surrounded by spaces
+    text = re.sub(r"\s*\u2013\s*", ' <break time="150ms"/> ', text)
+
+    # Space-hyphen-space (used as a dash)
+    text = text.replace(" - ", ' - <break time="100ms"/> ')
+
+    # Comma followed by whitespace
+    text = re.sub(r",\s+", ', <break time="150ms"/> ', text)
+
+    # Semicolon followed by whitespace
+    text = re.sub(r";\s+", '; <break time="250ms"/> ', text)
+
+    # Colon followed by whitespace
+    text = re.sub(r":\s+", ': <break time="200ms"/> ', text)
+
+    return text
+
+
+def trailing_pause_ms(original_text: str) -> int:
+    """Return inter-sentence silence duration (ms) based on ending punctuation.
+
+    Examines the *original* sentence text (before TTS cleaning) so that
+    trailing emoji and raw punctuation are still visible.
+    """
+    s = original_text.rstrip()
+    if not s:
+        return 200
+
+    # Check multi-char patterns first (longest match wins)
+    if re.search(r"!{3,}$", s):
+        return 400
+    if s.endswith("?!") or s.endswith("!?"):
+        return 350
+    if s.endswith("!!"):
+        return 350
+    if s.endswith("...") or s.endswith("\u2026"):
+        return 400
+    if s.endswith("."):
+        return 350
+    if s.endswith("?"):
+        return 350
+    if s.endswith("!"):
+        return 300
+
+    # Trailing emoji
+    if _EMOJI_RE.search(s[-2:]):
+        return 250
+
+    return 200
+
+
 async def synthesize(
     text: str,
     voice: str | None = None,
@@ -79,7 +147,9 @@ async def synthesize(
     # Wrap in SSML prosody if speed != 100; xml_escape prevents broken markup
     tts_text = clean
     if spd != 100:
-        tts_text = f'<speak><prosody rate="{spd}%">{xml_escape(clean)}</prosody></speak>'
+        escaped = xml_escape(clean)
+        escaped = _insert_ssml_breaks(escaped)
+        tts_text = f'<speak><prosody rate="{spd}%">{escaped}</prosody></speak>'
 
     try:
         client = _get_client()

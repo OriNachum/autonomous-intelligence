@@ -11,10 +11,10 @@ from . import events
 from .audio import decode_audio_appendix, tts_pcm16_to_client_base64
 from .barge_in import BargeInEvaluator
 from .llm_client import stream_sentences
-from .protocol import gen_content_part_id, gen_item_id, gen_response_id
+from .protocol import TTS_SAMPLE_RATE, gen_content_part_id, gen_item_id, gen_response_id
 from .session import Session
 from .stt_client import transcribe
-from .tts_client import synthesize
+from .tts_client import synthesize, trailing_pause_ms
 
 log = logging.getLogger(__name__)
 
@@ -407,6 +407,14 @@ async def _generate_response(session: Session):
                 )
                 if not tts_pcm:
                     continue
+
+                # Append inter-sentence silence based on trailing punctuation
+                pause_ms = trailing_pause_ms(sentence)
+                if pause_ms > 0:
+                    silence_samples = int(TTS_SAMPLE_RATE * pause_ms / 1000)
+                    tts_pcm += b'\x00' * (silence_samples * 2)
+                    log.debug("[RESPONSE] appended %dms silence for: %s",
+                              pause_ms, sentence[-20:])
 
                 total_tts_bytes_raw += len(tts_pcm)
 
