@@ -13,8 +13,17 @@ from .config import settings
 
 log = logging.getLogger(__name__)
 
-# Sentence boundary regex — split on .!? followed by whitespace or end
-SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+# Sentence boundary: .!? + whitespace + uppercase letter (proper new sentence).
+# Avoids splitting before emoji, lowercase continuations, or parenthetical asides
+# like "speaking!) or …".
+_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
+
+# Fallback: any .!? + whitespace — used when the buffer grows too long without
+# a strict-match split, so we don't starve TTS of input.
+_SENTENCE_RE_LOOSE = re.compile(r"(?<=[.!?])\s+")
+
+# If the buffer exceeds this length without a strict split, switch to _LOOSE.
+_MAX_BUFFER_BEFORE_LOOSE = 200
 
 
 async def stream_chat_completion(
@@ -85,14 +94,25 @@ async def stream_sentences(
 ) -> AsyncIterator[str]:
     """Stream chat completion and yield complete sentences.
 
-    Buffers text deltas and splits on sentence boundaries (.!? followed by whitespace).
+    Splits on .!? followed by whitespace **and** an uppercase letter, so emoji
+    continuations (``Hey! 😄 What's up?``) and parenthetical asides
+    (``speaking!) or …``) stay in one chunk.  Falls back to a looser split
+    when the buffer exceeds _MAX_BUFFER_BEFORE_LOOSE characters.
     """
     buffer = ""
     async for delta in stream_chat_completion(messages, model=model, temperature=temperature):
         if cancel_event and cancel_event.is_set():
             break
         buffer += delta
-        parts = SENTENCE_RE.split(buffer)
+
+        # Strict regex keeps emoji/parenthetical continuations together;
+        # fall back to loose split when the buffer gets very long.
+        regex = (
+            _SENTENCE_RE_LOOSE
+            if len(buffer) > _MAX_BUFFER_BEFORE_LOOSE
+            else _SENTENCE_RE
+        )
+        parts = regex.split(buffer)
         for sentence in parts[:-1]:
             sentence = sentence.strip()
             if sentence:

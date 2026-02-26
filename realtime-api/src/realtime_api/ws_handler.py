@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -365,6 +366,8 @@ async def _generate_response(session: Session):
     tts_chunk_count = 0
     total_tts_bytes_raw = 0      # raw PCM16 from TTS (22050Hz)
     total_tts_bytes_resampled = 0  # resampled PCM16 sent to client (24000Hz)
+    first_audio_send_t: float | None = None
+    last_audio_send_t: float | None = None
 
     log.info("[RESPONSE] %s starting (has_audio=%s)", response_id, has_audio)
 
@@ -424,6 +427,10 @@ async def _generate_response(session: Session):
 
                 # Send as a single delta (client AudioPlayback handles scheduling)
                 tts_chunk_count += 1
+                now = time.monotonic()
+                if first_audio_send_t is None:
+                    first_audio_send_t = now
+                last_audio_send_t = now
                 await session.send(
                     events.response_audio_delta(
                         response_id, output_item_id, 0, 0, resampled_b64,
@@ -440,6 +447,32 @@ async def _generate_response(session: Session):
         log.error("Response generation error: %s", e, exc_info=True)
         await session.send(events.error_event(str(e)))
         cancelled = True
+
+    # --- Post-response echo cooldown (non-AEC only) ---
+    if (
+        has_audio
+        and total_tts_bytes_raw > 0
+        and not cancelled
+        and session.vad is not None
+        and not _is_aec_mode(session)
+    ):
+        total_audio_s = total_tts_bytes_raw / 2 / TTS_SAMPLE_RATE
+        send_span_s = (
+            (last_audio_send_t - first_audio_send_t)
+            if first_audio_send_t is not None and last_audio_send_t is not None
+            else 0.0
+        )
+        remaining_s = max(0.0, total_audio_s - send_span_s)
+        cooldown_s = remaining_s + 0.8
+
+        log.info("[ECHO_COOLDOWN] audio=%.2fs, send_span=%.2fs, cooldown=%.2fs",
+                 total_audio_s, send_span_s, cooldown_s)
+        try:
+            await asyncio.wait_for(session.cancel_event.wait(), timeout=cooldown_s)
+            log.info("[ECHO_COOLDOWN] interrupted by cancel_event")
+            cancelled = True
+        except asyncio.TimeoutError:
+            log.info("[ECHO_COOLDOWN] cooldown complete")
 
     # Finalize
     session.is_speaking = False
