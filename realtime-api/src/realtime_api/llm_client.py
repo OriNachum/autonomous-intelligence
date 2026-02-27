@@ -15,7 +15,11 @@ log = logging.getLogger(__name__)
 
 # Fallback regex: any .!? + whitespace — used when the buffer grows very long
 # without a proper sentence break so we don't starve TTS of input.
-_SENTENCE_RE_LOOSE = re.compile(r"(?<=[.!?])\s+")
+_SENTENCE_RE_LOOSE = re.compile(
+    r"(?<=[.!?])\s+"       # split after .!? + whitespace
+    r"|\s*[—–]\s+"         # em-dash / en-dash (required trailing whitespace)
+    r"|\s+-\s+"            # ASCII hyphen (required spaces both sides)
+)
 
 # Switch to the loose regex when the buffer exceeds this many characters.
 _MAX_BUFFER_BEFORE_LOOSE = 200

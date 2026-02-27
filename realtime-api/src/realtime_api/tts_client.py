@@ -32,6 +32,48 @@ _EMOJI_RE = re.compile(
 # Markdown-style formatting
 _MARKDOWN_RE = re.compile(r"[*_~`#]")
 
+# Max chars of *cleaned* text per TTS request.
+# After SSML wrapping (~46 chars) + break tags (~23 chars per comma), 800 chars
+# worst-case ≈ 800 + 20×23 + 46 = 1306 SSML chars — well under Magpie's 2000 limit.
+_MAX_CLEAN_CHARS = 800
+
+
+def _split_for_tts(text: str, max_chars: int = _MAX_CLEAN_CHARS) -> list[str]:
+    """Split *text* into chunks of at most *max_chars* characters.
+
+    Tries to break at the last ``", "`` before the limit, then last ``" "``,
+    and hard-cuts only as a last resort.  Returns a single-element list when
+    the text already fits.
+    """
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks: list[str] = []
+    remaining = text
+    while len(remaining) > max_chars:
+        window = remaining[:max_chars]
+        # Prefer splitting at last ", " (natural pause)
+        idx = window.rfind(", ")
+        if idx > 0:
+            cut = idx + 2  # keep the comma+space with the left chunk
+        else:
+            # Fall back to last space
+            idx = window.rfind(" ")
+            if idx > 0:
+                cut = idx + 1
+            else:
+                # Hard cut — no good break point
+                cut = max_chars
+        chunk = remaining[:cut].strip()
+        if chunk:
+            chunks.append(chunk)
+        remaining = remaining[cut:].strip()
+
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
 # Module-level client — reused across requests for connection pooling
 _client: httpx.AsyncClient | None = None
 
@@ -43,6 +85,16 @@ def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None or _client.is_closed:
         _client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, read=60.0))
+    return _client
+
+
+def _reset_client() -> httpx.AsyncClient:
+    """Close the existing client and create a fresh one (stale-connection recovery)."""
+    global _client
+    if _client is not None and not _client.is_closed:
+        # fire-and-forget close; we create a new one immediately
+        asyncio.get_event_loop().create_task(_client.aclose())
+    _client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, read=60.0))
     return _client
 
 
@@ -142,6 +194,94 @@ def trailing_pause_ms(original_text: str) -> int:
     return 200
 
 
+async def _synthesize_single(
+    clean: str,
+    url: str,
+    voice: str,
+    speed: int,
+    cancel_event: asyncio.Event | None = None,
+    _retry: bool = False,
+) -> bytes:
+    """Synthesize a single chunk of cleaned text via Magpie TTS.
+
+    Handles SSML wrapping, HTTP POST, and logging.  Acquires the concurrency
+    semaphore independently so other sessions can interleave between chunks.
+
+    On truncated responses (stale HTTP connection), retries once with a fresh
+    httpx client.
+
+    Returns raw PCM16 bytes at 22050 Hz (empty on error).
+    """
+    if cancel_event and cancel_event.is_set():
+        return b""
+
+    # Wrap in SSML prosody if speed != 100; xml_escape prevents broken markup
+    tts_text = clean
+    ssml = False
+    if speed != 100:
+        escaped = xml_escape(clean)
+        escaped = _insert_ssml_breaks(escaped)
+        tts_text = f'<speak><prosody rate="{speed}%">{escaped}</prosody></speak>'
+        ssml = True
+
+    tag = "[TTS-RETRY]" if _retry else "[TTS]"
+    log.info("%s request: %d chars (ssml=%s, payload=%d chars) | %s",
+             tag, len(clean), ssml, len(tts_text), clean[:120])
+    log.debug("%s full payload: %s", tag, tts_text[:300])
+
+    sem = _get_semaphore()
+    pcm_data = b""
+    need_retry = False
+
+    async with sem:
+        try:
+            client = _get_client()
+            t0 = time.monotonic()
+            resp = await client.post(
+                url,
+                data={
+                    "text": tts_text,
+                    "language": "en-US",
+                    "voice": voice,
+                    "encoding": "LINEAR_PCM",
+                    "sample_rate_hz": str(TTS_SAMPLE_RATE),
+                },
+            )
+            elapsed = time.monotonic() - t0
+            if resp.status_code != 200:
+                log.error("%s HTTP %d after %.2fs for: %s", tag, resp.status_code, elapsed, clean[:80])
+                return b""
+
+            pcm_data = resp.content
+            duration = len(pcm_data) / 2 / TTS_SAMPLE_RATE
+            log.info("%s result: %d bytes (%.2fs audio) in %.2fs | %s",
+                     tag, len(pcm_data), duration, elapsed, clean[:120])
+
+            # Detect truncated audio from stale connection — flag for retry
+            if len(clean) > 10 and duration < 0.3 and not _retry:
+                log.warning("%s TRUNCATED: %d chars → %.3fs audio, will retry with fresh connection | %s",
+                            tag, len(clean), duration, clean[:80])
+                need_retry = True
+
+            if len(clean) > 10 and duration < 0.3 and _retry:
+                log.warning("%s STILL TRUNCATED after retry: %d chars → %.3fs audio | full: %s",
+                            tag, len(clean), duration, clean)
+
+        except httpx.ConnectError:
+            log.error("%s cannot connect to %s", tag, url)
+            return b""
+        except Exception as e:
+            log.error("%s error: %s", tag, e)
+            return b""
+
+    # Retry OUTSIDE the semaphore to avoid deadlock
+    if need_retry:
+        _reset_client()
+        return await _synthesize_single(clean, url, voice, speed, cancel_event, _retry=True)
+
+    return pcm_data
+
+
 async def synthesize(
     text: str,
     voice: str | None = None,
@@ -151,8 +291,9 @@ async def synthesize(
 ) -> bytes:
     """Synthesize text via Magpie TTS, returning complete PCM16 audio at 22050Hz.
 
-    Reads the full TTS response before returning to avoid truncation from
-    event-loop contention during async streaming.
+    Long text is automatically split into chunks that stay under Magpie's
+    2000-char SSML limit.  For the common case (text < 800 chars after
+    cleaning) this returns a single request with no overhead.
 
     Returns:
         Raw PCM16 bytes at 22050Hz (empty bytes if nothing to synthesize).
@@ -167,56 +308,18 @@ async def synthesize(
         log.debug("[TTS] skipping empty text after cleanup (original: %s)", text[:40])
         return b""
 
-    # Wrap in SSML prosody if speed != 100; xml_escape prevents broken markup
-    tts_text = clean
-    ssml = False
-    if spd != 100:
-        escaped = xml_escape(clean)
-        escaped = _insert_ssml_breaks(escaped)
-        tts_text = f'<speak><prosody rate="{spd}%">{escaped}</prosody></speak>'
-        ssml = True
+    # Split into chunks that fit Magpie's payload limit
+    chunks = _split_for_tts(clean)
+    if len(chunks) > 1:
+        log.warning("[TTS] text too long (%d chars), split into %d chunks",
+                    len(clean), len(chunks))
 
-    log.info("[TTS] request: %d chars (ssml=%s, payload=%d chars) | %s",
-             len(clean), ssml, len(tts_text), clean[:120])
-    log.debug("[TTS] full payload: %s", tts_text[:300])
-
-    sem = _get_semaphore()
-    async with sem:
-        try:
-            client = _get_client()
-            t0 = time.monotonic()
-            resp = await client.post(
-                url,
-                data={
-                    "text": tts_text,
-                    "language": "en-US",
-                    "voice": full_voice,
-                    "encoding": "LINEAR_PCM",
-                    "sample_rate_hz": str(TTS_SAMPLE_RATE),
-                },
-            )
-            elapsed = time.monotonic() - t0
-            if resp.status_code != 200:
-                log.error("[TTS] HTTP %d after %.2fs for: %s", resp.status_code, elapsed, clean[:80])
-                return b""
-
-            pcm_data = resp.content
-            duration = len(pcm_data) / 2 / TTS_SAMPLE_RATE
-            log.info("[TTS] result: %d bytes (%.2fs audio) in %.2fs | %s",
-                     len(pcm_data), duration, elapsed, clean[:120])
-
-            # Warn on suspiciously short audio for non-trivial input
-            if len(clean) > 10 and duration < 0.3:
-                log.warning("[TTS] TRUNCATED? %d chars → %.3fs audio (expected ~%.1fs) | full: %s",
-                            len(clean), duration, len(clean) / 14.0, clean)
-            return pcm_data
-
-        except httpx.ConnectError:
-            log.error("[TTS] cannot connect to %s", tts_url or settings.tts_url)
-            return b""
-        except Exception as e:
-            log.error("[TTS] error: %s", e)
-            return b""
+    pcm_parts: list[bytes] = []
+    for chunk in chunks:
+        pcm = await _synthesize_single(chunk, url, full_voice, spd, cancel_event)
+        if pcm:
+            pcm_parts.append(pcm)
+    return b"".join(pcm_parts)
 
 
 # Keep backward-compat alias for any callers using the streaming API

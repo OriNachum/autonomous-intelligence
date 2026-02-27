@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from realtime_api.audio import resample_pcm16
 from realtime_api.llm_client import _split_buffer
 from realtime_api.stt_client import transcribe
-from realtime_api.tts_client import synthesize
+from realtime_api.tts_client import synthesize, _split_for_tts, _MAX_CLEAN_CHARS
 
 TTS_URL = os.environ.get("TTS_URL", "http://localhost:9000")
 STT_URL = os.environ.get("STT_URL", "http://localhost:9002")
@@ -134,10 +134,98 @@ async def test_sentence_mode():
     return all_pcm, stt_text
 
 
+def test_dash_splitting():
+    """Pure-logic test: em-dash-heavy text > 200 chars is split in loose mode."""
+    print("\n=== Test: Dash splitting (pure logic, no network) ===")
+
+    # Build a long string joined by em-dashes — no .!? boundaries
+    segments = [
+        "The system processes incoming data streams efficiently",
+        "transforms them through multiple neural network layers",
+        "applies attention mechanisms across all token positions",
+        "and finally produces coherent output sequences",
+        "which are then validated against quality thresholds",
+    ]
+    text = " \u2014 ".join(segments)
+    assert len(text) > 200, f"Test text too short: {len(text)} chars"
+
+    parts, remainder = _split_buffer(text, loose=True)
+    all_parts = parts + ([remainder] if remainder.strip() else [])
+
+    print(f"  Input length: {len(text)} chars")
+    print(f"  Split into {len(all_parts)} part(s):")
+    for i, p in enumerate(all_parts):
+        print(f"    [{i+1}] ({len(p)} chars) {p[:70]}{'...' if len(p) > 70 else ''}")
+
+    assert len(all_parts) >= 2, (
+        f"Expected >= 2 parts from dash splitting, got {len(all_parts)}"
+    )
+    for p in all_parts:
+        assert len(p) <= _MAX_CLEAN_CHARS, (
+            f"Part exceeds {_MAX_CLEAN_CHARS} chars: {len(p)}"
+        )
+    print("  PASS: dash splitting works correctly")
+
+
+def test_tts_chunking():
+    """Pure-logic test: 1200-char comma-heavy text is chunked by _split_for_tts."""
+    print("\n=== Test: TTS chunking (pure logic, no network) ===")
+
+    # Build a ~1200-char string with only commas — no sentence-ending punct
+    phrases = [
+        "the rapid advancement of neural architectures",
+        "combined with ever growing datasets",
+        "has led to remarkable improvements in language understanding",
+        "enabling models to generate coherent text",
+        "translate between languages with high fidelity",
+        "summarize lengthy documents accurately",
+        "answer complex questions from context",
+        "write creative fiction and poetry",
+        "assist with programming tasks",
+        "analyze sentiment in social media posts",
+        "extract structured information from unstructured text",
+        "perform logical reasoning across multiple steps",
+        "handle ambiguous queries with contextual awareness",
+        "adapt to user preferences through interaction",
+        "maintain consistent persona across conversations",
+        "support multiple languages and dialects",
+        "process multimodal inputs including images",
+        "generate detailed explanations of complex topics",
+        "produce human quality translations in real time",
+        "and continue to push the boundaries of what is possible",
+    ]
+    text = ", ".join(phrases)
+    assert len(text) > 1000, f"Test text too short: {len(text)} chars"
+
+    chunks = _split_for_tts(text)
+    print(f"  Input length: {len(text)} chars")
+    print(f"  Split into {len(chunks)} chunk(s):")
+    for i, c in enumerate(chunks):
+        print(f"    [{i+1}] ({len(c)} chars) {c[:70]}{'...' if len(c) > 70 else ''}")
+
+    assert len(chunks) >= 2, (
+        f"Expected >= 2 chunks for {len(text)}-char input, got {len(chunks)}"
+    )
+    for c in chunks:
+        assert len(c) <= _MAX_CLEAN_CHARS, (
+            f"Chunk exceeds {_MAX_CLEAN_CHARS} chars: {len(c)}"
+        )
+    # All text should be preserved (no data loss)
+    rejoined = ", ".join(c.strip(",").strip() for c in chunks)
+    # Just verify total char count is close (splitting may consume/add minor whitespace)
+    assert abs(len(rejoined) - len(text)) < len(chunks) * 5, "Chunks lost too much text"
+    print("  PASS: TTS chunking works correctly")
+
+
 async def main():
     print(f"TTS_URL: {TTS_URL}")
     print(f"STT_URL: {STT_URL}")
 
+    # Pure-logic tests first (no network required)
+    test_dash_splitting()
+    test_tts_chunking()
+
+    # Integration tests (require TTS + STT services)
     whole_pcm, stt_whole = await test_whole_mode()
     sentence_pcm, stt_sentences = await test_sentence_mode()
 
