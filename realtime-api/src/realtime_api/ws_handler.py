@@ -434,48 +434,96 @@ async def _generate_response(session: Session):
                         )
 
         else:
-            # ── Sentence-by-sentence mode: TTS each sentence as it arrives ──
-            async for sentence in stream_sentences(
-                messages,
-                temperature=session.config.temperature,
-                cancel_event=session.cancel_event,
-            ):
-                if session.cancel_event.is_set():
-                    cancelled = True
-                    break
+            # ── Sentence-by-sentence: pipelined LLM → TTS ──
+            # Producer drains the LLM stream into a queue while the
+            # consumer synthesises and sends audio concurrently.  This
+            # keeps the LLM connection alive during long TTS calls and
+            # lets later sentences queue up while earlier ones play.
+            _MIN_TTS_CHARS = 20
+            sentence_queue: asyncio.Queue[str | None] = asyncio.Queue()
 
-                sentence_count += 1
-                full_transcript += sentence + " "
-                session.current_response_text = full_transcript
-                log.info("[RESPONSE] sentence #%d: %s", sentence_count, sentence[:80])
+            async def _llm_producer():
+                nonlocal full_transcript, sentence_count, cancelled
+                try:
+                    async for sentence in stream_sentences(
+                        messages,
+                        temperature=session.config.temperature,
+                        cancel_event=session.cancel_event,
+                    ):
+                        if session.cancel_event.is_set():
+                            cancelled = True
+                            break
+                        sentence_count += 1
+                        full_transcript += sentence + " "
+                        session.current_response_text = full_transcript
+                        log.info("[RESPONSE] sentence #%d: %s", sentence_count, sentence[:80])
 
-                if has_audio:
-                    await session.send(
-                        events.response_audio_transcript_delta(
-                            response_id, output_item_id, 0, 1, sentence + " ",
-                        )
-                    )
+                        if has_audio:
+                            await session.send(
+                                events.response_audio_transcript_delta(
+                                    response_id, output_item_id, 0, 1, sentence + " ",
+                                )
+                            )
+                        await sentence_queue.put(sentence)
+                        log.debug("[RESPONSE] producer queued #%d (%d chars, qsize=%d)",
+                                  sentence_count, len(sentence), sentence_queue.qsize())
+                finally:
+                    await sentence_queue.put(None)  # sentinel
+                    log.info("[RESPONSE] producer done — %d sentences queued", sentence_count)
 
-                if has_audio:
+            async def _tts_consumer():
+                nonlocal tts_chunk_count, total_tts_bytes_raw, total_tts_bytes_resampled
+                nonlocal first_audio_send_t, last_audio_send_t, cancelled
+                tts_buffer = ""
+
+                consumer_idx = 0
+                while True:
+                    sentence = await sentence_queue.get()
+                    if sentence is None:
+                        log.info("[RESPONSE] consumer: sentinel received, done")
+                        break
                     if session.cancel_event.is_set():
+                        log.info("[RESPONSE] consumer: cancelled, discarding queued sentences")
                         cancelled = True
                         break
+                    if not has_audio:
+                        continue
 
+                    consumer_idx += 1
+                    tts_buffer = (tts_buffer + " " + sentence).strip() if tts_buffer else sentence
+
+                    # Keep buffering until we have enough text for a good TTS call
+                    if len(tts_buffer) < _MIN_TTS_CHARS:
+                        log.debug("[RESPONSE] buffering short sentence (%d chars): %s",
+                                  len(tts_buffer), tts_buffer[:60])
+                        continue
+
+                    log.info("[RESPONSE] consumer: TTS chunk #%d (%d chars, qsize=%d): %s",
+                             consumer_idx, len(tts_buffer), sentence_queue.qsize(),
+                             tts_buffer[:80])
                     tts_pcm = await synthesize(
-                        sentence,
+                        tts_buffer,
                         voice=session.config.voice,
                         cancel_event=session.cancel_event,
                     )
+                    tts_text_for_pause = tts_buffer
+                    tts_buffer = ""
                     if not tts_pcm:
+                        log.warning("[RESPONSE] consumer: TTS returned EMPTY for chunk #%d: %s",
+                                    consumer_idx, tts_text_for_pause[:80])
                         continue
 
+                    audio_dur = len(tts_pcm) / 2 / TTS_SAMPLE_RATE
+                    log.info("[RESPONSE] consumer: chunk #%d → %d bytes (%.2fs audio): %s",
+                             consumer_idx, len(tts_pcm), audio_dur, tts_text_for_pause[:80])
+
                     # Append inter-sentence silence based on trailing punctuation
-                    pause_ms = trailing_pause_ms(sentence)
+                    pause_ms = trailing_pause_ms(tts_text_for_pause)
                     if pause_ms > 0:
                         silence_samples = int(TTS_SAMPLE_RATE * pause_ms / 1000)
                         tts_pcm += b'\x00' * (silence_samples * 2)
                         log.debug("[RESPONSE] appended %dms silence for: %s",
-                                  pause_ms, sentence[-20:])
+                                  pause_ms, tts_text_for_pause[-20:])
 
                     total_tts_bytes_raw += len(tts_pcm)
 
@@ -500,6 +548,48 @@ async def _generate_response(session: Session):
                     if session.cancel_event.is_set():
                         cancelled = True
                         break
+
+                # Flush remaining buffered text
+                if tts_buffer and has_audio and not cancelled:
+                    log.info("[RESPONSE] flushing TTS buffer (%d chars): %s",
+                             len(tts_buffer), tts_buffer[:80])
+                    tts_pcm = await synthesize(
+                        tts_buffer,
+                        voice=session.config.voice,
+                        cancel_event=session.cancel_event,
+                    )
+                    if tts_pcm:
+                        pause_ms = trailing_pause_ms(tts_buffer)
+                        if pause_ms > 0:
+                            silence_samples = int(TTS_SAMPLE_RATE * pause_ms / 1000)
+                            tts_pcm += b'\x00' * (silence_samples * 2)
+                        total_tts_bytes_raw += len(tts_pcm)
+                        resampled = resample_pcm16(tts_pcm, TTS_SAMPLE_RATE, CLIENT_SAMPLE_RATE)
+                        total_tts_bytes_resampled += len(resampled)
+                        chunk_bytes = CLIENT_SAMPLE_RATE // 10 * 2
+                        for offset in range(0, len(resampled), chunk_bytes):
+                            chunk = resampled[offset:offset + chunk_bytes]
+                            chunk_b64 = base64.b64encode(chunk).decode("ascii")
+                            tts_chunk_count += 1
+                            now = time.monotonic()
+                            if first_audio_send_t is None:
+                                first_audio_send_t = now
+                            last_audio_send_t = now
+                            await session.send(
+                                events.response_audio_delta(
+                                    response_id, output_item_id, 0, 0, chunk_b64,
+                                )
+                            )
+
+            # Run LLM producer and TTS consumer concurrently
+            producer = asyncio.create_task(_llm_producer())
+            consumer = asyncio.create_task(_tts_consumer())
+            try:
+                await asyncio.gather(producer, consumer)
+            finally:
+                for task in (producer, consumer):
+                    if not task.done():
+                        task.cancel()
 
     except asyncio.CancelledError:
         cancelled = True

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # TTS defaults
     default_voice: str = "Mia.Calm"
     tts_speed: int = 125
+    tts_concurrency: int = 1  # max parallel TTS requests (1 = serial)
 
     # VAD settings
     vad_threshold: float = 0.5

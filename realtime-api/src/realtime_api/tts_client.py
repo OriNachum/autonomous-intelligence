@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from xml.sax.saxutils import escape as xml_escape
 
 import httpx
@@ -34,12 +35,23 @@ _MARKDOWN_RE = re.compile(r"[*_~`#]")
 # Module-level client — reused across requests for connection pooling
 _client: httpx.AsyncClient | None = None
 
+# Concurrency gate — limits parallel TTS requests across all sessions
+_tts_semaphore: asyncio.Semaphore | None = None
+
 
 def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None or _client.is_closed:
         _client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, read=60.0))
     return _client
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _tts_semaphore
+    if _tts_semaphore is None:
+        _tts_semaphore = asyncio.Semaphore(settings.tts_concurrency)
+        log.info("[TTS] concurrency gate: max %d parallel requests", settings.tts_concurrency)
+    return _tts_semaphore
 
 
 def _clean_for_tts(text: str) -> str:
@@ -49,6 +61,9 @@ def _clean_for_tts(text: str) -> str:
     # Em-dash / en-dash → comma (natural pause; raw dashes confuse TTS)
     text = text.replace("\u2014", ", ")
     text = text.replace("\u2013", ", ")
+    # Curly single quotes / apostrophes → ASCII apostrophe (preserves contractions)
+    text = text.replace("\u2018", "'")
+    text = text.replace("\u2019", "'")
     # Strip double-quotes (TTS doesn't need to voice them)
     text = re.sub(r'["\u201c\u201d]', "", text)
     # Remove markdown list markers at line start:  - item  /  1. item
@@ -154,38 +169,54 @@ async def synthesize(
 
     # Wrap in SSML prosody if speed != 100; xml_escape prevents broken markup
     tts_text = clean
+    ssml = False
     if spd != 100:
         escaped = xml_escape(clean)
         escaped = _insert_ssml_breaks(escaped)
         tts_text = f'<speak><prosody rate="{spd}%">{escaped}</prosody></speak>'
+        ssml = True
 
-    try:
-        client = _get_client()
-        resp = await client.post(
-            url,
-            data={
-                "text": tts_text,
-                "language": "en-US",
-                "voice": full_voice,
-                "encoding": "LINEAR_PCM",
-                "sample_rate_hz": str(TTS_SAMPLE_RATE),
-            },
-        )
-        if resp.status_code != 200:
-            log.error("[TTS] error %d for text: %s", resp.status_code, clean[:60])
+    log.info("[TTS] request: %d chars (ssml=%s, payload=%d chars) | %s",
+             len(clean), ssml, len(tts_text), clean[:120])
+    log.debug("[TTS] full payload: %s", tts_text[:300])
+
+    sem = _get_semaphore()
+    async with sem:
+        try:
+            client = _get_client()
+            t0 = time.monotonic()
+            resp = await client.post(
+                url,
+                data={
+                    "text": tts_text,
+                    "language": "en-US",
+                    "voice": full_voice,
+                    "encoding": "LINEAR_PCM",
+                    "sample_rate_hz": str(TTS_SAMPLE_RATE),
+                },
+            )
+            elapsed = time.monotonic() - t0
+            if resp.status_code != 200:
+                log.error("[TTS] HTTP %d after %.2fs for: %s", resp.status_code, elapsed, clean[:80])
+                return b""
+
+            pcm_data = resp.content
+            duration = len(pcm_data) / 2 / TTS_SAMPLE_RATE
+            log.info("[TTS] result: %d bytes (%.2fs audio) in %.2fs | %s",
+                     len(pcm_data), duration, elapsed, clean[:120])
+
+            # Warn on suspiciously short audio for non-trivial input
+            if len(clean) > 10 and duration < 0.3:
+                log.warning("[TTS] TRUNCATED? %d chars → %.3fs audio (expected ~%.1fs) | full: %s",
+                            len(clean), duration, len(clean) / 14.0, clean)
+            return pcm_data
+
+        except httpx.ConnectError:
+            log.error("[TTS] cannot connect to %s", tts_url or settings.tts_url)
             return b""
-
-        pcm_data = resp.content
-        duration = len(pcm_data) / 2 / TTS_SAMPLE_RATE
-        log.info("[TTS] synthesized %d bytes (%.2fs) for: %s", len(pcm_data), duration, clean[:60])
-        return pcm_data
-
-    except httpx.ConnectError:
-        log.error("[TTS] cannot connect to %s", tts_url or settings.tts_url)
-        return b""
-    except Exception as e:
-        log.error("[TTS] error: %s", e)
-        return b""
+        except Exception as e:
+            log.error("[TTS] error: %s", e)
+            return b""
 
 
 # Keep backward-compat alias for any callers using the streaming API

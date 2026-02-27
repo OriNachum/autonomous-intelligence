@@ -1145,7 +1145,7 @@ class AudioCapture {
 }
 const audioCapture = new AudioCapture();
 
-// ─── Audio Playback Queue (base64 PCM16 → chunk queue → gapless pull-based output) ───
+// ─── Audio Playback (base64 PCM16 → AudioBufferSourceNode scheduling → gapless output) ───
 class AudioPlayback {
   constructor() {
     this.ctx = null;
@@ -1153,13 +1153,11 @@ class AudioPlayback {
     this.analyser = null;
     this._playing = false;
     this._allChunksReceived = false;
-    this._queue = [];            // Float32Array chunks waiting to play
-    this._currentChunk = null;   // chunk currently being drained
-    this._chunkOffset = 0;       // read position within current chunk
+    this._nextPlayTime = 0;       // when the next chunk should start (ctx.currentTime)
+    this._lastSource = null;      // last scheduled AudioBufferSourceNode (for onended)
+    this._enqueueCount = 0;
     this._queuedSamples = 0;
     this._playedSamples = 0;
-    this._processor = null;
-    this._enqueueCount = 0;
     this.totalBytesReceived = 0;
     this.totalPlaybackDuration = 0;
   }
@@ -1172,55 +1170,14 @@ class AudioPlayback {
       this.analyser.fftSize = 256;
       this.gainNode.connect(this.analyser);
       this.analyser.connect(this.ctx.destination);
-
-      // Pull-based processor: reads from the chunk queue every ~85ms
-      this._processor = this.ctx.createScriptProcessor(2048, 0, 1);
-      this._processor.onaudioprocess = (e) => this._fill(e);
-      this._processor.connect(this.gainNode);
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
-  }
-
-  _fill(e) {
-    const out = e.outputBuffer.getChannelData(0);
-    let pos = 0;
-
-    while (pos < out.length) {
-      // Advance to next chunk if current is exhausted
-      if (!this._currentChunk || this._chunkOffset >= this._currentChunk.length) {
-        if (this._queue.length > 0) {
-          this._currentChunk = this._queue.shift();
-          this._chunkOffset = 0;
-        } else {
-          // Queue empty — fill remainder with silence
-          out.fill(0, pos);
-          break;
-        }
-      }
-
-      // Copy samples from current chunk into output
-      const avail = this._currentChunk.length - this._chunkOffset;
-      const need = out.length - pos;
-      const n = Math.min(avail, need);
-      out.set(this._currentChunk.subarray(this._chunkOffset, this._chunkOffset + n), pos);
-      this._chunkOffset += n;
-      pos += n;
-      this._playedSamples += n;
-    }
-
-    // Detect playback complete
-    if (this._playing && this._allChunksReceived &&
-        this._queue.length === 0 &&
-        (!this._currentChunk || this._chunkOffset >= this._currentChunk.length)) {
-      this._playing = false;
-      console.log(`[AudioPlayback] done — ${this._playedSamples}/${this._queuedSamples} samples`);
-      bus.emit('audio:playbackDone');
-    }
   }
 
   enqueue(b64) {
     this._ensureCtx();
 
+    // Decode base64 → Int16 → Float32
     const binary = atob(b64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -1230,14 +1187,36 @@ class AudioPlayback {
     const float32 = new Float32Array(int16.length);
     for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 0x8000;
 
-    this._queue.push(float32);
+    // Create AudioBuffer and source node
+    const buffer = this.ctx.createBuffer(1, float32.length, SAMPLE_RATE);
+    buffer.copyToChannel(float32, 0);
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.gainNode);
+
+    // Schedule: play right after previously scheduled audio
+    const startTime = Math.max(this.ctx.currentTime, this._nextPlayTime);
+    source.start(startTime);
+    this._nextPlayTime = startTime + float32.length / SAMPLE_RATE;
+
     this._queuedSamples += float32.length;
     this.totalPlaybackDuration += float32.length / SAMPLE_RATE;
     this._playing = true;
     this._enqueueCount++;
+    this._lastSource = source;
+
+    // Attach onended to detect final chunk completion
+    source.onended = () => {
+      this._playedSamples += float32.length;
+      if (this._allChunksReceived && source === this._lastSource) {
+        this._playing = false;
+        console.log(`[AudioPlayback] done — ${this._playedSamples}/${this._queuedSamples} samples`);
+        bus.emit('audio:playbackDone');
+      }
+    };
 
     if (this._enqueueCount <= 3 || this._enqueueCount % 10 === 0) {
-      console.log(`[AudioPlayback] enqueue #${this._enqueueCount} — ${float32.length} samples, queue: ${this._queue.length}, total: ${this._queuedSamples}`);
+      console.log(`[AudioPlayback] enqueue #${this._enqueueCount} — ${float32.length} samples, startAt: ${startTime.toFixed(3)}, total: ${this._queuedSamples}`);
     }
   }
 
@@ -1248,37 +1227,28 @@ class AudioPlayback {
       this._playing = false;
       bus.emit('audio:playbackDone');
     }
+    // If last source already ended, playbackDone was already emitted in onended
   }
 
   stop() {
     console.log('[AudioPlayback] stop()');
-    if (this._processor) {
-      this._processor.disconnect();
-      this._processor = null;
-    }
     if (this.ctx) {
       this.ctx.close();
       this.ctx = null;
       this.gainNode = null;
       this.analyser = null;
     }
-    this._queue = [];
-    this._currentChunk = null;
-    this._chunkOffset = 0;
-    this._playing = false;
-    this._allChunksReceived = false;
-    this._queuedSamples = 0;
-    this._playedSamples = 0;
-    this._enqueueCount = 0;
-    this.totalBytesReceived = 0;
-    this.totalPlaybackDuration = 0;
+    this._resetCounters();
   }
 
   resetSchedule() {
     console.log(`[AudioPlayback] resetSchedule() — was at chunk #${this._enqueueCount || 0}`);
-    this._queue = [];
-    this._currentChunk = null;
-    this._chunkOffset = 0;
+    this._nextPlayTime = 0;
+    this._lastSource = null;
+    this._resetCounters();
+  }
+
+  _resetCounters() {
     this._allChunksReceived = false;
     this._queuedSamples = 0;
     this._playedSamples = 0;
@@ -1434,7 +1404,6 @@ bus.on('ws:response.created', () => {
   micBtn.classList.add('speaking');
   currentAssistantBubble = addVoiceBubble('assistant', '');
   audioPlayback.resetSchedule();
-  audioPlayback._ensureCtx();  // pre-warm so ScriptProcessor is pumping before chunks arrive
   // Half-duplex gate: mute mic during playback when AEC is off
   if (settingAEC.value === 'none' && micActive) {
     audioCapture.muted = true;

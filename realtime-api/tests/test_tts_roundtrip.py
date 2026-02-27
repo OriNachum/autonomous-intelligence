@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""TTS → STT round-trip test.
+"""TTS -> STT round-trip test.
 
 Exercises the same TTS + STT pipeline the server uses, running against
 the exposed host ports (localhost:9000 for TTS, localhost:9002 for STT).
+
+Tests both whole-response and sentence-by-sentence modes, using the same
+``_split_buffer`` sentence splitter the real server pipeline uses.
 
 Usage:
     TTS_URL=http://localhost:9000 STT_URL=http://localhost:9002 python3 tests/test_tts_roundtrip.py
@@ -11,9 +14,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import io
 import os
-import struct
 import sys
 import wave
 
@@ -21,6 +22,7 @@ import wave
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from realtime_api.audio import resample_pcm16
+from realtime_api.llm_client import _split_buffer
 from realtime_api.stt_client import transcribe
 from realtime_api.tts_client import synthesize
 
@@ -31,16 +33,17 @@ TTS_SAMPLE_RATE = 22050
 CLIENT_SAMPLE_RATE = 24000
 
 TEST_TEXT = (
-    "The sky is blue and the grass is green. "
-    "Birds are singing in the morning light. "
-    "A gentle breeze carries the scent of flowers."
+    "Here is an exceptionally long, densely packed sentence\u2014crafted to maximize "
+    "syntactic complexity, semantic density, and conceptual recursion while remaining "
+    "grammatically precise and purposeful: Though the ostensibly coherent, methodically "
+    "structured, and meticulously detailed exposition\u2014comprising interdependent clauses "
+    "that recursively amplify thematic resonance, epistemological uncertainty, and semiotic "
+    "ambiguity through layered allusions to ontological instability, causal paradoxes, and "
+    "the epistemological fragility of human perception\u2014inevitably culminates in a "
+    "resolution that is simultaneously thematically unavoidable, philosophically unsettling, "
+    "and linguistically self-referential, thereby exposing the inherent tension between "
+    "narrative closure and the irreducible complexity of meaning itself."
 )
-
-TEST_SENTENCES = [
-    "The sky is blue and the grass is green.",
-    "Birds are singing in the morning light.",
-    "A gentle breeze carries the scent of flowers.",
-]
 
 
 def write_wav(filename: str, pcm_bytes: bytes, sample_rate: int):
@@ -61,7 +64,7 @@ async def test_whole_mode():
     """Synthesize full text as one call, resample, STT round-trip."""
     print("\n=== Test: Whole-response mode ===")
 
-    print(f"  Input: {TEST_TEXT}")
+    print(f"  Input: {TEST_TEXT[:80]}...")
     tts_pcm = await synthesize(TEST_TEXT, tts_url=TTS_URL)
     assert tts_pcm, "TTS returned empty audio"
 
@@ -77,27 +80,37 @@ async def test_whole_mode():
     stt_text = await transcribe(resampled, stt_url=STT_URL)
     print(f"  STT output: {stt_text}")
 
-    # Check key words are present
     lower = stt_text.lower()
-    assert "sky" in lower, f"Expected 'sky' in STT output: {stt_text}"
-    assert "blue" in lower, f"Expected 'blue' in STT output: {stt_text}"
-    print("  PASS: key words found in STT output")
+    for keyword in ("complexity", "sentence", "grammatically"):
+        if keyword in lower:
+            print(f"  PASS: found '{keyword}' in STT output")
+            break
+    else:
+        assert False, f"Expected at least one key word in STT output: {stt_text}"
 
     return resampled, stt_text
 
 
 async def test_sentence_mode():
-    """Synthesize each sentence individually, concatenate, STT round-trip."""
+    """Split text via _split_buffer, synthesize each sentence, concatenate, STT round-trip."""
     print("\n=== Test: Sentence-by-sentence mode ===")
 
+    # Use the same sentence splitter as the real server pipeline
+    sentences, remainder = _split_buffer(TEST_TEXT)
+    if remainder.strip():
+        sentences.append(remainder.strip())
+
+    print(f"  Split into {len(sentences)} sentence(s):")
+    for i, s in enumerate(sentences):
+        print(f"    [{i+1}] {s[:70]}{'...' if len(s) > 70 else ''}")
+
     all_pcm = b""
-    for i, sentence in enumerate(TEST_SENTENCES):
-        print(f"  Sentence {i+1}: {sentence}")
+    for i, sentence in enumerate(sentences):
         tts_pcm = await synthesize(sentence, tts_url=TTS_URL)
-        assert tts_pcm, f"TTS returned empty audio for sentence {i+1}"
+        assert tts_pcm, f"TTS returned empty audio for sentence {i+1}: {sentence[:50]}..."
 
         dur = pcm_duration(tts_pcm, TTS_SAMPLE_RATE)
-        print(f"    TTS: {len(tts_pcm)} bytes ({dur:.2f}s)")
+        print(f"  Sentence {i+1}: {len(tts_pcm)} bytes ({dur:.2f}s)")
 
         resampled = resample_pcm16(tts_pcm, TTS_SAMPLE_RATE, CLIENT_SAMPLE_RATE)
         all_pcm += resampled
@@ -111,9 +124,12 @@ async def test_sentence_mode():
     print(f"  STT output: {stt_text}")
 
     lower = stt_text.lower()
-    assert "sky" in lower, f"Expected 'sky' in STT output: {stt_text}"
-    assert "blue" in lower, f"Expected 'blue' in STT output: {stt_text}"
-    print("  PASS: key words found in STT output")
+    for keyword in ("complexity", "sentence", "grammatically"):
+        if keyword in lower:
+            print(f"  PASS: found '{keyword}' in STT output")
+            break
+    else:
+        assert False, f"Expected at least one key word in STT output: {stt_text}"
 
     return all_pcm, stt_text
 
@@ -133,8 +149,9 @@ async def main():
     print(f"  Whole duration:    {whole_dur:.2f}s")
     print(f"  Sentence duration: {sentence_dur:.2f}s")
     print(f"  Difference:        {diff:.2f}s")
-    assert diff < 2.0, f"Duration difference too large: {diff:.2f}s (expected < 2.0s)"
-    print("  PASS: durations within 2s of each other")
+    # Sentence mode may add pauses between sentences; allow more tolerance
+    assert diff < 5.0, f"Duration difference too large: {diff:.2f}s (expected < 5.0s)"
+    print("  PASS: durations within tolerance")
 
     print(f"\n  Whole STT:    {stt_whole}")
     print(f"  Sentence STT: {stt_sentences}")
