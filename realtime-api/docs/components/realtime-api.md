@@ -65,6 +65,7 @@ Send a `session.update` event to configure the session:
 | `temperature` | float | `0.8` | LLM sampling temperature |
 | `input_audio_format` | string | `pcm16` | Client → server audio format |
 | `output_audio_format` | string | `pcm16` | Server → client audio format |
+| `tts_mode` | string | `"whole"` | TTS strategy: `"whole"` (single TTS call for full response) or `"sentence"` (pipelined per-sentence TTS) |
 | `turn_detection` | object\|null | `{type: "server_vad", ...}` | VAD config, or `null` for manual mode |
 
 ---
@@ -163,8 +164,8 @@ Client                              Server
 ```
 Audio In ──> VAD ──> STT (Parakeet) ──> LLM (vLLM) ──> TTS (Magpie) ──> Audio Out
   24kHz       16kHz     16kHz WAV         text            22050Hz          24kHz
-  PCM16      Silero                    streaming        streaming         PCM16
-                                       sentences        PCM chunks        base64
+  PCM16      Silero                    streaming     batch (full response)  PCM16
+                                       sentences        resampled         base64
 ```
 
 1. **Audio In**: Client sends base64-encoded PCM16 at 24 kHz via `input_audio_buffer.append`
@@ -273,5 +274,6 @@ Without AEC (`aec_mode: "none"`), all audio during playback is discarded to prev
 | `DEFAULT_TURN_DETECTION` | `server_vad` | `server_vad` or disable VAD |
 | `DEFAULT_AEC_MODE` | `none` | `none` or `aec` |
 | `VAD_THRESHOLD` | `0.5` | Speech detection threshold |
+| `TTS_CONCURRENCY` | `1` | Max parallel TTS requests (1 = serial) |
 | `VAD_SILENCE_MS` | `600` | Silence to end turn (ms) |
 | `VAD_PREFIX_PADDING_MS` | `300` | Audio to keep before speech (ms) |

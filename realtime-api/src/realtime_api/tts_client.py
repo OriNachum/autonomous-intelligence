@@ -15,6 +15,8 @@ from .protocol import TTS_SAMPLE_RATE, VOICE_PREFIX, resolve_voice
 
 log = logging.getLogger(__name__)
 
+_req_counter = 0  # monotonic request ID for log correlation
+
 # Regex to strip emoji (Supplementary Multilingual Plane + common emoji ranges)
 _EMOJI_RE = re.compile(
     "[\U0001F600-\U0001F64F"  # emoticons
@@ -92,7 +94,7 @@ def _reset_client() -> httpx.AsyncClient:
     """Close the existing client and create a fresh one (stale-connection recovery)."""
     global _client
     if _client is not None and not _client.is_closed:
-        # fire-and-forget close; we create a new one immediately
+        log.info("[TTS] resetting HTTP client (stale connection recovery)")
         asyncio.get_event_loop().create_task(_client.aclose())
     _client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, read=60.0))
     return _client
@@ -200,18 +202,20 @@ async def _synthesize_single(
     voice: str,
     speed: int,
     cancel_event: asyncio.Event | None = None,
-    _retry: bool = False,
 ) -> bytes:
     """Synthesize a single chunk of cleaned text via Magpie TTS.
 
-    Handles SSML wrapping, HTTP POST, and logging.  Acquires the concurrency
-    semaphore independently so other sessions can interleave between chunks.
-
-    On truncated responses (stale HTTP connection), retries once with a fresh
-    httpx client.
+    Handles SSML wrapping, HTTP POST, and retry logic.  The retry loop runs
+    INSIDE the semaphore so that ``_reset_client()`` cannot race with other
+    requests that share the same ``httpx.AsyncClient``.
 
     Returns raw PCM16 bytes at 22050 Hz (empty on error).
     """
+    global _req_counter
+    _req_counter += 1
+    req_id = _req_counter
+    tag = f"[TTS req={req_id}]"
+
     if cancel_event and cancel_event.is_set():
         return b""
 
@@ -224,70 +228,93 @@ async def _synthesize_single(
         tts_text = f'<speak><prosody rate="{speed}%">{escaped}</prosody></speak>'
         ssml = True
 
-    tag = "[TTS-RETRY]" if _retry else "[TTS]"
     log.info("%s request: %d chars (ssml=%s, payload=%d chars) | %s",
              tag, len(clean), ssml, len(tts_text), clean[:120])
     log.debug("%s full payload: %s", tag, tts_text[:300])
 
     sem = _get_semaphore()
-    pcm_data = b""
-    need_retry = False
+    t_wait = time.monotonic()
 
     async with sem:
-        try:
-            client = _get_client()
-            t0 = time.monotonic()
-            resp = await client.post(
-                url,
-                data={
-                    "text": tts_text,
-                    "language": "en-US",
-                    "voice": voice,
-                    "encoding": "LINEAR_PCM",
-                    "sample_rate_hz": str(TTS_SAMPLE_RATE),
-                },
-            )
-            elapsed = time.monotonic() - t0
-            if resp.status_code != 200:
-                log.error("%s HTTP %d after %.2fs for: %s", tag, resp.status_code, elapsed, clean[:80])
-                return b""
+        sem_waited = time.monotonic() - t_wait
+        if sem_waited > 0.01:
+            log.info("%s semaphore acquired after %.3fs wait", tag, sem_waited)
 
-            pcm_data = resp.content
-            duration = len(pcm_data) / 2 / TTS_SAMPLE_RATE
-            log.info("%s result: %d bytes (%.2fs audio) in %.2fs | %s",
-                     tag, len(pcm_data), duration, elapsed, clean[:120])
+        for attempt in range(2):  # at most 1 retry
+            try:
+                client = _get_client()
+                t0 = time.monotonic()
+                resp = await client.post(
+                    url,
+                    data={
+                        "text": tts_text,
+                        "language": "en-US",
+                        "voice": voice,
+                        "encoding": "LINEAR_PCM",
+                        "sample_rate_hz": str(TTS_SAMPLE_RATE),
+                    },
+                )
+                elapsed = time.monotonic() - t0
 
-            # Detect truncated audio — ratio-based: expect at least 15ms per char
-            # (normal speech at 125% ≈ 60-80ms/char; 15ms is very conservative)
-            min_expected = max(0.5, len(clean) * 0.015)
-            if len(clean) > 10 and duration < min_expected and not _retry:
-                log.warning("%s TRUNCATED: %d chars → %.3fs audio (expected ≥%.2fs), "
-                            "will retry with fresh connection | %s",
+                if resp.status_code != 200:
+                    hdrs = {k: v for k, v in resp.headers.items()
+                            if k.lower() in ("content-type", "content-length")}
+                    log.error("%s HTTP %d after %.2fs | headers=%s | %s",
+                              tag, resp.status_code, elapsed, hdrs, clean[:80])
+                    return b""
+
+                pcm_data = resp.content
+                if not pcm_data:
+                    log.error("%s EMPTY response body (0 bytes) after %.2fs | %s",
+                              tag, elapsed, clean[:80])
+                    if attempt == 0:
+                        log.info("%s resetting client for retry", tag)
+                        _reset_client()
+                        continue
+                    return b""
+
+                duration = len(pcm_data) / 2 / TTS_SAMPLE_RATE
+                log.info("%s result: %d bytes (%.2fs audio) in %.2fs | %s",
+                         tag, len(pcm_data), duration, elapsed, clean[:120])
+
+                # Detect truncated audio — ratio-based: expect at least 15ms per char
+                # (normal speech at 125% ≈ 60-80ms/char; 15ms is very conservative)
+                min_expected = max(0.5, len(clean) * 0.015)
+                if len(clean) > 10 and duration < min_expected:
+                    if attempt == 0:
+                        log.warning(
+                            "%s TRUNCATED: %d chars → %.3fs (expected ≥%.2fs), retrying | %s",
                             tag, len(clean), duration, min_expected, clean[:80])
-                need_retry = True
-
-            if len(clean) > 10 and duration < min_expected and _retry:
-                log.warning("%s STILL TRUNCATED after retry: %d chars → %.3fs audio "
-                            "(expected ≥%.2fs) | full: %s",
+                        _reset_client()
+                        continue  # retry within same semaphore hold
+                    else:
+                        log.warning(
+                            "%s STILL TRUNCATED after retry: %d chars → %.3fs "
+                            "(expected ≥%.2fs) | %s",
                             tag, len(clean), duration, min_expected, clean)
 
-        except httpx.ConnectError:
-            log.error("%s cannot connect to %s", tag, url)
-            return b""
-        except httpx.ReadTimeout:
-            log.error("%s read timeout after %.0fs for: %s", tag,
-                      time.monotonic() - t0, clean[:80])
-            return b""
-        except Exception as e:
-            log.error("%s error (%s): %s", tag, type(e).__name__, e)
-            return b""
+                return pcm_data
 
-    # Retry OUTSIDE the semaphore to avoid deadlock
-    if need_retry:
-        _reset_client()
-        return await _synthesize_single(clean, url, voice, speed, cancel_event, _retry=True)
+            except httpx.ConnectError:
+                log.error("%s connect error to %s (attempt %d)",
+                          tag, url, attempt + 1)
+                if attempt == 0:
+                    _reset_client()
+                    continue
+                return b""
+            except httpx.ReadTimeout:
+                log.error("%s read timeout after %.0fs (attempt %d) | %s",
+                          tag, time.monotonic() - t0, attempt + 1, clean[:80])
+                if attempt == 0:
+                    _reset_client()
+                    continue
+                return b""
+            except Exception as e:
+                log.error("%s error (%s, attempt %d): %s",
+                          tag, type(e).__name__, attempt + 1, e)
+                return b""
 
-    return pcm_data
+        return b""  # should not reach here
 
 
 async def synthesize(
@@ -323,7 +350,9 @@ async def synthesize(
                     len(clean), len(chunks))
 
     pcm_parts: list[bytes] = []
-    for chunk in chunks:
+    for i, chunk in enumerate(chunks):
+        if len(chunks) > 1:
+            log.info("[TTS] chunk %d/%d (%d chars)", i + 1, len(chunks), len(chunk))
         pcm = await _synthesize_single(chunk, url, full_voice, spd, cancel_event)
         if pcm:
             pcm_parts.append(pcm)

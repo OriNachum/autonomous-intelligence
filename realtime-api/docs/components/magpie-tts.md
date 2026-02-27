@@ -7,8 +7,8 @@ NVIDIA NIM-based multilingual text-to-speech service.
 | Image | `nvcr.io/nim/nvidia/magpie-tts-multilingual:latest` |
 | Port | `9000` |
 | Health endpoint | `GET /v1/health/ready` |
-| Streaming endpoint | `POST /v1/audio/synthesize_online` |
-| Batch endpoint | `POST /v1/audio/synthesize` |
+| Streaming endpoint | `POST /v1/audio/synthesize_online` (not used by bridge) |
+| Batch endpoint | `POST /v1/audio/synthesize` (used by bridge) |
 | Output format | PCM16 Linear at configurable sample rate |
 
 ---
@@ -51,7 +51,7 @@ You can also pass Magpie voice names directly (e.g., `Leo.Fearful`).
 
 ### Streaming: `POST /v1/audio/synthesize_online`
 
-Returns audio as a chunked stream — ideal for real-time playback. The bridge uses this endpoint.
+Returns audio as a chunked stream. **Not used by the bridge** — this endpoint hangs under concurrent requests.
 
 **Request:** `multipart/form-data`
 
@@ -67,11 +67,11 @@ Returns audio as a chunked stream — ideal for real-time playback. The bridge u
 
 ### Batch: `POST /v1/audio/synthesize`
 
-Returns complete audio in one response — simpler for scripts and testing.
+Returns complete audio in one response. **The bridge uses this endpoint.**
 
 **Request:** Same fields as streaming endpoint.
 
-**Response:** Complete WAV audio file.
+**Response:** Raw PCM16 audio when `encoding=LINEAR_PCM` (not WAV). Complete audio bytes are read, resampled, and chunked into 100 ms frames for WebSocket delivery.
 
 ---
 
@@ -159,23 +159,23 @@ Speed values:
 
 ## CLI Tool
 
-The `speak.py` script provides a quick way to test TTS from the command line:
+The `speak.sh` script provides a zero-dependency way to test TTS from the command line (requires only `curl` and `aplay`):
 
 ```bash
 # Basic usage
-uv run scripts/speak.py --message "Hello world"
+./scripts/speak.sh "Hello world"
 
 # With voice selection
-uv run scripts/speak.py --message "Great news!" --voice Mia.Happy
+./scripts/speak.sh -v Mia.Happy "Great news!"
 
 # With speed control
-uv run scripts/speak.py --message "Slow down" --voice Aria --speed 80
+./scripts/speak.sh -v Aria -s 80 "Slow down"
 
 # Custom server URL
-uv run scripts/speak.py --message "Hi" --server-url http://192.168.1.100:9000
+./scripts/speak.sh -u http://192.168.1.100:9000 "Hi"
 ```
 
-The CLI uses the batch endpoint (`/v1/audio/synthesize`) and plays audio via `aplay`.
+The CLI uses the batch endpoint (`/v1/audio/synthesize`) and plays audio via `aplay`. Set `MAGPIE_TTS_URL` to override the default server URL (`http://localhost:9000`).
 
 ---
 

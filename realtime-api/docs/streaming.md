@@ -26,7 +26,7 @@ Client (WebSocket)
 │  LLM streaming ──→ sentence buffer       │
 │       │                                  │
 │       ▼ (per sentence)                   │
-│  Magpie TTS streaming (22050Hz PCM16)    │
+│  Magpie TTS batch (22050Hz PCM16)         │
 │       │                                  │
 │       ▼                                  │
 │  Resample 22050→24kHz ──→ base64         │
@@ -91,7 +91,7 @@ data: {"choices":[{"delta":{"content":" how"}}]}
 data: [DONE]
 ```
 
-Text deltas are accumulated and split into sentences at `.!?` boundaries using the regex `(?<=[.!?])\s+`.
+Text deltas are accumulated and split into sentences at `.!?` boundaries using the regex `(?<=[.!?])\s+`. In loose mode (buffer > 200 chars), the splitter also breaks at em-dash `—`, en-dash `–`, and spaced hyphen ` - `.
 
 ### 4. Sentence-Level TTS Pipelining
 
@@ -102,10 +102,15 @@ async for sentence in stream_sentences(messages, cancel_event=cancel_event):
     # Emit transcript delta immediately
     await session.send(response_audio_transcript_delta(..., sentence))
 
-    # Stream TTS for this sentence
-    async for tts_chunk in synthesize_stream(sentence, ...):
-        audio_b64 = tts_pcm16_to_client_base64(tts_chunk)
-        await session.send(response_audio_delta(..., audio_b64))
+    # Batch TTS for this sentence — returns full PCM bytes
+    tts_pcm = await synthesize(sentence, voice=..., cancel_event=cancel_event)
+    resampled = resample_pcm16(tts_pcm, TTS_SAMPLE_RATE, CLIENT_SAMPLE_RATE)
+
+    # Chunk into 100ms base64 frames
+    chunk_bytes = CLIENT_SAMPLE_RATE // 10 * 2  # 4800 bytes per 100ms
+    for offset in range(0, len(resampled), chunk_bytes):
+        chunk_b64 = base64.b64encode(resampled[offset:offset + chunk_bytes]).decode()
+        await session.send(response_audio_delta(..., chunk_b64))
 ```
 
 This means:
@@ -113,22 +118,21 @@ This means:
 - Subsequent sentences overlap with LLM generation
 - The user hears audio while the LLM is still generating later sentences
 
-### 5. TTS Audio Streaming
+### 5. TTS Audio Delivery
 
-Magpie TTS streams PCM16 chunks in real-time via HTTP chunked transfer:
+The bridge calls the Magpie TTS **batch** endpoint and reads the full response body:
 
 ```python
-async with client.stream("POST", url, data={...}) as resp:
-    async for chunk in resp.aiter_bytes(4096):
-        yield chunk  # Raw PCM16 at 22050Hz
+resp = await client.post(url, data={...})
+pcm_data = resp.content  # complete PCM16 at 22050Hz
 ```
 
-Each 4KB chunk (~93ms of audio at 22050Hz) is:
-1. Resampled from 22050Hz to 24000Hz
-2. Base64-encoded
-3. Sent as a `response.audio.delta` WebSocket event
+The full PCM bytes are then:
+1. Resampled from 22050 Hz to 24000 Hz
+2. Sliced into 100 ms frames (4800 bytes each)
+3. Base64-encoded and sent as `response.audio.delta` WebSocket events
 
-The vLLM-Omni pipeline uses codec streaming with 25-frame chunks, so audio starts flowing before the full sentence is synthesized at the TTS level too.
+Text longer than 800 characters is split into chunks at natural break points (`, ` then ` `). Each chunk is synthesized separately. A truncation detector retries with a fresh HTTP connection if the audio duration is suspiciously short relative to the text length.
 
 ### 6. WebSocket Output Streaming
 
@@ -177,9 +181,13 @@ async for delta in stream_chat_completion(...):
     if cancel_event and cancel_event.is_set():
         break
 
-# TTS streaming
-async for chunk in resp.aiter_bytes(4096):
-    if cancel_event and cancel_event.is_set():
+# TTS synthesis (checked before each batch call in _synthesize_single)
+if cancel_event and cancel_event.is_set():
+    return b""
+
+# Audio chunk sending (checked between 100ms frame sends)
+for offset in range(0, len(resampled), chunk_bytes):
+    if session.cancel_event.is_set():
         break
 
 # Sentence iteration
@@ -211,7 +219,7 @@ Both streams are synchronized at the sentence level — a transcript delta is em
 
 The system handles backpressure through:
 - **asyncio.Queue** — The send queue buffers events if the WebSocket is temporarily slow
-- **HTTP streaming** — httpx's `aiter_bytes` applies natural backpressure on the TTS stream
+- **TTS concurrency gate** — A semaphore limits parallel TTS requests (default 1), preventing overload
 - **VAD residual buffer** — Unprocessed audio bytes carry over to the next chunk
 
 There is no explicit flow control protocol — the assumption is that WebSocket bandwidth (base64 PCM16 at 24kHz = ~96KB/s raw, ~128KB/s base64) is well within typical network capacity.

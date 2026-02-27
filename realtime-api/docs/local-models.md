@@ -62,14 +62,14 @@ When `tts_speed != 100`, text is wrapped in SSML prosody:
 
 Default speed is 125% (slightly faster than normal speech).
 
-### Streaming API
+### TTS API
 
-The TTS service exposes `POST /v1/audio/synthesize_online` for streaming synthesis:
+The bridge uses the **batch** endpoint `POST /v1/audio/synthesize`:
 - Input: text, language, voice name, encoding format, sample rate
-- Output: Chunked raw PCM16 at 22,050 Hz
+- Output: Complete raw PCM16 at 22,050 Hz (when `encoding=LINEAR_PCM`)
 - The bridge resamples to 24,000 Hz before sending to the client
 
-Non-streaming endpoint `POST /v1/audio/synthesize` also available but not used by the bridge.
+A streaming endpoint `POST /v1/audio/synthesize_online` also exists but is **not recommended** — it hangs under concurrent requests.
 
 ## Parakeet STT (NeMo ASR)
 
