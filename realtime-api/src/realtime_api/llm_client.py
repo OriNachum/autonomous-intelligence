@@ -13,17 +13,118 @@ from .config import settings
 
 log = logging.getLogger(__name__)
 
-# Sentence boundary: .!? + whitespace + uppercase letter (proper new sentence).
-# Avoids splitting before emoji, lowercase continuations, or parenthetical asides
-# like "speaking!) or …".
-_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
-
-# Fallback: any .!? + whitespace — used when the buffer grows too long without
-# a strict-match split, so we don't starve TTS of input.
+# Fallback regex: any .!? + whitespace — used when the buffer grows very long
+# without a proper sentence break so we don't starve TTS of input.
 _SENTENCE_RE_LOOSE = re.compile(r"(?<=[.!?])\s+")
 
-# If the buffer exceeds this length without a strict split, switch to _LOOSE.
+# Switch to the loose regex when the buffer exceeds this many characters.
 _MAX_BUFFER_BEFORE_LOOSE = 200
+
+
+# ---------------------------------------------------------------------------
+# Quote / parenthesis-aware sentence splitter
+# ---------------------------------------------------------------------------
+
+_MARKDOWN_CHARS = frozenset("*_~`#")
+
+
+def _find_sentence_breaks(text: str) -> list[int]:
+    """Return character indices where new sentences start.
+
+    A break is placed after terminal punctuation (``.!?``) — or a closing
+    quote / paren that immediately follows terminal punctuation — when:
+
+    1. We are not inside quotation marks or parentheses, **and**
+    2. the next non-whitespace character (ignoring markdown formatting like
+       ``**``) is an uppercase letter.
+
+    This avoids splitting inside quoted speech (``"Hey! What's up?"``) and
+    parenthetical asides (``(well, speaking!) or …``), while still detecting
+    boundaries through markdown (``chests!** I'm`` or ``thought!\\n**Did``).
+    """
+    breaks: list[int] = []
+    paren_depth = 0
+    quote_open = False
+
+    for i, ch in enumerate(text):
+        # --- track nesting depth ---
+        if ch == "\u201c":            # left "
+            quote_open = True
+        elif ch == "\u201d":          # right "
+            quote_open = False
+        elif ch == '"':               # ASCII — toggle
+            quote_open = not quote_open
+
+        if ch == "(":
+            paren_depth += 1
+        elif ch == ")":
+            paren_depth = max(0, paren_depth - 1)
+
+        # While nested inside quotes or parens, no boundary is possible.
+        if paren_depth > 0 or quote_open:
+            continue
+
+        # --- detect sentence-ending position ---
+        is_terminal = ch in ".!?"
+
+        # A closing quote/paren right after terminal punct also ends the
+        # sentence:  ."  !)  ?")  etc.
+        if not is_terminal and ch in '"\u201d)':
+            k = i - 1
+            while k >= 0 and text[k] in '"\u201d)\u2019\'':
+                k -= 1
+            is_terminal = k >= 0 and text[k] in ".!?"
+
+        if not is_terminal:
+            continue
+
+        # --- look ahead: closing-markdown*, whitespace+, opening-markdown*, uppercase ---
+        j = i + 1
+        # Skip closing markdown after terminal punct  (e.g. !** or ."*)
+        while j < len(text) and text[j] in _MARKDOWN_CHARS:
+            j += 1
+        # Must find at least one whitespace character
+        ws_start = j
+        while j < len(text) and text[j] in " \t\n\r":
+            j += 1
+        if j == ws_start:
+            continue
+        # Start of the next sentence in raw text (may include opening markdown)
+        sentence_start = j
+        # Peek past opening markdown to find the actual first letter
+        while j < len(text) and text[j] in _MARKDOWN_CHARS:
+            j += 1
+        if j < len(text) and text[j].isupper():
+            breaks.append(sentence_start)
+
+    return breaks
+
+
+def _split_buffer(text: str, loose: bool = False) -> tuple[list[str], str]:
+    """Split *text* into ``(complete_sentences, remaining_buffer)``.
+
+    In normal mode uses the quote/paren-aware boundary finder.
+    In *loose* mode falls back to a simple regex that ignores nesting and
+    letter-case — this keeps TTS fed when the buffer grows very long without
+    a proper break.
+    """
+    if loose:
+        parts = _SENTENCE_RE_LOOSE.split(text)
+        sentences = [s.strip() for s in parts[:-1] if s.strip()]
+        return sentences, parts[-1]
+
+    breaks = _find_sentence_breaks(text)
+    if not breaks:
+        return [], text
+
+    sentences: list[str] = []
+    start = 0
+    for brk in breaks:
+        sentence = text[start:brk].strip()
+        if sentence:
+            sentences.append(sentence)
+        start = brk
+    return sentences, text[start:]
 
 
 async def stream_chat_completion(
@@ -94,10 +195,9 @@ async def stream_sentences(
 ) -> AsyncIterator[str]:
     """Stream chat completion and yield complete sentences.
 
-    Splits on .!? followed by whitespace **and** an uppercase letter, so emoji
-    continuations (``Hey! 😄 What's up?``) and parenthetical asides
-    (``speaking!) or …``) stay in one chunk.  Falls back to a looser split
-    when the buffer exceeds _MAX_BUFFER_BEFORE_LOOSE characters.
+    Uses a quote/paren-aware splitter so punctuation inside quoted speech
+    or parenthetical asides does not trigger a break.  Falls back to a
+    loose regex when the buffer exceeds *_MAX_BUFFER_BEFORE_LOOSE* chars.
     """
     buffer = ""
     async for delta in stream_chat_completion(messages, model=model, temperature=temperature):
@@ -105,19 +205,11 @@ async def stream_sentences(
             break
         buffer += delta
 
-        # Strict regex keeps emoji/parenthetical continuations together;
-        # fall back to loose split when the buffer gets very long.
-        regex = (
-            _SENTENCE_RE_LOOSE
-            if len(buffer) > _MAX_BUFFER_BEFORE_LOOSE
-            else _SENTENCE_RE
+        sentences, buffer = _split_buffer(
+            buffer, loose=len(buffer) > _MAX_BUFFER_BEFORE_LOOSE
         )
-        parts = regex.split(buffer)
-        for sentence in parts[:-1]:
-            sentence = sentence.strip()
-            if sentence:
-                yield sentence
-        buffer = parts[-1]
+        for sentence in sentences:
+            yield sentence
 
     # Flush remaining buffer
     if buffer.strip():

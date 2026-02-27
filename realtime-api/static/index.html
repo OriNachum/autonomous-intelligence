@@ -806,6 +806,15 @@ input[type="range"]::-webkit-slider-thumb {
           <span class="setting-value" id="settingTempVal">0.8</span>
         </div>
       </div>
+      <div class="setting-row">
+        <span class="setting-label">TTS mode</span>
+        <div class="setting-control">
+          <select id="settingTTSMode">
+            <option value="whole">Whole response</option>
+            <option value="sentence">Sentence-by-sentence</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <div class="settings-section">
@@ -1136,19 +1145,23 @@ class AudioCapture {
 }
 const audioCapture = new AudioCapture();
 
-// ─── Audio Playback (base64 PCM16 → AudioBuffer → scheduled playback) ───
+// ─── Audio Playback Queue (base64 PCM16 → chunk queue → gapless pull-based output) ───
 class AudioPlayback {
   constructor() {
     this.ctx = null;
     this.gainNode = null;
     this.analyser = null;
-    this._nextTime = 0;
     this._playing = false;
+    this._allChunksReceived = false;
+    this._queue = [];            // Float32Array chunks waiting to play
+    this._currentChunk = null;   // chunk currently being drained
+    this._chunkOffset = 0;       // read position within current chunk
+    this._queuedSamples = 0;
+    this._playedSamples = 0;
+    this._processor = null;
+    this._enqueueCount = 0;
     this.totalBytesReceived = 0;
     this.totalPlaybackDuration = 0;
-    this._allChunksReceived = false;
-    this._lastSourceEndTime = 0;
-    this._activeSources = [];
   }
 
   _ensureCtx() {
@@ -1159,13 +1172,55 @@ class AudioPlayback {
       this.analyser.fftSize = 256;
       this.gainNode.connect(this.analyser);
       this.analyser.connect(this.ctx.destination);
-      this._nextTime = 0;
+
+      // Pull-based processor: reads from the chunk queue every ~85ms
+      this._processor = this.ctx.createScriptProcessor(2048, 0, 1);
+      this._processor.onaudioprocess = (e) => this._fill(e);
+      this._processor.connect(this.gainNode);
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
   }
 
+  _fill(e) {
+    const out = e.outputBuffer.getChannelData(0);
+    let pos = 0;
+
+    while (pos < out.length) {
+      // Advance to next chunk if current is exhausted
+      if (!this._currentChunk || this._chunkOffset >= this._currentChunk.length) {
+        if (this._queue.length > 0) {
+          this._currentChunk = this._queue.shift();
+          this._chunkOffset = 0;
+        } else {
+          // Queue empty — fill remainder with silence
+          out.fill(0, pos);
+          break;
+        }
+      }
+
+      // Copy samples from current chunk into output
+      const avail = this._currentChunk.length - this._chunkOffset;
+      const need = out.length - pos;
+      const n = Math.min(avail, need);
+      out.set(this._currentChunk.subarray(this._chunkOffset, this._chunkOffset + n), pos);
+      this._chunkOffset += n;
+      pos += n;
+      this._playedSamples += n;
+    }
+
+    // Detect playback complete
+    if (this._playing && this._allChunksReceived &&
+        this._queue.length === 0 &&
+        (!this._currentChunk || this._chunkOffset >= this._currentChunk.length)) {
+      this._playing = false;
+      console.log(`[AudioPlayback] done — ${this._playedSamples}/${this._queuedSamples} samples`);
+      bus.emit('audio:playbackDone');
+    }
+  }
+
   enqueue(b64) {
     this._ensureCtx();
+
     const binary = atob(b64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -1175,85 +1230,61 @@ class AudioPlayback {
     const float32 = new Float32Array(int16.length);
     for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 0x8000;
 
-    const buffer = this.ctx.createBuffer(1, float32.length, SAMPLE_RATE);
-    buffer.getChannelData(0).set(float32);
-    const duration = float32.length / SAMPLE_RATE;
-    this.totalPlaybackDuration += duration;
-
-    const source = this.ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(this.gainNode);
-
-    const now = this.ctx.currentTime;
-    const startTime = Math.max(now, this._nextTime);
-    source.start(startTime);
-    this._nextTime = startTime + duration;
-    this._lastSourceEndTime = startTime + duration;
+    this._queue.push(float32);
+    this._queuedSamples += float32.length;
+    this.totalPlaybackDuration += float32.length / SAMPLE_RATE;
     this._playing = true;
-    this._activeSources.push(source);
-    this._enqueueCount = (this._enqueueCount || 0) + 1;
+    this._enqueueCount++;
+
     if (this._enqueueCount <= 3 || this._enqueueCount % 10 === 0) {
-      console.log(`[AudioPlayback] enqueue #${this._enqueueCount} — ${float32.length} samples, scheduled at ${startTime.toFixed(3)}s, active sources: ${this._activeSources.length}`);
+      console.log(`[AudioPlayback] enqueue #${this._enqueueCount} — ${float32.length} samples, queue: ${this._queue.length}, total: ${this._queuedSamples}`);
     }
-
-    const chunkNum = this._enqueueCount;
-    source.onended = () => {
-      const idx = this._activeSources.indexOf(source);
-      if (idx !== -1) this._activeSources.splice(idx, 1);
-
-      if (this._allChunksReceived && this.ctx &&
-          this.ctx.currentTime >= this._lastSourceEndTime - 0.05) {
-        this._playing = false;
-        console.log(`[AudioPlayback] last source ended (chunk #${chunkNum}) — emitting playbackDone`);
-        bus.emit('audio:playbackDone');
-      }
-    };
   }
 
   markAllChunksReceived() {
     this._allChunksReceived = true;
-    console.log(`[AudioPlayback] markAllChunksReceived — active sources: ${this._activeSources.length}, total chunks: ${this._enqueueCount || 0}`);
-    // If playback already finished (no audio was queued, or all buffers ended),
-    // emit immediately
-    if (this.ctx && this.ctx.currentTime >= this._lastSourceEndTime - 0.05) {
+    console.log(`[AudioPlayback] markAllChunksReceived — chunks: ${this._enqueueCount}, queued: ${this._queuedSamples}, played: ${this._playedSamples}`);
+    if (this._queuedSamples === 0) {
       this._playing = false;
-      console.log('[AudioPlayback] all chunks received and playback already done — emitting playbackDone');
       bus.emit('audio:playbackDone');
     }
   }
 
-  _stopAllSources() {
-    const count = this._activeSources.length;
-    for (const src of this._activeSources) {
-      try { src.stop(); } catch (_) { /* already stopped */ }
-    }
-    this._activeSources = [];
-    if (count > 0) console.log(`[AudioPlayback] _stopAllSources: stopped ${count} active sources`);
-  }
-
   stop() {
-    console.log(`[AudioPlayback] stop() — active sources: ${this._activeSources.length}`);
-    this._stopAllSources();
+    console.log('[AudioPlayback] stop()');
+    if (this._processor) {
+      this._processor.disconnect();
+      this._processor = null;
+    }
     if (this.ctx) {
       this.ctx.close();
       this.ctx = null;
       this.gainNode = null;
       this.analyser = null;
     }
-    this._nextTime = 0;
+    this._queue = [];
+    this._currentChunk = null;
+    this._chunkOffset = 0;
     this._playing = false;
     this._allChunksReceived = false;
-    this._lastSourceEndTime = 0;
+    this._queuedSamples = 0;
+    this._playedSamples = 0;
     this._enqueueCount = 0;
+    this.totalBytesReceived = 0;
+    this.totalPlaybackDuration = 0;
   }
 
   resetSchedule() {
-    console.log(`[AudioPlayback] resetSchedule() — stopping ${this._activeSources.length} sources, was at chunk #${this._enqueueCount || 0}`);
-    this._stopAllSources();
-    this._nextTime = 0;
+    console.log(`[AudioPlayback] resetSchedule() — was at chunk #${this._enqueueCount || 0}`);
+    this._queue = [];
+    this._currentChunk = null;
+    this._chunkOffset = 0;
     this._allChunksReceived = false;
-    this._lastSourceEndTime = 0;
+    this._queuedSamples = 0;
+    this._playedSamples = 0;
     this._enqueueCount = 0;
+    this.totalBytesReceived = 0;
+    this.totalPlaybackDuration = 0;
   }
 }
 const audioPlayback = new AudioPlayback();
@@ -1403,6 +1434,7 @@ bus.on('ws:response.created', () => {
   micBtn.classList.add('speaking');
   currentAssistantBubble = addVoiceBubble('assistant', '');
   audioPlayback.resetSchedule();
+  audioPlayback._ensureCtx();  // pre-warm so ScriptProcessor is pumping before chunks arrive
   // Half-duplex gate: mute mic during playback when AEC is off
   if (settingAEC.value === 'none' && micActive) {
     audioCapture.muted = true;
@@ -1440,13 +1472,14 @@ bus.on('audio:playbackDone', () => {
 });
 
 bus.on('ws:response.done', () => {
-  console.log(`[Response] response.done — active audio sources: ${audioPlayback._activeSources.length}, enqueued chunks: ${audioPlayback._enqueueCount || 0}`);
+  console.log(`[Response] response.done — chunks: ${audioPlayback._enqueueCount || 0}, queued: ${audioPlayback._queuedSamples}, played: ${audioPlayback._playedSamples}`);
   isAssistantSpeaking = false;
   cancelBtn.classList.remove('visible');
   currentAssistantBubble = null;
   // If mic is muted (half-duplex mode), defer UI restore to audio:playbackDone
   if (audioCapture.muted) {
-    // Safety timer: force-unmute after 3s in case onended doesn't fire
+    // Safety timer: force-unmute if worklet playbackDone never fires
+    const _remainMs = Math.max(0, (audioPlayback._queuedSamples - audioPlayback._playedSamples) / SAMPLE_RATE * 1000);
     clearTimeout(_mutesSafetyTimer);
     _mutesSafetyTimer = setTimeout(() => {
       if (audioCapture.muted) {
@@ -1458,7 +1491,7 @@ bus.on('ws:response.done', () => {
           micStatus.textContent = getSettingTurnMode() === 'manual' ? 'Push-to-talk active' : 'Listening...';
         }
       }
-    }, 3000);
+    }, _remainMs + 5000);
   } else {
     if (micActive) {
       micBtn.classList.remove('speaking');
@@ -1620,6 +1653,7 @@ const settingPrefix = document.getElementById('settingPrefix');
 const settingPrefixVal = document.getElementById('settingPrefixVal');
 const settingAEC = document.getElementById('settingAEC');
 const settingAudioModality = document.getElementById('settingAudioModality');
+const settingTTSMode = document.getElementById('settingTTSMode');
 const vadSettingsDiv = document.getElementById('vadSettings');
 
 // Live value displays
@@ -1643,6 +1677,7 @@ function loadSettingsFromSession(session) {
   if (session.modalities) {
     settingAudioModality.checked = session.modalities.includes('audio');
   }
+  if (session.tts_mode) settingTTSMode.value = session.tts_mode;
   const td = session.turn_detection;
   if (td) {
     settingTurnMode.value = td.type || 'server_vad';
@@ -1670,6 +1705,7 @@ document.getElementById('applySettingsBtn').addEventListener('click', () => {
     instructions: settingInstructions.value,
     temperature: parseFloat(settingTemp.value),
     modalities: modalities,
+    tts_mode: settingTTSMode.value,
   };
 
   if (settingTurnMode.value === 'server_vad') {

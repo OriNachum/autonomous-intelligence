@@ -43,9 +43,17 @@ def _get_client() -> httpx.AsyncClient:
 
 
 def _clean_for_tts(text: str) -> str:
-    """Strip emoji, markdown, and normalize whitespace for TTS input."""
+    """Strip emoji, markdown, dashes, quotes and normalize for TTS input."""
     text = _EMOJI_RE.sub(" ", text)
     text = _MARKDOWN_RE.sub("", text)
+    # Em-dash / en-dash → comma (natural pause; raw dashes confuse TTS)
+    text = text.replace("\u2014", ", ")
+    text = text.replace("\u2013", ", ")
+    # Strip double-quotes (TTS doesn't need to voice them)
+    text = re.sub(r'["\u201c\u201d]', "", text)
+    # Remove markdown list markers at line start:  - item  /  1. item
+    text = re.sub(r"(?m)^\s*-\s+", " ", text)
+    text = re.sub(r"(?m)^\s*\d+[.)]\s+", " ", text)
     # Collapse whitespace / newlines
     text = re.sub(r"\s+", " ", text).strip()
     return text

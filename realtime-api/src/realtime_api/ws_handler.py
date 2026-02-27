@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import time
 
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from . import events
-from .audio import decode_audio_appendix, tts_pcm16_to_client_base64
+from .audio import decode_audio_appendix, resample_pcm16
 from .barge_in import BargeInEvaluator
 from .llm_client import stream_sentences
-from .protocol import TTS_SAMPLE_RATE, gen_content_part_id, gen_item_id, gen_response_id
+from .protocol import CLIENT_SAMPLE_RATE, TTS_SAMPLE_RATE, gen_content_part_id, gen_item_id, gen_response_id
 from .session import Session
 from .stt_client import transcribe
 from .tts_client import synthesize, trailing_pause_ms
@@ -374,72 +375,131 @@ async def _generate_response(session: Session):
     try:
         messages = session.conversation.to_chat_messages(session.config.instructions)
 
-        # Stream LLM → sentences → TTS
-        async for sentence in stream_sentences(
-            messages,
-            temperature=session.config.temperature,
-            cancel_event=session.cancel_event,
-        ):
-            if session.cancel_event.is_set():
-                cancelled = True
-                break
+        tts_mode = session.config.tts_mode  # "whole" or "sentence"
+        log.info("[RESPONSE] tts_mode=%s", tts_mode)
 
-            sentence_count += 1
-            full_transcript += sentence + " "
-            session.current_response_text = full_transcript
-            log.info("[RESPONSE] sentence #%d: %s", sentence_count, sentence[:80])
-
-            # Emit transcript delta
-            if has_audio:
-                await session.send(
-                    events.response_audio_transcript_delta(
-                        response_id, output_item_id, 0, 1, sentence + " ",
-                    )
-                )
-
-            # Synthesize TTS for this sentence (full-read, no streaming)
-            if has_audio:
+        if tts_mode == "whole":
+            # ── Whole-response mode: accumulate full text, single TTS call ──
+            full_text_for_tts = ""
+            async for sentence in stream_sentences(
+                messages,
+                temperature=session.config.temperature,
+                cancel_event=session.cancel_event,
+            ):
                 if session.cancel_event.is_set():
                     cancelled = True
                     break
 
+                sentence_count += 1
+                full_text_for_tts += sentence + " "
+                full_transcript = full_text_for_tts
+                session.current_response_text = full_transcript
+                log.info("[RESPONSE] sentence #%d: %s", sentence_count, sentence[:80])
+
+                if has_audio:
+                    await session.send(
+                        events.response_audio_transcript_delta(
+                            response_id, output_item_id, 0, 1, sentence + " ",
+                        )
+                    )
+
+            # Single TTS call for the entire response
+            if has_audio and full_text_for_tts.strip() and not cancelled:
                 tts_pcm = await synthesize(
-                    sentence,
+                    full_text_for_tts.strip(),
                     voice=session.config.voice,
                     cancel_event=session.cancel_event,
                 )
-                if not tts_pcm:
-                    continue
+                if tts_pcm:
+                    total_tts_bytes_raw += len(tts_pcm)
+                    resampled = resample_pcm16(tts_pcm, TTS_SAMPLE_RATE, CLIENT_SAMPLE_RATE)
+                    total_tts_bytes_resampled += len(resampled)
 
-                # Append inter-sentence silence based on trailing punctuation
-                pause_ms = trailing_pause_ms(sentence)
-                if pause_ms > 0:
-                    silence_samples = int(TTS_SAMPLE_RATE * pause_ms / 1000)
-                    tts_pcm += b'\x00' * (silence_samples * 2)
-                    log.debug("[RESPONSE] appended %dms silence for: %s",
-                              pause_ms, sentence[-20:])
+                    chunk_bytes = CLIENT_SAMPLE_RATE // 10 * 2  # 100ms of PCM16
+                    for offset in range(0, len(resampled), chunk_bytes):
+                        if session.cancel_event.is_set():
+                            cancelled = True
+                            break
+                        chunk = resampled[offset:offset + chunk_bytes]
+                        chunk_b64 = base64.b64encode(chunk).decode("ascii")
+                        tts_chunk_count += 1
+                        now = time.monotonic()
+                        if first_audio_send_t is None:
+                            first_audio_send_t = now
+                        last_audio_send_t = now
+                        await session.send(
+                            events.response_audio_delta(
+                                response_id, output_item_id, 0, 0, chunk_b64,
+                            )
+                        )
 
-                total_tts_bytes_raw += len(tts_pcm)
-
-                # Resample full sentence audio and send in chunks
-                resampled_b64 = tts_pcm16_to_client_base64(tts_pcm)
-                total_tts_bytes_resampled += len(resampled_b64) * 3 // 4
-
-                # Send as a single delta (client AudioPlayback handles scheduling)
-                tts_chunk_count += 1
-                now = time.monotonic()
-                if first_audio_send_t is None:
-                    first_audio_send_t = now
-                last_audio_send_t = now
-                await session.send(
-                    events.response_audio_delta(
-                        response_id, output_item_id, 0, 0, resampled_b64,
-                    )
-                )
-
+        else:
+            # ── Sentence-by-sentence mode: TTS each sentence as it arrives ──
+            async for sentence in stream_sentences(
+                messages,
+                temperature=session.config.temperature,
+                cancel_event=session.cancel_event,
+            ):
                 if session.cancel_event.is_set():
                     cancelled = True
                     break
+
+                sentence_count += 1
+                full_transcript += sentence + " "
+                session.current_response_text = full_transcript
+                log.info("[RESPONSE] sentence #%d: %s", sentence_count, sentence[:80])
+
+                if has_audio:
+                    await session.send(
+                        events.response_audio_transcript_delta(
+                            response_id, output_item_id, 0, 1, sentence + " ",
+                        )
+                    )
+
+                if has_audio:
+                    if session.cancel_event.is_set():
+                        cancelled = True
+                        break
+
+                    tts_pcm = await synthesize(
+                        sentence,
+                        voice=session.config.voice,
+                        cancel_event=session.cancel_event,
+                    )
+                    if not tts_pcm:
+                        continue
+
+                    # Append inter-sentence silence based on trailing punctuation
+                    pause_ms = trailing_pause_ms(sentence)
+                    if pause_ms > 0:
+                        silence_samples = int(TTS_SAMPLE_RATE * pause_ms / 1000)
+                        tts_pcm += b'\x00' * (silence_samples * 2)
+                        log.debug("[RESPONSE] appended %dms silence for: %s",
+                                  pause_ms, sentence[-20:])
+
+                    total_tts_bytes_raw += len(tts_pcm)
+
+                    resampled = resample_pcm16(tts_pcm, TTS_SAMPLE_RATE, CLIENT_SAMPLE_RATE)
+                    total_tts_bytes_resampled += len(resampled)
+
+                    chunk_bytes = CLIENT_SAMPLE_RATE // 10 * 2  # 100ms of PCM16
+                    for offset in range(0, len(resampled), chunk_bytes):
+                        chunk = resampled[offset:offset + chunk_bytes]
+                        chunk_b64 = base64.b64encode(chunk).decode("ascii")
+                        tts_chunk_count += 1
+                        now = time.monotonic()
+                        if first_audio_send_t is None:
+                            first_audio_send_t = now
+                        last_audio_send_t = now
+                        await session.send(
+                            events.response_audio_delta(
+                                response_id, output_item_id, 0, 0, chunk_b64,
+                            )
+                        )
+
+                    if session.cancel_event.is_set():
+                        cancelled = True
+                        break
 
     except asyncio.CancelledError:
         cancelled = True

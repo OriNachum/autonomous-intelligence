@@ -51,6 +51,7 @@ class SessionConfig:
     input_audio_format: str = AudioFormat.PCM16
     output_audio_format: str = AudioFormat.PCM16
     temperature: float = 0.8
+    tts_mode: str = "whole"  # "sentence" or "whole"
     turn_detection: TurnDetectionConfig | None = field(
         default_factory=lambda: TurnDetectionConfig(
             threshold=settings.vad_threshold,
@@ -70,6 +71,7 @@ class SessionConfig:
             "input_audio_format": self.input_audio_format,
             "output_audio_format": self.output_audio_format,
             "temperature": self.temperature,
+            "tts_mode": self.tts_mode,
         }
         if self.turn_detection:
             d["turn_detection"] = {
@@ -97,6 +99,8 @@ class SessionConfig:
             self.output_audio_format = d["output_audio_format"]
         if "temperature" in d:
             self.temperature = d["temperature"]
+        if "tts_mode" in d:
+            self.tts_mode = d["tts_mode"]
         if "turn_detection" in d:
             td = d["turn_detection"]
             if td is None:
