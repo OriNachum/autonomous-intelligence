@@ -257,21 +257,29 @@ async def _synthesize_single(
             log.info("%s result: %d bytes (%.2fs audio) in %.2fs | %s",
                      tag, len(pcm_data), duration, elapsed, clean[:120])
 
-            # Detect truncated audio from stale connection — flag for retry
-            if len(clean) > 10 and duration < 0.3 and not _retry:
-                log.warning("%s TRUNCATED: %d chars → %.3fs audio, will retry with fresh connection | %s",
-                            tag, len(clean), duration, clean[:80])
+            # Detect truncated audio — ratio-based: expect at least 15ms per char
+            # (normal speech at 125% ≈ 60-80ms/char; 15ms is very conservative)
+            min_expected = max(0.5, len(clean) * 0.015)
+            if len(clean) > 10 and duration < min_expected and not _retry:
+                log.warning("%s TRUNCATED: %d chars → %.3fs audio (expected ≥%.2fs), "
+                            "will retry with fresh connection | %s",
+                            tag, len(clean), duration, min_expected, clean[:80])
                 need_retry = True
 
-            if len(clean) > 10 and duration < 0.3 and _retry:
-                log.warning("%s STILL TRUNCATED after retry: %d chars → %.3fs audio | full: %s",
-                            tag, len(clean), duration, clean)
+            if len(clean) > 10 and duration < min_expected and _retry:
+                log.warning("%s STILL TRUNCATED after retry: %d chars → %.3fs audio "
+                            "(expected ≥%.2fs) | full: %s",
+                            tag, len(clean), duration, min_expected, clean)
 
         except httpx.ConnectError:
             log.error("%s cannot connect to %s", tag, url)
             return b""
+        except httpx.ReadTimeout:
+            log.error("%s read timeout after %.0fs for: %s", tag,
+                      time.monotonic() - t0, clean[:80])
+            return b""
         except Exception as e:
-            log.error("%s error: %s", tag, e)
+            log.error("%s error (%s): %s", tag, type(e).__name__, e)
             return b""
 
     # Retry OUTSIDE the semaphore to avoid deadlock
@@ -298,7 +306,7 @@ async def synthesize(
     Returns:
         Raw PCM16 bytes at 22050Hz (empty bytes if nothing to synthesize).
     """
-    url = (tts_url or settings.tts_url).rstrip("/") + "/v1/audio/synthesize_online"
+    url = (tts_url or settings.tts_url).rstrip("/") + "/v1/audio/synthesize"
     full_voice = resolve_voice(voice or settings.default_voice)
     spd = speed if speed is not None else settings.tts_speed
 

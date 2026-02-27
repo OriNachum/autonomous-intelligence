@@ -404,13 +404,18 @@ async def _generate_response(session: Session):
                     )
 
             # Single TTS call for the entire response
-            if has_audio and full_text_for_tts.strip() and not cancelled:
+            if has_audio and full_text_for_tts.strip() and not cancelled and not session.cancel_event.is_set():
                 tts_pcm = await synthesize(
                     full_text_for_tts.strip(),
                     voice=session.config.voice,
                     cancel_event=session.cancel_event,
                 )
-                if tts_pcm:
+
+                # Re-check cancel after the (potentially long) TTS call
+                if session.cancel_event.is_set():
+                    cancelled = True
+
+                if tts_pcm and not cancelled:
                     total_tts_bytes_raw += len(tts_pcm)
                     resampled = resample_pcm16(tts_pcm, TTS_SAMPLE_RATE, CLIENT_SAMPLE_RATE)
                     total_tts_bytes_resampled += len(resampled)
@@ -432,6 +437,9 @@ async def _generate_response(session: Session):
                                 response_id, output_item_id, 0, 0, chunk_b64,
                             )
                         )
+                elif not tts_pcm and not cancelled:
+                    log.error("[RESPONSE] TTS returned empty for whole-mode text (%d chars): %s",
+                              len(full_text_for_tts), full_text_for_tts[:120])
 
         else:
             # ── Sentence-by-sentence: pipelined LLM → TTS ──
