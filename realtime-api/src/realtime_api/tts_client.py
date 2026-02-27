@@ -35,9 +35,10 @@ _EMOJI_RE = re.compile(
 _MARKDOWN_RE = re.compile(r"[*_~`#]")
 
 # Max chars of *cleaned* text per TTS request.
-# After SSML wrapping (~46 chars) + break tags (~23 chars per comma), 800 chars
-# worst-case ≈ 800 + 20×23 + 46 = 1306 SSML chars — well under Magpie's 2000 limit.
-_MAX_CLEAN_CHARS = 800
+# The Triton model has a 400-token sequence limit.  Empirically, ~660 clean chars
+# (≈706 SSML chars after prosody wrapper) is the safe ceiling.  We use 600 to
+# leave headroom for rare break tags (semicolons, colons, dashes).
+_MAX_CLEAN_CHARS = 600
 
 
 def _split_for_tts(text: str, max_chars: int = _MAX_CLEAN_CHARS) -> list[str]:
@@ -150,9 +151,6 @@ def _insert_ssml_breaks(text: str) -> str:
 
     # Space-hyphen-space (used as a dash)
     text = text.replace(" - ", ' - <break time="100ms"/> ')
-
-    # Comma followed by whitespace
-    text = re.sub(r",\s+", ', <break time="150ms"/> ', text)
 
     # Semicolon followed by whitespace
     text = re.sub(r";\s+", '; <break time="250ms"/> ', text)
