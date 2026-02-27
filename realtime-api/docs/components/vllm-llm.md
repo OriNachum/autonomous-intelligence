@@ -31,25 +31,15 @@ Key server flags (set in `docker-compose.yaml`):
 
 **Reasoning behavior is controlled at inference time (in the curl / API request), not by restarting vLLM.**
 
-### For Qwen3 Models
+### Nemotron (Default Model)
 
-Qwen3 models support a native `enable_thinking` flag via `chat_template_kwargs`:
+Nemotron supports native `enable_thinking` via `chat_template_kwargs` (same mechanism as Qwen3). Thinking is **enabled by default**.
 
 | Mode | `enable_thinking` | System prompt | Temperature | Latency | Use case |
 |------|-------------------|---------------|-------------|---------|----------|
 | Deep reasoning | `true` | _(none or open-ended)_ | 0.6 | High | Complex analysis, math, coding |
 | Medium reasoning | `true` | `"Be concise. Think briefly."` | 0.7 | Medium | Balanced quality + speed |
 | No reasoning | `false` | `"Answer directly."` | 0.8 | Low | Chat, Q&A, simple tasks |
-
-### For Nemotron (Default Model)
-
-Nemotron doesn't have a native thinking mode. Control reasoning via system prompt + temperature:
-
-| Mode | System prompt | Temperature | Latency | Use case |
-|------|---------------|-------------|---------|----------|
-| Deep reasoning | `"Think step by step. Show your reasoning."` | 0.3 | High | Complex analysis |
-| Medium reasoning | `"Be thorough but concise."` | 0.5 | Medium | Balanced |
-| No reasoning | `"Answer directly and concisely."` | 0.8 | Low | Chat, simple tasks |
 
 ---
 
@@ -87,13 +77,13 @@ curl http://localhost:8000/v1/chat/completions \
   }'
 ```
 
-### Deep reasoning (Qwen3 — thinking enabled)
+### Deep reasoning (Nemotron — thinking enabled)
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "Qwen/Qwen3-30B-A3B",
+    "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8",
     "messages": [
       {"role": "user", "content": "Prove that the square root of 2 is irrational."}
     ],
@@ -103,23 +93,7 @@ curl http://localhost:8000/v1/chat/completions \
   }'
 ```
 
-### No reasoning (Qwen3 — thinking disabled)
-
-```bash
-curl http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "Qwen/Qwen3-30B-A3B",
-    "messages": [
-      {"role": "user", "content": "What is 2 + 2?"}
-    ],
-    "temperature": 0.8,
-    "stream": false,
-    "chat_template_kwargs": {"enable_thinking": false}
-  }'
-```
-
-### Deep reasoning (Nemotron — step-by-step prompt)
+### No reasoning (Nemotron — thinking disabled)
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
@@ -127,11 +101,11 @@ curl http://localhost:8000/v1/chat/completions \
   -d '{
     "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8",
     "messages": [
-      {"role": "system", "content": "Think step by step. Show your full reasoning before giving the final answer."},
-      {"role": "user", "content": "A train leaves at 9am going 60mph. Another leaves at 10am going 80mph. When does the second catch up?"}
+      {"role": "user", "content": "What is 2 + 2?"}
     ],
-    "temperature": 0.3,
-    "stream": true
+    "temperature": 0.8,
+    "stream": false,
+    "chat_template_kwargs": {"enable_thinking": false}
   }'
 ```
 
@@ -199,9 +173,7 @@ The realtime-api bridge (`llm_client.py`) sends this payload shape:
 }
 ```
 
-The bridge does **not** pass `chat_template_kwargs`, so:
-- For Qwen3: `enable_thinking` cannot be controlled through the bridge — call vLLM directly
-- For Nemotron: reasoning is influenced via `temperature` and `instructions` (system prompt) in the `session.update` event
+The bridge does **not** pass `chat_template_kwargs`, so `enable_thinking` cannot be controlled through the bridge — call vLLM directly. Reasoning behavior through the bridge is influenced via `temperature` and `instructions` (system prompt) in the `session.update` event.
 
 ---
 
@@ -224,11 +196,10 @@ The bridge does **not** pass `chat_template_kwargs`, so:
 
 ## Swapping Models
 
-1. Edit `.env`:
+1. Edit `.env` with the new model ID:
    ```bash
-   VLLM_MODEL=Qwen/Qwen3-30B-A3B
-   OPENAI_MODEL=Qwen/Qwen3-30B-A3B
-   VLLM_TOOL_CALL_PARSER=qwen3_coder
+   VLLM_MODEL=<new-model-id>
+   OPENAI_MODEL=<new-model-id>
    ```
 
 2. Restart the vLLM container (it will download and serve the new model):
@@ -241,10 +212,8 @@ The bridge does **not** pass `chat_template_kwargs`, so:
    docker compose restart realtime-api
    ```
 
-Popular models for DGX Spark (128 GB unified memory):
+Default model for DGX Spark (128 GB unified memory):
 
 | Model | Size | `VLLM_GPU_MEMORY` | Notes |
 |-------|------|--------------------|-------|
-| `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8` | ~15 GB | 0.60 | Default, fast MoE |
-| `Qwen/Qwen3-30B-A3B` | ~18 GB | 0.60 | Native thinking mode |
-| `Qwen/Qwen3-32B` | ~35 GB | 0.70 | Dense, higher quality |
+| `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8` | ~15 GB | 0.60 | Default, fast MoE, native thinking mode |

@@ -4,24 +4,18 @@ The Realtime API runs as a three-service Docker Compose stack. Two GPU-accelerat
 
 ## Services
 
-### magpie-tts (Qwen3 TTS)
+### magpie-tts (Magpie TTS NIM)
 
-Text-to-speech powered by Qwen3-TTS via vLLM-Omni.
+Text-to-speech powered by NVIDIA Magpie TTS NIM — a multilingual TTS service with multiple voices and emotions.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Port | `8091` | HTTP API for speech synthesis |
-| Model | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | HuggingFace model ID |
+| Image | `nvcr.io/nim/nvidia/magpie-tts-multilingual:latest` | NVIDIA NIM container |
 | Health check | `GET /health` | Polled every 30s, 300s startup grace |
 | GPU | All available | NVIDIA runtime with IPC host |
 
-Builds from `../qwen3-tts/Dockerfile`, which uses `scitrera/dgx-spark-vllm:0.16.0-t4` as base. This image has vLLM pre-compiled for DGX Spark (aarch64). The build clones `vllm-omni`, installs audio processing dependencies (ffmpeg, sox, omegaconf, resampy, librosa, etc.), and copies the custom stage config.
-
-The stage config (`stage_configs/qwen3_tts.yaml`) defines a two-stage vLLM pipeline:
-- **Stage 0 (Talker)**: Autoregressive text-to-speech-code model, 15% GPU memory
-- **Stage 1 (Code2Wav)**: Speech codes to audio waveform, 15% GPU memory
-
-Both stages share GPU 0 with batch size 1 and communicate via shared memory connector with codec streaming enabled (25-frame chunks).
+Runs as a pre-built NIM container pulled from NVIDIA NGC. No local build step required — the container includes the model and serving infrastructure.
 
 ### parakeet-stt (Parakeet ASR)
 
@@ -91,12 +85,9 @@ Override via `.env` file or inline environment:
 
 ```bash
 # Service ports
-QWEN3_TTS_PORT=8091
+MAGPIE_TTS_PORT=8091
 PARAKEET_PORT=9002
 REALTIME_API_PORT=8080
-
-# TTS model
-QWEN3_TTS_MODEL=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
 
 # LLM backend (runs on host)
 OPENAI_BASE_URL=http://host.docker.internal:8000
@@ -116,7 +107,7 @@ VAD_PREFIX_PADDING_MS=300
 ## Startup Sequence
 
 1. `docker compose up` starts all three services
-2. `magpie-tts` loads the Qwen3 TTS model (up to 5 minutes, startup grace: 300s)
+2. `magpie-tts` loads the Magpie TTS NIM (up to 5 minutes, startup grace: 300s)
 3. `parakeet-stt` loads Parakeet TDT (up to 2 minutes, startup grace: 120s)
 4. Once both pass health checks, `realtime-api` starts
 5. The bridge connects to both services via internal DNS and begins accepting WebSocket connections on port 8080

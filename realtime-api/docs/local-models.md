@@ -2,31 +2,13 @@
 
 Every ML model in the Realtime API stack runs locally — no cloud API calls for TTS or STT. The LLM backend is configurable and can also be local.
 
-## Magpie TTS (Qwen3-TTS)
+## Magpie TTS (NIM)
 
-**Model**: `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`
-**Parameters**: 1.7 billion
-**Architecture**: Two-stage autoregressive pipeline served via vLLM-Omni
+**Image**: `nvcr.io/nim/nvidia/magpie-tts-multilingual:latest`
+**Type**: NVIDIA NIM (pre-built inference microservice)
+**Output**: Raw audio at 22,050 Hz
 
-### Pipeline Stages
-
-**Stage 0 — Talker** (Text → Speech Codes):
-- Architecture: `Qwen3TTSTalkerForConditionalGeneration`
-- Worker type: Autoregressive (AR)
-- Max sequence length: 4,096 tokens
-- GPU memory: 15% of available
-- Sampling: temperature=0.3, top_k=50, top_p=0.85
-- Output: Latent speech codes (stop token: 2150)
-
-**Stage 1 — Code2Wav** (Speech Codes → Audio):
-- Architecture: `Qwen3TTSCode2Wav`
-- Worker type: Generation
-- Max sequence length: 32,768 tokens
-- GPU memory: 15% of available
-- Sampling: temperature=0.0 (deterministic), seed=42
-- Output: Raw audio at 22,050 Hz
-
-The two stages communicate via shared memory connector with codec streaming. Audio is generated in 25-frame chunks, enabling real-time streaming output — the client starts receiving audio before the full sentence is synthesized.
+Magpie TTS runs as a self-contained NIM container from NVIDIA NGC. The container includes the model weights and optimized serving infrastructure — no local build or model download required.
 
 ### Voices
 

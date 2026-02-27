@@ -23,7 +23,7 @@ const ws = new WebSocket("ws://localhost:8080/v1/realtime", "realtime");
 Or with a model query parameter:
 
 ```javascript
-const ws = new WebSocket("ws://localhost:8080/v1/realtime?model=Qwen/Qwen3-30B-A3B", "realtime");
+const ws = new WebSocket("ws://localhost:8080/v1/realtime?model=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8", "realtime");
 ```
 
 On connection, the server sends a `session.created` event with the default session configuration.
