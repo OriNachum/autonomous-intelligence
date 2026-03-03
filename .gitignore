@@ -33,3 +33,9 @@ qq/backups/**
 qq/memory/*
 qq/.claude/skills-test/memory/config.json
 qq/skills/memory/config.json
+qwen3-tts/assets/reference.txt
+qwen3-tts/assets/reference.wav
+qwen3-tts/assets/alba_casual.wav
+qwen3-tts/assets/posy_ref.wav
+qwen3-tts/assets/qwen_clone_ref.wav
+***/*.egg-info/**

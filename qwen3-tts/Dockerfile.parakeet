@@ -1,0 +1,20 @@
+FROM scitrera/dgx-spark-vllm:0.16.0-t4
+
+# System deps for audio
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg alsa-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install NeMo ASR + Parakeet dependencies
+RUN pip install --no-cache-dir \
+    "nemo_toolkit[asr]" soundfile scipy
+
+# Pre-download the model
+RUN python3 -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v2')"
+
+WORKDIR /app
+COPY src/listen_server.py /app/listen_server.py
+
+EXPOSE 9002
+
+CMD ["python3", "/app/listen_server.py"]
