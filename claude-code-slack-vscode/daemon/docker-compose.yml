@@ -1,0 +1,14 @@
+services:
+  claude-slack-daemon:
+    build: .
+    container_name: claude-slack-daemon
+    restart: unless-stopped
+    volumes:
+      - ~/.claude/ipc/slack:/root/.claude/ipc/slack
+    env_file:
+      - .env
+    environment:
+      - SLACK_APP_LEVEL_TOKEN_XAPP_TIPI
+      - SLACK_BOT_TOKEN_XOXB_TIPI
+      - SLACK_SIGNING_SECRET_TIPI
+      - SLACK_USER_ID

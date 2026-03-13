@@ -1,0 +1,136 @@
+{
+  "name": "claude-code-slack",
+  "displayName": "Claude Code + Slack",
+  "description": "Claude Code chat with bidirectional Slack streaming",
+  "version": "0.1.0",
+  "publisher": "custom",
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claude-slack",
+          "title": "Claude + Slack",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "claude-slack": [
+        {
+          "type": "webview",
+          "id": "claudeSlack.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "claudeSlack.newSession",
+        "title": "Claude+Slack: New Session"
+      },
+      {
+        "command": "claudeSlack.stopSession",
+        "title": "Claude+Slack: Stop Session"
+      },
+      {
+        "command": "claudeSlack.focusChat",
+        "title": "Claude+Slack: Focus Chat"
+      },
+      {
+        "command": "claudeSlack.setTokens",
+        "title": "Claude+Slack: Set Slack Tokens"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "claudeSlack.focusChat",
+        "key": "ctrl+shift+c",
+        "mac": "cmd+shift+c"
+      },
+      {
+        "command": "claudeSlack.newSession",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n"
+      }
+    ],
+    "configuration": {
+      "title": "Claude + Slack",
+      "properties": {
+        "claudeSlack.slackUserId": {
+          "type": "string",
+          "default": "",
+          "description": "Slack user ID to DM with (e.g. UEQ6BFG9E)"
+        },
+        "claudeSlack.slackEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Slack integration"
+        },
+        "claudeSlack.selectedModel": {
+          "type": "string",
+          "default": "claude-sonnet-4-6",
+          "description": "Claude model to use"
+        },
+        "claudeSlack.permissionMode": {
+          "type": "string",
+          "enum": [
+            "default",
+            "acceptEdits",
+            "plan",
+            "bypassPermissions"
+          ],
+          "default": "default",
+          "description": "Permission mode for Claude tool use"
+        },
+        "claudeSlack.slackBufferIntervalMs": {
+          "type": "number",
+          "default": 1500,
+          "description": "Slack message buffer flush interval (ms)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "copy-daemon": "node scripts/copy-daemon.js",
+    "vscode:prepublish": "npm run copy-daemon && npm run build",
+    "build": "webpack --mode production",
+    "dev": "webpack --mode development --watch",
+    "compile": "npm run copy-daemon && webpack --mode development",
+    "lint": "eslint src --ext ts,tsx",
+    "test": "vitest run",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.55",
+    "@slack/web-api": "^7.0.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.55",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/vscode": "^1.94.0",
+    "@vscode/vsce": "^2.32.0",
+    "css-loader": "^7.1.0",
+    "highlight.js": "^11.9.0",
+    "marked": "^12.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.0",
+    "typescript": "^5.5.0",
+    "vitest": "^1.6.0",
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.0"
+  }
+}

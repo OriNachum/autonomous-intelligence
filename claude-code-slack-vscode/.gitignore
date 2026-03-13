@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.vsix
+.vscode-test/
+
+# Build artifacts copied from parent by scripts/copy-daemon.js
+daemon/daemon.py
+daemon/lib/
+daemon/requirements.txt
+daemon/.env
