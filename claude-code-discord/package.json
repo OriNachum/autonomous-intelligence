@@ -1,0 +1,21 @@
+{
+  "name": "claude-code-discord",
+  "version": "1.0.0",
+  "description": "Discord bot for Claude Code sessions via Agent SDK",
+  "type": "module",
+  "scripts": {
+    "start": "npx tsx src/index.ts",
+    "dev": "npx tsx --watch src/index.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.2",
+    "discord.js": "^14.25.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
