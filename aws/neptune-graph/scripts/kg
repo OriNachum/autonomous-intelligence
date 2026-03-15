@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Thin wrapper — delegates to neptune_graph.cli.main()."""
+
+import sys
+from pathlib import Path
+
+# Add src to path for development usage (before package is installed)
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from neptune_graph.cli import main
+
+if __name__ == "__main__":
+    main()
