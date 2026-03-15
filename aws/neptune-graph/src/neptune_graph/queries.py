@@ -1,6 +1,5 @@
 """Query operations: search, get, summary."""
 
-import re
 from typing import Any
 
 from neptune_graph.client import NeptuneClient

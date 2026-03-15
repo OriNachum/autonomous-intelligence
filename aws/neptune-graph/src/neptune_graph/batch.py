@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from neptune_graph.client import NeptuneClient
-from neptune_graph.operations import _sanitize_label
+from neptune_graph.operations import _sanitize_label, _validate_prop_key, _backtick_escape
 
 
 def _now_iso() -> str:
@@ -62,7 +62,9 @@ def batch_add_entities(
 
         extra_set = ""
         if all_keys:
-            extra_parts = [f"n.{k} = item.{k}" for k in sorted(all_keys)]
+            for k in all_keys:
+                _validate_prop_key(k)
+            extra_parts = [f"n.{_backtick_escape(k)} = item.{_backtick_escape(k)}" for k in sorted(all_keys)]
             extra_set = ", " + ", ".join(extra_parts)
 
         query = f"""
@@ -132,7 +134,9 @@ def batch_add_relationships(
 
         extra_set = ""
         if all_keys:
-            extra_parts = [f"r.{k} = item.{k}" for k in sorted(all_keys)]
+            for k in all_keys:
+                _validate_prop_key(k)
+            extra_parts = [f"r.{_backtick_escape(k)} = item.{_backtick_escape(k)}" for k in sorted(all_keys)]
             extra_set = ", " + ", ".join(extra_parts)
 
         query = f"""
