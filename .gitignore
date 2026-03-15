@@ -40,3 +40,4 @@ qwen3-tts/assets/posy_ref.wav
 qwen3-tts/assets/qwen_clone_ref.wav
 ***/*.egg-info/**
 *.pem
+claude-code-slack-vscode/***
