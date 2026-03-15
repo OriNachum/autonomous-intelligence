@@ -29,6 +29,9 @@ class VoiceChatHandler(http.server.SimpleHTTPRequestHandler):
     """Serves static files and proxies API calls."""
 
     def do_GET(self):
+        if self.path.endswith(".pem"):
+            self.send_error(403, "Forbidden")
+            return
         if self.path == "/":
             self.path = "/voice-chat.html"
         if self.path == "/api/health":
