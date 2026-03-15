@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Discord Bot with Claude Agent SDK on Bedrock.
+  Deploys a t2.micro EC2 instance (free tier) with SSM-only access.
+
+Parameters:
+  DiscordToken:
+    Type: String
+    NoEcho: true
+    Description: Discord bot token
+
+  DiscordChannelId:
+    Type: String
+    Description: Discord channel ID for the bot
+
+  BedrockModel:
+    Type: String
+    Default: us.anthropic.claude-sonnet-4-20250514
+    Description: Pinned Bedrock model ID
+
+  BedrockRegion:
+    Type: String
+    Default: us-east-1
+    Description: AWS region for Bedrock API calls
+
+  AgentMaxTurns:
+    Type: Number
+    Default: 10
+    Description: Maximum agent loop turns per interaction
+
+  RepoUrl:
+    Type: String
+    Default: https://github.com/autonomous-intelligence/autonomous-intelligence.git
+    Description: Git repository URL to clone
+
+  RepoBranch:
+    Type: String
+    Default: main
+    Description: Git branch to checkout
+
+Resources:
+  # --- IAM ---
+  DiscordBotRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-ec2-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: BedrockInvoke
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - !Sub "arn:aws:bedrock:${BedrockRegion}::foundation-model/anthropic.claude-*"
+                  - !Sub "arn:aws:bedrock:${BedrockRegion}::foundation-model/us.anthropic.claude-*"
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref DiscordBotRole
+
+  # --- Networking ---
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpc"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-igw"
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-public"
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-public-rt"
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Discord bot - egress only, zero inbound
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound (Discord, Bedrock, SSM, package managers)
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-sg"
+
+  # --- EC2 ---
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 30
+            VolumeType: gp3
+            Encrypted: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          exec > /var/log/user-data.log 2>&1
+
+          echo "=== Starting bootstrap ==="
+
+          # --- System packages ---
+          dnf update -y
+          dnf install -y python3.12 python3.12-pip git
+
+          # Node.js 20 (for claude CLI)
+          curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+          dnf install -y nodejs
+
+          # --- uv (Python package manager) ---
+          curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+          # --- Claude Code CLI ---
+          npm install -g @anthropic-ai/claude-code
+
+          # --- Swap (1 GB safety net for t2.micro) ---
+          if [ ! -f /swapfile ]; then
+            dd if=/dev/zero of=/swapfile bs=1M count=1024
+            chmod 600 /swapfile
+            mkswap /swapfile
+            swapon /swapfile
+            echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+          fi
+
+          # --- Application user ---
+          useradd -r -m -d /opt/discord-bot -s /bin/bash discord-bot || true
+
+          # --- Clone repo ---
+          git clone --depth 1 -b ${RepoBranch} ${RepoUrl} /opt/discord-bot/repo
+          ln -sf /opt/discord-bot/repo/discord-bot /opt/discord-bot/discord-bot
+
+          # --- Environment file ---
+          cat > /opt/discord-bot/discord-bot/.env <<'ENVEOF'
+          DISCORD_TOKEN=${DiscordToken}
+          DISCORD_CHANNEL_ID=${DiscordChannelId}
+          BEDROCK_MODEL=${BedrockModel}
+          AWS_REGION=${BedrockRegion}
+          AGENT_MAX_TURNS=${AgentMaxTurns}
+          CLAUDE_CODE_USE_BEDROCK=1
+          ENVEOF
+          chmod 600 /opt/discord-bot/discord-bot/.env
+
+          # --- Python environment ---
+          cd /opt/discord-bot/discord-bot
+          /usr/local/bin/uv venv --python python3.12
+          /usr/local/bin/uv pip install -e ".[bedrock]"
+
+          # --- Fix ownership ---
+          chown -R discord-bot:discord-bot /opt/discord-bot
+
+          # --- Systemd service ---
+          cat > /etc/systemd/system/discord-bot.service <<'SVCEOF'
+          [Unit]
+          Description=Discord Bot (Claude Agent SDK + Bedrock)
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User=discord-bot
+          Group=discord-bot
+          WorkingDirectory=/opt/discord-bot/discord-bot
+          ExecStart=/opt/discord-bot/discord-bot/.venv/bin/python bot.py -bedrock
+          Restart=always
+          RestartSec=10
+          EnvironmentFile=/opt/discord-bot/discord-bot/.env
+          Environment=CLAUDE_CODE_USE_BEDROCK=1
+          Environment=PATH=/usr/local/bin:/usr/bin:/bin
+          NoNewPrivileges=true
+          ProtectSystem=strict
+          ReadWritePaths=/opt/discord-bot
+          PrivateTmp=true
+          MemoryMax=768M
+
+          [Install]
+          WantedBy=multi-user.target
+          SVCEOF
+
+          systemctl daemon-reload
+          systemctl enable discord-bot
+          systemctl start discord-bot
+
+          echo "=== Bootstrap complete ==="
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-bot"
+
+Outputs:
+  InstanceId:
+    Description: EC2 Instance ID (use with aws ssm start-session)
+    Value: !Ref EC2Instance
+
+  SSMCommand:
+    Description: Command to connect via SSM
+    Value: !Sub "aws ssm start-session --target ${EC2Instance}"
+
+  StackStatus:
+    Description: Stack name for status checks
+    Value: !Ref AWS::StackName

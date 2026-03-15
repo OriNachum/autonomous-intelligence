@@ -1,0 +1,28 @@
+[Unit]
+Description=Discord Bot (Claude Agent SDK + Bedrock)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=discord-bot
+Group=discord-bot
+WorkingDirectory=/opt/discord-bot/discord-bot
+ExecStart=/opt/discord-bot/discord-bot/.venv/bin/python bot.py -bedrock
+Restart=always
+RestartSec=10
+EnvironmentFile=/opt/discord-bot/discord-bot/.env
+Environment=CLAUDE_CODE_USE_BEDROCK=1
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/discord-bot
+PrivateTmp=true
+
+# Resource limits (t2.micro safety)
+MemoryMax=768M
+
+[Install]
+WantedBy=multi-user.target

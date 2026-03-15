@@ -1,0 +1,13 @@
+[project]
+name = "discord-bot"
+version = "0.1.0"
+description = "Discord bot with multiple AI backends (opencode, qq, Bedrock Agent SDK)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "discord-py>=2.6.4",
+    "python-dotenv>=1.2.1",
+]
+
+[project.optional-dependencies]
+bedrock = ["claude-code-sdk>=0.1.0"]
