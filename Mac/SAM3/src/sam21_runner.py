@@ -1,5 +1,9 @@
 """SAM 2.1 inference runner using transformers."""
 
+from .ssl_setup import ensure_ssl_certs
+
+ensure_ssl_certs()
+
 import torch
 from PIL import Image
 from transformers import Sam2Model, Sam2Processor

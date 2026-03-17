@@ -4,6 +4,10 @@ SAM3 is text-conditioned: it takes an image + text prompt (e.g. "cat")
 and produces segmentation masks. Optionally accepts bounding boxes.
 """
 
+from .ssl_setup import ensure_ssl_certs
+
+ensure_ssl_certs()
+
 import torch
 from PIL import Image
 from transformers import Sam3Model, Sam3Processor
