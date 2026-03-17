@@ -7,3 +7,4 @@ results/*.csv
 __pycache__/
 *.egg-info/
 .venv/
+!results/benchmark.*.csv

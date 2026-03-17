@@ -1,0 +1,13 @@
+model_name,params_millions,device,dtype,mean_ms,median_ms,std_ms,min_ms,max_ms,memory_mb
+sam2.1-hiera-tiny,31.44,mps,torch.float32,269.33,265.65,10.76,257.23,288.16,119.94
+sam2.1-hiera-large,216.92,mps,torch.float32,958.0,956.51,7.85,948.66,971.35,923.52
+sam3,840.38,mps,torch.float32,4228.84,4451.69,421.74,3680.91,4733.85,3319.78
+efficientsam3-efficientvit-b0,424.07,mps,torch.float32,1069.52,1069.12,29.85,1028.54,1111.61,2128.47
+efficientsam3-efficientvit-b1,428.16,mps,torch.float32,1806.62,1794.64,91.86,1673.88,2025.95,2316.35
+efficientsam3-efficientvit-b2,438.63,mps,torch.float32,352.17,352.38,3.48,346.16,358.53,2522.94
+efficientsam3-repvit-m0_9,428.37,mps,torch.float32,347.45,346.21,16.96,327.21,384.32,2689.44
+efficientsam3-repvit-m1_1,431.56,mps,torch.float32,1106.38,1065.69,126.74,977.57,1370.88,2843.33
+efficientsam3-repvit-m2_3,446.32,mps,torch.float32,417.6,417.54,3.17,412.46,423.44,3076.76
+efficientsam3-tinyvit-5m,428.66,mps,torch.float32,312.77,308.25,11.11,302.25,340.19,3212.97
+efficientsam3-tinyvit-11m,434.26,mps,torch.float32,386.19,383.65,19.2,363.35,418.47,3402.12
+efficientsam3-tinyvit-21m,444.47,mps,torch.float32,2839.49,2831.13,144.07,2592.97,3054.44,3711.41
