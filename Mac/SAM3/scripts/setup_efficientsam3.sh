@@ -14,6 +14,20 @@ else
 fi
 
 cd "$PROJECT_DIR"
-echo "Installing EfficientSAM3 into project venv..."
-uv pip install -e "$REPO_DIR[stage1]"
-echo "Done."
+
+# Install base package (without stage1 extras — decord has no macOS wheels)
+echo "Installing EfficientSAM3 base package..."
+uv pip install -e "$REPO_DIR"
+
+# Install stage1 deps that work on macOS (skip decord, mmengine, mmcv)
+echo "Installing additional dependencies for macOS..."
+uv pip install \
+    "opencv-python>=4.9.0.80" \
+    "scipy>=1.10.0" \
+    "scikit-image>=0.21.0" \
+    "einops>=0.7.0" \
+    "hydra-core>=1.3.2" \
+    "pycocotools>=2.0.7"
+
+echo "Done. Note: 'decord' is not available on macOS ARM64."
+echo "Video-related features may not work, but image inference is fully supported."

@@ -44,7 +44,8 @@ def build_runners(model_filter: str, prefer_half: bool):
     if model_filter in ("all", "efficientsam3"):
         from .efficientsam3_runner import EfficientSAM3Runner
 
-        for variant in ("repvit-m0.5", "repvit-m0.7", "repvit-m2.3"):
+        # One small variant from each backbone family
+        for variant in ("efficientvit-b0", "repvit-m0_9", "tinyvit-5m"):
             runners.append(EfficientSAM3Runner(variant, prefer_half=prefer_half))
 
     return runners
