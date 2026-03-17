@@ -1,0 +1,8 @@
+efficientsam3/
+models/
+results/*.csv
+*.pt
+*.safetensors
+__pycache__/
+*.egg-info/
+.venv/
