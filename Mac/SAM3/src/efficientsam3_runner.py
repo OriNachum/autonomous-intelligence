@@ -93,6 +93,28 @@ class EfficientSAM3Runner:
         )
         return masks
 
+    def predict_box(self, image: Image.Image, box_xyxy: np.ndarray) -> np.ndarray:
+        """Run inference with a bounding box prompt.
+
+        Args:
+            image: PIL image
+            box_xyxy: 1-D array [x1, y1, x2, y2]
+
+        Returns:
+            Binary mask as numpy array (H, W)
+        """
+        inference_state = self._processor.set_image(image)
+
+        masks, scores, _ = self.model.predict_inst(
+            inference_state,
+            point_coords=None,
+            point_labels=None,
+            box=box_xyxy[None, :],  # shape (1, 4)
+            multimask_output=False,
+        )
+        # Return first (and only) mask as binary
+        return (masks[0] > 0).astype(np.uint8)
+
     def unload(self):
         del self.model
         del self._processor

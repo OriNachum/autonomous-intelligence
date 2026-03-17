@@ -4,6 +4,7 @@ from .ssl_setup import ensure_ssl_certs
 
 ensure_ssl_certs()
 
+import numpy as np
 import torch
 from PIL import Image
 from transformers import Sam2Model, Sam2Processor
@@ -59,6 +60,33 @@ class SAM21Runner:
             inputs["original_sizes"].cpu(),
         )
         return masks[0]
+
+    def predict_box(self, image: Image.Image, box_xyxy: np.ndarray) -> np.ndarray:
+        """Run inference with a bounding box prompt.
+
+        Args:
+            image: PIL image
+            box_xyxy: 1-D array [x1, y1, x2, y2]
+
+        Returns:
+            Binary mask as numpy array (H, W)
+        """
+        inputs = self.processor(
+            images=image,
+            input_boxes=[[box_xyxy.tolist()]],
+            return_tensors="pt",
+        ).to(self.device)
+
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+
+        masks = self.processor.post_process_masks(
+            outputs.pred_masks.cpu(),
+            inputs["original_sizes"].cpu(),
+        )
+        # Take best mask from first batch element
+        mask = masks[0][0, 0]  # num_masks, channels -> first mask
+        return (mask.numpy() > 0).astype(np.uint8)
 
     def unload(self):
         del self.model

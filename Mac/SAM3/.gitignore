@@ -1,4 +1,5 @@
 efficientsam3/
+data/
 models/
 results/*.csv
 *.pt

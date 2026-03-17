@@ -42,10 +42,9 @@ def build_runners(model_filter: str, prefer_half: bool):
         runners.append(SAM3Runner("facebook/sam3", prefer_half=prefer_half))
 
     if model_filter in ("all", "efficientsam3"):
-        from .efficientsam3_runner import EfficientSAM3Runner
+        from .efficientsam3_runner import VARIANTS, EfficientSAM3Runner
 
-        # One small variant from each backbone family
-        for variant in ("efficientvit-b0", "repvit-m0_9", "tinyvit-5m"):
+        for variant in VARIANTS:
             runners.append(EfficientSAM3Runner(variant, prefer_half=prefer_half))
 
     return runners
@@ -152,22 +151,39 @@ def run_benchmark(
 
 def main():
     parser = argparse.ArgumentParser(description="SAM3 Benchmark Suite")
+    parser.add_argument("--mode", default="timing", choices=["timing", "accuracy"])
     parser.add_argument("--models", default="all", choices=["all", "sam21", "sam3", "efficientsam3"])
     parser.add_argument("--iterations", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--image", type=Path, default=DEFAULT_IMAGE)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--dtype", choices=["float32", "half"], default="float32")
+    # Accuracy-specific arguments
+    parser.add_argument("--num-images", type=int, default=100)
+    parser.add_argument("--coco-root", type=Path, default=PROJECT_ROOT / "data" / "coco")
     args = parser.parse_args()
 
-    run_benchmark(
-        models=args.models,
-        iterations=args.iterations,
-        warmup=args.warmup,
-        image_path=args.image,
-        output_path=args.output,
-        prefer_half=(args.dtype == "half"),
-    )
+    prefer_half = args.dtype == "half"
+
+    if args.mode == "accuracy":
+        from .accuracy import run_accuracy, DEFAULT_OUTPUT as DEFAULT_ACCURACY_OUTPUT
+
+        run_accuracy(
+            models=args.models,
+            num_images=args.num_images,
+            coco_root=args.coco_root,
+            output_path=args.output or DEFAULT_ACCURACY_OUTPUT,
+            prefer_half=prefer_half,
+        )
+    else:
+        run_benchmark(
+            models=args.models,
+            iterations=args.iterations,
+            warmup=args.warmup,
+            image_path=args.image,
+            output_path=args.output or DEFAULT_OUTPUT,
+            prefer_half=prefer_half,
+        )
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from .ssl_setup import ensure_ssl_certs
 
 ensure_ssl_certs()
 
+import numpy as np
 import torch
 from PIL import Image
 from transformers import Sam3Model, Sam3Processor
@@ -81,6 +82,41 @@ class SAM3Runner:
                     raise
 
         return outputs.pred_masks
+
+    def predict_box(self, image: Image.Image, box_xyxy: np.ndarray) -> np.ndarray:
+        """Run inference with a bounding box prompt.
+
+        Args:
+            image: PIL image
+            box_xyxy: 1-D array [x1, y1, x2, y2]
+
+        Returns:
+            Binary mask as numpy array (H, W)
+        """
+        inputs = self.processor(
+            images=image,
+            input_boxes=[[[box_xyxy.tolist()]]],
+            return_tensors="pt",
+        ).to(self.device)
+
+        with torch.no_grad():
+            try:
+                outputs = self.model(**inputs)
+            except Exception as e:
+                if not self._fallback_cpu and self.device.type == "mps":
+                    print(f"MPS inference failed, retrying on CPU: {e}")
+                    self._fallback_cpu = True
+                    self.device = torch.device("cpu")
+                    self.model = self.model.to(self.device)
+                    inputs = {k: v.to(self.device) if hasattr(v, "to") else v for k, v in inputs.items()}
+                    outputs = self.model(**inputs)
+                else:
+                    raise
+
+        masks = outputs.pred_masks.cpu()
+        # Take best mask (highest score or first)
+        mask = masks[0, 0, 0]  # batch, num_masks, channels -> first mask
+        return (mask.numpy() > 0).astype(np.uint8)
 
     def unload(self):
         del self.model
