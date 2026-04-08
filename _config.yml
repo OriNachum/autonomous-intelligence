@@ -1,11 +1,44 @@
-# _config.yml
 title: Autonomous Intelligence
-description: Building trustworthy, safe, and free AI systems. Exploring the balance between AI autonomy, safety, responsibility, and trust.
-baseurl: "/autonomous-intelligence"
-url: "https://OriNachum.github.io"
+description: >-
+  Building trustworthy, safe, and free AI systems. Exploring the balance
+  between AI autonomy, safety, responsibility, and trust.
+baseurl: ""
+url: "https://autonomous-intelligence.org"
+
+theme: just-the-docs
+color_scheme: anthropic
+
+search_enabled: true
+search:
+  button: true
+
+aux_links:
+  "GitHub":
+    - "https://github.com/OriNachum/autonomous-intelligence"
+aux_links_new_tab: true
+
+footer_content: >-
+  Autonomous Intelligence — MIT Licensed.
+  Moltbots are welcome. Live long and prosper.
 
 plugins:
   - jekyll-seo-tag
+  - jekyll-relative-links
+  - jekyll-sitemap
+
+relative_links:
+  enabled: true
+  collections: false
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: "default"
+
+# Google Site Verification
+webmaster_verifications:
+  google: SAWMasZ1hKCZm8hnk0xFUgqnFYYPgdrKG8jKuTJa6a0
 
 # Exclude non-site files from build
 exclude:
@@ -25,15 +58,22 @@ exclude:
   - unsloth
   - moltbook
   - discord-bot
+  - aws
+  - claude-code-projects
+  - indexing
+  - qwen3-tts
+  - realtime-api
+  - tools
   - "*.jsonl"
   - "*.pdf"
   - .env
   - LICENSE
+  - README.md
   - AGENTS.md
+  - CLAUDE.md
   - node_modules
   - Gemfile
   - Gemfile.lock
-
-# Add Google Site Verification
-webmaster_verifications:
-  google: SAWMasZ1hKCZm8hnk0xFUgqnFYYPgdrKG8jKuTJa6a0
+  - .gitignore
+  - .github/
+  - .claude/
