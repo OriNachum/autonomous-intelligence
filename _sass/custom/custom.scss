@@ -1,0 +1,16 @@
+// Override just-the-docs sidebar expansion formula at lg breakpoint.
+// The default formula absorbs leftover viewport space into the sidebar,
+// making it ~400-450px on laptops. This caps it at the base $nav-width.
+// Mobile dropdown behavior (below md breakpoint) is unaffected.
+
+.side-bar {
+  @media (min-width: 66.5rem) {
+    width: $nav-width;
+  }
+}
+
+.side-bar + .main {
+  @media (min-width: 66.5rem) {
+    margin-left: $nav-width;
+  }
+}
